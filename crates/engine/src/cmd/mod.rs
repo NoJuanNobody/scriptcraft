@@ -8,6 +8,7 @@ pub mod format;
 pub mod report;
 pub mod scene;
 pub mod smart;
+pub mod spell;
 pub mod text;
 pub mod title;
 
@@ -25,6 +26,7 @@ pub fn registry() -> Registry {
     v.extend(element::specs());
     v.extend(format::specs());
     v.extend(smart::specs());
+    v.extend(spell::specs());
     v.extend(scene::specs());
     v.extend(title::specs());
     v.extend(report::specs());

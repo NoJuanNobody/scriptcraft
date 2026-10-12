@@ -2844,6 +2844,7 @@ dependencies = [
  "scriptcraft-geom",
  "scriptcraft-layout",
  "scriptcraft-pdf",
+ "scriptcraft-spell",
  "serde",
  "serde_json",
  "thiserror 2.0.21",
@@ -2908,6 +2909,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "scriptcraft-spell"
+version = "0.1.0"
+
+[[package]]
 name = "scriptcraft-ui-egui"
 version = "0.1.0"
 dependencies = [
@@ -2920,6 +2925,7 @@ dependencies = [
  "scriptcraft-fonts",
  "scriptcraft-geom",
  "scriptcraft-layout",
+ "scriptcraft-spell",
  "serde_json",
 ]
 

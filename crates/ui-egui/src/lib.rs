@@ -10,6 +10,7 @@ mod cards;
 mod chrome;
 pub mod control;
 pub mod icons;
+pub mod persist;
 mod reports;
 pub mod theme;
 
@@ -51,6 +52,7 @@ pub const UI_COMMANDS: &[(&str, &str, &str, &str)] = &[
     ("ui.zoomOut", "Zoom Out", "View", "Mod+-"),
     ("ui.zoomReset", "Actual Size", "View", "Mod+0"),
     ("ui.find", "Find…", "Edit", "Mod+F"),
+    ("ui.toggleSpelling", "Check Spelling as You Type", "Tools", ""),
     ("ui.titlePage", "Title Page…", "Document", ""),
     ("ui.open", "Open…", "File", "Mod+O"),
     ("ui.save", "Save", "File", "Mod+S"),
@@ -78,6 +80,10 @@ pub struct ScriptApp {
     /// Ask before closing with unsaved changes.
     pub confirm_close: bool,
     pub quit_requested: bool,
+    /// Underline misspelled words.
+    pub spelling: bool,
+    /// The settings folder for state kept between runs (user dictionary…); `None` in tests.
+    pub state_dir: Option<std::path::PathBuf>,
     /// Status-bar message and when it was set (seconds since start).
     status: Option<(String, f64)>,
     control: Option<Receiver<ControlRequest>>,
@@ -114,6 +120,8 @@ impl ScriptApp {
             dialogs: true,
             confirm_close: false,
             quit_requested: false,
+            spelling: true,
+            state_dir: None,
             status: None,
             control: None,
             synthetic: Vec::new(),
@@ -122,6 +130,13 @@ impl ScriptApp {
             fonts_frames: 0,
             sent_title: String::new(),
         }
+    }
+
+    /// Keep state (user dictionary…) in `dir` and load what is there.
+    pub fn with_state_dir(mut self, dir: std::path::PathBuf) -> Self {
+        self.session.user_words = persist::load_words(&dir);
+        self.state_dir = Some(dir);
+        self
     }
 
     /// Accept control-channel requests from `rx`.
@@ -143,6 +158,12 @@ impl ScriptApp {
         let r = if id.starts_with("ui.") { self.ui_command(id, &params) } else { self.session.run(id, &params) };
         match &r {
             Ok(_) => {
+                if id == "spell.addWord"
+                    && let Some(dir) = &self.state_dir
+                    && let Err(e) = persist::save_words(dir, &self.session.user_words)
+                {
+                    self.status = Some((format!("Could not save the dictionary: {e}"), 0.0));
+                }
                 if !id.starts_with("ui.") && !matches!(id, "document.inspect" | "document.stats" | "smarttype.suggest") {
                     self.canvas.scroll_to_caret = true;
                 }
@@ -169,6 +190,7 @@ impl ScriptApp {
             "ui.view.reports" => self.view = View::Reports,
             "ui.toggleNavigator" => self.navigator = !self.navigator,
             "ui.theme.toggle" => self.dark = !self.dark,
+            "ui.toggleSpelling" => self.spelling = !self.spelling,
             "ui.theme.dark" => self.dark = true,
             "ui.theme.light" => self.dark = false,
             "ui.zoomIn" => self.canvas.zoom = (self.canvas.zoom * 1.1).min(3.0),

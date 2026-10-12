@@ -31,7 +31,7 @@ One JSON object per line; one reply per line, `{"id", "ok": true, "result"}` or 
 | `ui.inspect` | | view, theme, zoom, page rectangles, caret, SmartType state |
 | `ui.key` | `{key, shift?, alt?, cmd?}` | a key press through egui (`Enter`, `Tab`, `A`, `ArrowUp`…) |
 | `ui.text` | `{text}` | typed text through egui |
-| `ui.click` | `{x, y, count?, shift?}` | a pointer click in window points |
+| `ui.click` | `{x, y, count?, shift?, button?: "right"}` | a pointer click in window points |
 | `ui.screenshot` | `{path?}` | PNG of the window (base64 `png` in the reply without `path`) |
 
 ## Headless screenshots

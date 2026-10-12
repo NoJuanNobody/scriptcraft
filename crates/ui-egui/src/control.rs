@@ -5,7 +5,7 @@
 //! - `engine.commands`: every command with its enablement
 //! - `document.inspect`: script structure; `ui.inspect`: view state and geometry
 //! - `ui.key {key, shift?, alt?, cmd?}`, `ui.text {text}`: keyboard input through egui
-//! - `ui.click {x, y, count?, shift?}`: pointer input in window points
+//! - `ui.click {x, y, count?, shift?, button?: "right"}`: pointer input in window points
 //! - `ui.screenshot {path?}`: PNG of the window (base64 `png` without a path)
 
 use std::sync::mpsc::Sender;
@@ -117,10 +117,12 @@ pub fn handle(app: &mut ScriptApp, ctx: &egui::Context, req: &ControlRequest) ->
             let pos = egui::pos2(x, y);
             let m = mods(p);
             let count = p.get("count").and_then(Value::as_u64).unwrap_or(1).clamp(1, 3);
+            let button =
+                if p.get("button").and_then(Value::as_str) == Some("right") { egui::PointerButton::Secondary } else { egui::PointerButton::Primary };
             app.synthetic.push(egui::Event::PointerMoved(pos));
             for _ in 0..count {
-                app.synthetic.push(egui::Event::PointerButton { pos, button: egui::PointerButton::Primary, pressed: true, modifiers: m });
-                app.synthetic.push(egui::Event::PointerButton { pos, button: egui::PointerButton::Primary, pressed: false, modifiers: m });
+                app.synthetic.push(egui::Event::PointerButton { pos, button, pressed: true, modifiers: m });
+                app.synthetic.push(egui::Event::PointerButton { pos, button, pressed: false, modifiers: m });
             }
             ok(json!({}))
         }

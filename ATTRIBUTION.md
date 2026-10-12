@@ -16,6 +16,13 @@ the window icon in `apps/scriptcraft/src/main.rs`).
 | `crates/fonts/fonts/CourierPrime-Italic.ttf` | same | same | SIL OFL 1.1 |
 | `crates/fonts/fonts/CourierPrime-BoldItalic.ttf` | same | same | SIL OFL 1.1 |
 
+## Word lists
+
+| File | Author | Source | Licence |
+|---|---|---|---|
+| `crates/spell/words/en.txt` | Kevin Atkinson (English Speller Database / SCOWL), from 12dicts and ENABLE2K (public domain) | https://app.aspell.net/create (size 60, US + British -ise) | ESDB licence: free use, copy, modification and distribution with the copyright notice (`crates/spell/words/LICENSE-SCOWL.txt`) |
+| `crates/spell/words/common.txt` | same | same (size 35) | same |
+
 ## Sample script
 
 | File | Author | Licence |

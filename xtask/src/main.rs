@@ -90,10 +90,12 @@ fn assets() -> Result<(), String> {
     let mut files = Vec::new();
     walk(&r, &mut files);
     let exts = ["ttf", "otf", "woff", "woff2", "png", "jpg", "jpeg", "gif", "svg", "ico", "icns", "fountain", "fdx"];
+    let word_lists = ["words/en.txt", "words/common.txt"];
     let mut missing = Vec::new();
     for f in files {
         let ext = f.extension().and_then(|e| e.to_str()).unwrap_or("").to_ascii_lowercase();
-        if !exts.contains(&ext.as_str()) {
+        let rel_s = f.to_string_lossy().replace('\\', "/");
+        if !exts.contains(&ext.as_str()) && !word_lists.iter().any(|w| rel_s.ends_with(w)) {
             continue;
         }
         let rel = f.strip_prefix(&r).unwrap_or(&f).to_string_lossy().replace('\\', "/");
@@ -114,6 +116,7 @@ const LAYERS: &[(&str, u8)] = &[
     ("scriptcraft-geom", 0),
     ("scriptcraft-doc", 1),
     ("scriptcraft-fonts", 1),
+    ("scriptcraft-spell", 1),
     ("scriptcraft-control-key", 1),
     ("scriptcraft-fountain", 2),
     ("scriptcraft-fdx", 2),

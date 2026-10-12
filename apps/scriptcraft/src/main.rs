@@ -101,6 +101,9 @@ fn main() -> eframe::Result<()> {
         options,
         Box::new(move |cc| {
             let mut app = ScriptApp::new(session);
+            if let Some(dir) = scriptcraft_control_key::settings_dir() {
+                app = app.with_state_dir(dir);
+            }
             app.dark = cc.egui_ctx.system_theme() == Some(egui::Theme::Dark);
             let mut key_file = None;
             if let Some(port) = control_port

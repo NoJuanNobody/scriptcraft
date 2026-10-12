@@ -184,6 +184,10 @@ pub fn menu_bar(app: &mut ScriptApp, ui: &mut Ui) {
                 check(app, ui, "Automatic Character (CONT'D)", st.auto_contd, "settings.set", json!({"autoContd": !st.auto_contd}));
                 check(app, ui, "Print Title Page", st.title_page, "settings.set", json!({"titlePage": !st.title_page}));
             });
+            ui.menu_button("Tools", |ui| {
+                item(app, ui, "Next Misspelling", "spell.next", "Mod+;");
+                check(app, ui, "Check Spelling as You Type", app.spelling, "ui.toggleSpelling", json!({}));
+            });
             ui.menu_button("Help", |ui| {
                 item(app, ui, "About ScriptCraft", "ui.about", "");
                 item(app, ui, "Open Sample Script", "file.sample", "");

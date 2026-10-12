@@ -23,6 +23,10 @@ pub struct CanvasState {
     suggest_items: Vec<String>,
     pub suggest_shown: bool,
     pub caret_screen: Option<Rect>,
+    /// Misspellings for a layout (by pointer) and dictionary size: (para, start, end).
+    spell_cache: Option<(usize, usize, std::sync::Arc<Vec<(usize, usize, usize)>>)>,
+    /// The misspelled word a context menu was opened on, with its suggestions.
+    pub spell_target: Option<(usize, usize, usize, Vec<String>)>,
 }
 
 impl Default for CanvasState {
@@ -36,6 +40,8 @@ impl Default for CanvasState {
             suggest_items: Vec::new(),
             suggest_shown: false,
             caret_screen: None,
+            spell_cache: None,
+            spell_target: None,
         }
     }
 }
@@ -70,6 +76,24 @@ fn current_suggest(app: &ScriptApp) -> Option<Suggest> {
         return None;
     }
     suggest(&s.script, s.sel.focus)
+}
+
+/// Misspellings of the current script, recomputed only when the script or dictionaries change.
+fn misspellings(app: &mut ScriptApp, layout: &std::sync::Arc<Layout>) -> std::sync::Arc<Vec<(usize, usize, usize)>> {
+    if !app.spelling {
+        return std::sync::Arc::new(Vec::new());
+    }
+    let id = std::sync::Arc::as_ptr(layout) as usize;
+    let dict = app.session.ignored_words.len() + app.session.user_words.len();
+    if let Some((i, d, v)) = &app.canvas.spell_cache
+        && *i == id
+        && *d == dict
+    {
+        return v.clone();
+    }
+    let v = std::sync::Arc::new(scriptcraft_engine::cmd::spell::misspellings(&app.session, None));
+    app.canvas.spell_cache = Some((id, dict, v.clone()));
+    v
 }
 
 /// The shortcut string for a key press (`Mod+Shift+Z`).
@@ -224,7 +248,7 @@ fn selected_cols(l: &Line, a: Pos, b: Pos) -> Option<(usize, usize)> {
     Some((col(from), col(to) + usize::from(eol)))
 }
 
-fn paint_page(ui: &Ui, app: &ScriptApp, l: &Layout, i: usize, pr: Rect) {
+fn paint_page(ui: &Ui, app: &ScriptApp, l: &Layout, i: usize, pr: Rect, bad: &[(usize, usize, usize)]) {
     let t = app.tokens();
     let z = app.canvas.zoom;
     let p = ui.painter();
@@ -253,6 +277,26 @@ fn paint_page(ui: &Ui, app: &ScriptApp, l: &Layout, i: usize, pr: Rect) {
                 let y = pr.top() + (line.baseline() + 1.8) * z;
                 let x1 = x + text.chars().count() as f32 * CHAR_W;
                 p.line_segment([pos2(pr.left() + x * z, y), pos2(pr.left() + x1 * z, y)], Stroke::new(0.7 * z, color));
+            }
+        }
+        // Spelling: a wavy red line under misspelled words.
+        if let Some(para) = line.para {
+            for &(_, a, b) in bad.iter().filter(|m| m.0 == para && m.2 > line.start && m.1 < line.end) {
+                let col = |off: usize| line.text.get(..off.clamp(line.start, line.end) - line.start).map_or(0, |t| t.chars().count());
+                let (x0, x1) = (pr.left() + (line.x + col(a) as f32 * CHAR_W) * z, pr.left() + (line.x + col(b) as f32 * CHAR_W) * z);
+                let y = pr.top() + (line.baseline() + 2.6) * z;
+                let step = 2.0 * z.max(0.6);
+                let mut pts = Vec::new();
+                let mut x = x0;
+                let mut up = true;
+                while x <= x1 {
+                    pts.push(pos2(x, if up { y - 0.9 * z } else { y + 0.9 * z }));
+                    up = !up;
+                    x += step;
+                }
+                if pts.len() > 1 {
+                    p.add(egui::Shape::line(pts, Stroke::new(0.9 * z.max(0.8), Color32::from_rgb(0xe0, 0x3b, 0x3b))));
+                }
             }
         }
         if !line.suffix.is_empty() {
@@ -297,9 +341,10 @@ pub fn show(app: &mut ScriptApp, ui: &mut Ui) {
         let x0 = rect.left() + ((avail - pw) / 2.0).round();
         let rects: Vec<Rect> = (0..n).map(|i| Rect::from_min_size(pos2(x0, rect.top() + GAP + i as f32 * (ph + GAP)), vec2(pw, ph))).collect();
         let clip = ui.clip_rect();
+        let bad = misspellings(app, &layout);
         for (i, pr) in rects.iter().enumerate() {
             if pr.intersects(clip) {
-                paint_page(ui, app, &layout, i, *pr);
+                paint_page(ui, app, &layout, i, *pr, &bad);
             }
         }
         // Caret.
@@ -319,6 +364,23 @@ pub fn show(app: &mut ScriptApp, ui: &mut Ui) {
         }
         // Pointer.
         let resp = ui.interact(rect, id, Sense::click_and_drag());
+        // Right-click: put the caret there and remember a misspelled word under it.
+        if resp.secondary_clicked()
+            && let Some(at) = resp.interact_pointer_pos()
+            && let Some((pi, x, y)) = page_point(&rects, z, at)
+            && let Some(pos) = layout.hit(pi, x, y)
+        {
+            let inside = app.session.sel.ordered();
+            if !(inside.0 <= pos && pos <= inside.1 && inside.0 != inside.1) {
+                app.run("caret.set", json!({"para": pos.para, "off": pos.off}));
+            }
+            app.canvas.spell_target = bad.iter().find(|m| m.0 == pos.para && m.1 <= pos.off && pos.off <= m.2).map(|&(pa, a, b)| {
+                let w = app.session.script.para(pa).and_then(|p| p.text.get(a..b)).unwrap_or("").to_string();
+                (pa, a, b, scriptcraft_spell::english().suggest(&w, 6))
+            });
+            app.canvas.scroll_to_caret = false;
+        }
+        resp.context_menu(|ui| context_menu(app, ui));
         if let Some(at) = resp.interact_pointer_pos()
             && let Some((pi, x, y)) = page_point(&rects, z, at)
             && let Some(pos) = layout.hit(pi, x, y)
@@ -348,6 +410,44 @@ pub fn show(app: &mut ScriptApp, ui: &mut Ui) {
         app.canvas.canvas_rect = Some(clip);
     });
     smarttype_popup(app, ui);
+}
+
+fn context_menu(app: &mut ScriptApp, ui: &mut Ui) {
+    if let Some((para, a, b, sugg)) = app.canvas.spell_target.clone() {
+        if sugg.is_empty() {
+            ui.label(egui::RichText::new("No suggestions").italics());
+        }
+        for w in sugg {
+            if ui.button(egui::RichText::new(&w).strong()).clicked() {
+                app.run("select.range", json!({"anchor": {"para": para, "off": a}, "focus": {"para": para, "off": b}}));
+                app.run("text.insert", json!({"text": w}));
+                ui.close();
+            }
+        }
+        ui.separator();
+        let word = app.session.script.para(para).and_then(|p| p.text.get(a..b)).unwrap_or("").to_string();
+        if ui.button("Ignore Spelling").clicked() {
+            app.run("spell.ignore", json!({"word": word}));
+            ui.close();
+        }
+        if ui.button("Add to Dictionary").clicked() {
+            app.run("spell.addWord", json!({"word": word}));
+            ui.close();
+        }
+        ui.separator();
+    }
+    for (label, id) in [("Cut", "edit.cut"), ("Copy", "edit.copy")] {
+        if ui.add_enabled(!app.session.sel.is_caret(), egui::Button::new(label)).clicked() {
+            if let Ok(v) = app.execute(id, json!({})) {
+                ui.ctx().copy_text(v["text"].as_str().unwrap_or("").to_string());
+            }
+            ui.close();
+        }
+    }
+    if ui.button("Select All").clicked() {
+        app.run("select.all", json!({}));
+        ui.close();
+    }
 }
 
 fn smarttype_popup(app: &mut ScriptApp, ui: &mut Ui) {

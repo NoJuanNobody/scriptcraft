@@ -58,6 +58,10 @@ pub struct Session {
     pub suggest_dismissed: bool,
     /// Style for the next typed text, set by Bold/Italic/Underline with no selection.
     pub pending_style: Option<scriptcraft_doc::Style>,
+    /// Words Spelling ignores in this session (lowercase).
+    pub ignored_words: std::collections::BTreeSet<String>,
+    /// The user's own dictionary (lowercase); the app loads and saves it.
+    pub user_words: std::collections::BTreeSet<String>,
     history: Vec<Snapshot>,
     redo: Vec<Snapshot>,
     typing_open: bool,
@@ -76,6 +80,8 @@ impl Session {
             goal_x: None,
             suggest_dismissed: false,
             pending_style: None,
+            ignored_words: Default::default(),
+            user_words: Default::default(),
             history: Vec::new(),
             redo: Vec::new(),
             typing_open: false,

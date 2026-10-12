@@ -241,3 +241,34 @@ fn bold_italic_underline() {
     run(&mut s, "caret.left", json!({}));
     assert_eq!(run(&mut s, "format.state", json!({}))["bold"], false);
 }
+
+#[test]
+fn spelling() {
+    let mut s = Session::sample();
+    // Cast, places and title words are known; the sample's only unknowns are two real words.
+    let r = run(&mut s, "spell.check", json!({}));
+    let mut found: Vec<String> = r["misspellings"].as_array().unwrap().iter().map(|m| m["word"].as_str().unwrap().to_string()).collect();
+    found.dedup();
+    assert_eq!(found, vec!["dismasted", "Hesper"], "{r}");
+    run(&mut s, "spell.addWord", json!({"word": "hesper"}));
+    run(&mut s, "spell.ignore", json!({"word": "dismasted"}));
+    assert_eq!(run(&mut s, "spell.check", json!({}))["count"], 0);
+    run(&mut s, "select.text", json!({"text": "squat"}));
+    run(&mut s, "text.insert", json!({"text": "sqaut"}));
+    let r = run(&mut s, "spell.check", json!({}));
+    assert_eq!(r["count"], 1);
+    assert_eq!(r["misspellings"][0]["word"], "sqaut");
+    run(&mut s, "caret.docStart", json!({}));
+    let n = run(&mut s, "spell.next", json!({}));
+    assert_eq!(n["word"], "sqaut");
+    assert_eq!(n["suggestions"][0], "squat");
+    let (a, b) = s.sel.ordered();
+    assert_eq!(s.script.text_between(a, b), "sqaut");
+    run(&mut s, "spell.ignore", json!({}));
+    assert_eq!(run(&mut s, "spell.check", json!({}))["count"], 0);
+    run(&mut s, "spell.addWord", json!({"word": "Glorp"}));
+    assert!(s.user_words.contains("hesper"));
+    assert!(s.user_words.contains("glorp"));
+    assert!(s.run("spell.addWord", &json!({"word": "two words"})).is_err());
+    assert_eq!(run(&mut s, "spell.suggest", json!({"word": "barometr"}))["suggestions"][0], "barometer");
+}
