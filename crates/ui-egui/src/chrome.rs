@@ -136,6 +136,8 @@ pub fn menu_bar(app: &mut ScriptApp, ui: &mut Ui) {
                 item(app, ui, "Export PDF…", "ui.exportPdf", "Mod+P");
                 item(app, ui, "Export Final Draft (FDX)…", "ui.exportFdx", "");
                 item(app, ui, "Export Fountain…", "ui.exportFountain", "");
+                ui.separator();
+                item(app, ui, "Quit", "ui.quit", "Mod+Q");
             });
             ui.menu_button("Edit", |ui| {
                 let undo = app.session.undo_label().map_or("Undo".to_string(), |l| format!("Undo {l}"));
@@ -739,20 +741,26 @@ pub fn dialogs(app: &mut ScriptApp, ctx: &egui::Context) {
     }
     if app.confirm_close {
         egui::Window::new("Save changes?").collapsible(false).resizable(false).anchor(egui::Align2::CENTER_CENTER, vec2(0.0, 0.0)).show(ctx, |ui| {
-            ui.label("This script has unsaved changes.");
+            ui.label("This script has unsaved changes. Save them before closing?");
             ui.horizontal(|ui| {
-                if ui.button("Save").clicked() {
+                let save = ui.button("Save");
+                let discard = ui.button("Don't Save");
+                let cancel = ui.button("Cancel");
+                for (n, r) in [("Save", &save), ("Don't Save", &discard), ("Cancel", &cancel)] {
+                    app.dialog_buttons.push((n.to_string(), r.rect));
+                }
+                if save.clicked() {
                     let _ = app.execute("ui.save", json!({}));
                     app.confirm_close = false;
                     if !app.session.dirty {
                         app.quit_requested = true;
                     }
                 }
-                if ui.button("Don't Save").clicked() {
+                if discard.clicked() {
                     app.confirm_close = false;
                     app.quit_requested = true;
                 }
-                if ui.button("Cancel").clicked() {
+                if cancel.clicked() {
                     app.confirm_close = false;
                 }
             });

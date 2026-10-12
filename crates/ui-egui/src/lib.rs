@@ -65,6 +65,7 @@ pub const UI_COMMANDS: &[(&str, &str, &str, &str)] = &[
     ("ui.exportFdx", "Export Final Draft (FDX)…", "File", ""),
     ("ui.exportFountain", "Export Fountain…", "File", ""),
     ("ui.about", "About ScriptCraft", "Help", ""),
+    ("ui.quit", "Quit ScriptCraft", "File", "Mod+Q"),
     ("ui.openRecent", "Open Recent", "File", ""),
     ("ui.clearRecent", "Clear Recent Files", "File", ""),
 ];
@@ -91,6 +92,9 @@ pub struct ScriptApp {
     /// Ask before closing with unsaved changes.
     pub confirm_close: bool,
     pub quit_requested: bool,
+    /// Quit was chosen (menu, Mod+Q, control channel): the host asks the window to close, which
+    /// goes through [`ScriptApp::close_requested`] like the close button.
+    pub close_wanted: bool,
     /// Underline misspelled words.
     pub spelling: bool,
     /// Enter in an empty paragraph shows the element list (otherwise it changes the element).
@@ -101,6 +105,8 @@ pub struct ScriptApp {
     pub prefs: persist::Prefs,
     /// An autosaved script found at start-up, offered for recovery.
     pub recovery_offer: Option<persist::Recovery>,
+    /// Buttons of the open modal dialog this frame (label, screen rect), for `ui.inspect`.
+    pub dialog_buttons: Vec<(String, egui::Rect)>,
     /// An open/new waiting for the user to save or discard unsaved changes.
     pub confirm_replace: Option<(String, Value)>,
     /// When the script was last autosaved (seconds of UI time).
@@ -144,6 +150,7 @@ impl ScriptApp {
             dialogs: true,
             confirm_close: false,
             quit_requested: false,
+            close_wanted: false,
             spelling: true,
             enter_picker: true,
             state_dir: None,
@@ -151,6 +158,7 @@ impl ScriptApp {
             recovery_offer: None,
             last_autosave: 0.0,
             confirm_replace: None,
+            dialog_buttons: Vec::new(),
             status: None,
             control: None,
             synthetic: Vec::new(),
@@ -327,6 +335,7 @@ impl ScriptApp {
             "ui.titlePage" => self.title_dialog = !self.title_dialog,
             "ui.elementSettings" => self.element_dialog = !self.element_dialog,
             "ui.about" => self.about = true,
+            "ui.quit" => self.close_wanted = true,
             "ui.openRecent" => {
                 let path = path.or_else(|| self.prefs.recent.first().cloned()).ok_or_else(|| CmdError::Disabled("no recent files".into()))?;
                 return self.execute("file.open", json!({"path": path}));
@@ -512,6 +521,7 @@ impl ScriptApp {
             View::Cards => cards::show(self, ui),
             View::Reports => reports::show(self, ui),
         });
+        self.dialog_buttons.clear();
         chrome::dialogs(self, &ctx);
     }
 }

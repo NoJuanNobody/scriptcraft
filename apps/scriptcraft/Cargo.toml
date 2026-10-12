@@ -19,3 +19,9 @@ eframe = { workspace = true, features = ["default_fonts", "wgpu", "accesskit", "
 egui = { workspace = true }
 serde_json = { workspace = true }
 getrandom = { workspace = true }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+# Turn off winit's default macOS menu: its Quit item calls `terminate:` directly, skipping the
+# unsaved-changes prompt. Without it, Cmd+Q reaches the app as a normal shortcut (ui.quit).
+# Already in the build through eframe, at this version.
+winit = { version = "0.30", default-features = false }

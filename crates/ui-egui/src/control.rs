@@ -79,6 +79,8 @@ pub fn inspect(app: &mut ScriptApp, ctx: &egui::Context) -> Value {
         "element": app.session.element().id(),
         "dirty": app.session.dirty,
         "findBar": app.find.is_some(),
+        "confirmClose": app.confirm_close,
+        "dialogButtons": app.dialog_buttons.iter().map(|(n, r)| json!({"label": n, "rect": [r.left(), r.top(), r.width(), r.height()]})).collect::<Vec<_>>(),
     })
 }
 

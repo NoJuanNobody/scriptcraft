@@ -18,6 +18,9 @@ struct App(ScriptApp, Option<control_server::KeyFile>);
 impl eframe::App for App {
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.0.logic(ctx);
+        if std::mem::take(&mut self.0.close_wanted) {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+        }
         let closing = ctx.input(|i| i.viewport().close_requested());
         if closing && !self.0.close_requested() {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);

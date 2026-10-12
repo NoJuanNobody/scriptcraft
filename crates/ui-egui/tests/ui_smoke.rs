@@ -195,3 +195,28 @@ fn speed_view_and_zoom() {
     assert!(!h.state().session.speed);
     assert!(h.state().canvas.page_rects.len() > 1);
 }
+
+#[test]
+fn closing_with_unsaved_changes_asks() {
+    let mut app = ScriptApp::new(Session::sample());
+    app.dialogs = false;
+    // Clean: closes at once.
+    assert!(app.close_requested());
+    // Quit goes through the same path as the close button.
+    app.execute("ui.quit", json!({})).unwrap();
+    assert!(app.close_wanted);
+    app.execute("text.insert", json!({"text": "x"})).unwrap();
+    assert!(!app.close_requested(), "dirty: ask first");
+    assert!(app.confirm_close);
+    // "Don't Save" sets quit_requested; the next close goes through.
+    app.confirm_close = false;
+    app.quit_requested = true;
+    assert!(app.close_requested());
+    let mut h = harness(ScriptApp::new(Session::sample()));
+    step(&mut h, 3);
+    h.state_mut().execute("text.insert", json!({"text": "x"})).unwrap();
+    assert!(!h.state_mut().close_requested());
+    step(&mut h, 3);
+    let names: Vec<String> = h.state().dialog_buttons.iter().map(|(n, _)| n.clone()).collect();
+    assert_eq!(names, ["Save", "Don't Save", "Cancel"]);
+}
