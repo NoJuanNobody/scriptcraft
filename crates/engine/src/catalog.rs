@@ -69,7 +69,7 @@ pub const FEATURES: &[Feature] = &[
     f("Writing", "SmartType: transitions", Done, &["smarttype.suggest", "smarttype.accept"], ""),
     f("Writing", "Dual dialogue", Done, &["dialogue.toggleDual"], "two blocks side by side"),
     f("Writing", "Undo / redo", Done, &["edit.undo", "edit.redo"], ""),
-    f("Writing", "Cut, copy, paste", Done, &["edit.cut", "edit.copy", "edit.paste"], "plain text"),
+    f("Writing", "Cut, copy, paste", Done, &["edit.cut", "edit.copy", "edit.paste"], "keeps elements and styles; Fountain on the clipboard"),
     f("Writing", "Find and replace", Done, &["edit.find", "edit.replace", "edit.replaceAll"], ""),
     f("Writing", "Title page", Done, &["title.set", "title.get"], "fixed arrangement"),
     f(

@@ -62,6 +62,9 @@ pub struct Session {
     pub ignored_words: std::collections::BTreeSet<String>,
     /// The user's own dictionary (lowercase); the app loads and saves it.
     pub user_words: std::collections::BTreeSet<String>,
+    /// The last multi-paragraph copy: the text put on the clipboard and the paragraphs, so
+    /// pasting it back keeps every element, style and flag.
+    pub clip: Option<(String, Vec<scriptcraft_doc::Para>)>,
     history: Vec<Snapshot>,
     redo: Vec<Snapshot>,
     typing_open: bool,
@@ -82,6 +85,7 @@ impl Session {
             pending_style: None,
             ignored_words: Default::default(),
             user_words: Default::default(),
+            clip: None,
             history: Vec::new(),
             redo: Vec::new(),
             typing_open: false,

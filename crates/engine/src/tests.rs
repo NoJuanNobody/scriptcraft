@@ -142,7 +142,52 @@ fn clipboard_and_selection() {
     assert_eq!(s.script.paras[1].text, "She walks.");
     run(&mut s, "select.all", json!({}));
     let c = run(&mut s, "edit.copy", json!({}));
-    assert_eq!(c["text"], "INT. A - DAY\nShe walks.\nLine two.");
+    assert_eq!(c["text"], "INT. A - DAY\n\nShe walks.\n\nLine two.\n");
+    assert_eq!(c["format"], "fountain");
+}
+
+#[test]
+fn paste_keeps_elements() {
+    use scriptcraft_doc::Element::*;
+    let mut s = Session::sample();
+    // Copy from the shot through part of NELL's first line (cue, parenthetical, dialogue).
+    let shot = s.script.paras.iter().position(|p| p.element == Shot).unwrap();
+    run(&mut s, "select.range", json!({"anchor": {"para": shot, "off": 0}, "focus": {"para": shot + 4, "off": 5}}));
+    run(&mut s, "format.bold", json!({}));
+    let c = run(&mut s, "edit.copy", json!({}));
+    assert_eq!(c["paragraphs"], 5);
+    let copied: Vec<_> = s.script.paras[shot..=shot + 4].to_vec();
+    // Paste at the end of the script: everything comes back exactly (Shot and styles too).
+    run(&mut s, "caret.docEnd", json!({}));
+    run(&mut s, "text.enter", json!({}));
+    let before = s.script.paras.len();
+    run(&mut s, "edit.paste", json!({"text": c["text"]}));
+    let n = s.script.paras.len();
+    assert_eq!(n, before - 1 + 5, "the empty paragraph is replaced");
+    let pasted = &s.script.paras[n - 5..];
+    assert_eq!(pasted[0], copied[0]);
+    assert_eq!(pasted[1..4], copied[1..4]);
+    assert_eq!(pasted[4].text, copied[4].text[..5]);
+    let els: Vec<_> = pasted.iter().map(|p| p.element).collect();
+    assert_eq!(els, vec![Shot, Action, Character, Parenthetical, Dialogue]);
+    assert!(!pasted[0].spans.is_empty());
+    run(&mut s, "edit.undo", json!({}));
+    assert_eq!(s.script.paras.len(), before);
+    // Fountain from elsewhere is parsed into elements.
+    let mut t = Session::new(scriptcraft_doc::Script::new());
+    run(&mut t, "edit.paste", json!({"text": "EXT. PIER - DAWN\n\nGulls wheel.\n\nSAM\n(quietly)\nNot again.\n"}));
+    let els: Vec<_> = t.script.paras.iter().map(|p| p.element).collect();
+    assert_eq!(els, vec![SceneHeading, Action, Character, Parenthetical, Dialogue]);
+    assert_eq!(t.sel.focus, scriptcraft_doc::Pos::new(4, 10));
+    // Plain lines without blank lines are typed as before.
+    run(&mut t, "edit.paste", json!({"text": " Two\nlines"}));
+    assert_eq!(t.script.paras.last().unwrap().text, "lines");
+    // Pasting mid-paragraph splits it around the pasted paragraphs.
+    run(&mut t, "caret.set", json!({"para": 1, "off": 5}));
+    run(&mut t, "edit.paste", json!({"text": "ANA\nHi.\n\nShe waves.", "fountain": true}));
+    let texts: Vec<_> = t.script.paras.iter().map(|p| p.text.as_str()).collect();
+    assert_eq!(texts[1..5], ["Gulls", "ANA", "Hi.", "She waves."]);
+    assert_eq!(texts[5], " wheel.");
 }
 
 #[test]
