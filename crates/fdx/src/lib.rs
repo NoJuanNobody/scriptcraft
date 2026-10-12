@@ -19,11 +19,15 @@
 //! Text runs keep their `Style` (`Bold`, `Italic`, `Underline`, combined with `+`); other style
 //! values (`AllCaps`, `Strikeout`…) are ignored.
 //! Unknown paragraph types (`Cast List`, `New Act`, `Lyrics`…) import as General.
+//!
+//! `<ElementSettings Type="…">` carry each element's indents and spacing (`ParagraphSpec`),
+//! capitals (`FontSpec Style="AllCaps"`) and Enter target (`Behavior ReturnKey`). ScriptCraft's
+//! Tab targets have no FDX equivalent and are not written.
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 use quick_xml::Reader;
 use quick_xml::events::Event;
-use scriptcraft_doc::{Element, MAX_PARA_BYTES, MAX_PARAS, Para, Script, Style, TitlePage};
+use scriptcraft_doc::{Align, Element, ElementFormats, MAX_PARA_BYTES, MAX_PARAS, Para, Script, Style, TitlePage};
 
 /// Largest input we parse, bytes.
 pub const MAX_INPUT: usize = 128 << 20;
@@ -73,6 +77,8 @@ pub fn parse(src: &str) -> Result<Script, FdxError> {
     // Characters seen in the current DualDialogue (the second and later are `dual`).
     let mut dual_chars: Option<usize> = None;
     let mut root_seen = false;
+    let mut formats = ElementFormats::default();
+    let mut cur_fmt: Option<(Element, scriptcraft_doc::ElementFormat)> = None;
     loop {
         let ev = r.read_event().map_err(|e| FdxError::Xml(e.to_string()))?;
         let empty = matches!(ev, Event::Empty(_));
@@ -91,7 +97,40 @@ pub fn parse(src: &str) -> Result<Script, FdxError> {
                         .find(|a| a.key.local_name().as_ref() == k.as_bytes())
                         .and_then(|a| a.normalized_value(quick_xml::XmlVersion::Implicit1_0).ok().map(|v| v.into_owned()))
                 };
+                let in_title = stack.iter().any(|n| n == "TitlePage");
                 match name.as_str() {
+                    "ElementSettings" if !in_title => {
+                        cur_fmt = attr("Type").and_then(|t| Element::parse(&t)).map(|e| (e, formats.get(e)));
+                    }
+                    "ParagraphSpec" if stack.iter().any(|n| n == "ElementSettings") => {
+                        if let Some((_, f)) = cur_fmt.as_mut() {
+                            let num = |k: &str| attr(k).and_then(|v| v.trim().parse::<f32>().ok()).filter(|x| x.is_finite());
+                            if let Some(x) = num("LeftIndent") {
+                                f.left = x;
+                            }
+                            if let Some(x) = num("RightIndent") {
+                                f.right = x;
+                            }
+                            if let Some(x) = num("SpaceBefore") {
+                                f.before = (x / 12.0).round().clamp(0.0, 6.0) as u8;
+                            }
+                            if let Some(a) = attr("Alignment").and_then(|a| Align::parse(&a)) {
+                                f.align = a;
+                            }
+                        }
+                    }
+                    "FontSpec" if stack.iter().any(|n| n == "ElementSettings") => {
+                        if let Some((_, f)) = cur_fmt.as_mut() {
+                            f.uppercase = attr("Style").is_some_and(|v| v.split('+').any(|x| x.trim() == "AllCaps"));
+                        }
+                    }
+                    "Behavior" if stack.iter().any(|n| n == "ElementSettings") => {
+                        if let Some((_, f)) = cur_fmt.as_mut()
+                            && let Some(e) = attr("ReturnKey").and_then(|r| Element::parse(&r))
+                        {
+                            f.enter = e;
+                        }
+                    }
                     "Paragraph" => {
                         let kind = if stack.iter().any(|n| n == "Summary") {
                             Kind::Summary
@@ -152,6 +191,11 @@ pub fn parse(src: &str) -> Result<Script, FdxError> {
                         }
                     }
                     "DualDialogue" => dual_chars = None,
+                    "ElementSettings" => {
+                        if let Some((e, f)) = cur_fmt.take() {
+                            formats.set(e, f);
+                        }
+                    }
                     "Paragraph" => {
                         if let Some(o) = open.pop() {
                             finish(o, &mut open, &mut paras, &mut title_lines, &mut dual_chars);
@@ -199,6 +243,8 @@ pub fn parse(src: &str) -> Result<Script, FdxError> {
         return Err(FdxError::NotFdx(String::new()));
     }
     let mut s = Script::from_paras(paras).map_err(|_| FdxError::TooLarge)?;
+    s.settings.elements = formats;
+    s.normalize().map_err(|_| FdxError::TooLarge)?;
     s.title = title_from_lines(&title_lines);
     Ok(s)
 }
@@ -395,6 +441,20 @@ pub fn write(s: &Script) -> String {
         i += 1;
     }
     out.push_str("  </Content>\n");
+    for e in Element::ALL {
+        let f = s.settings.elements.get(e);
+        let caps = if f.uppercase { " Style=\"AllCaps\"" } else { "" };
+        out.push_str(&format!(
+            "  <ElementSettings Type=\"{n}\">\n    <FontSpec Font=\"Courier Prime\" Size=\"12\"{caps}/>\n    <ParagraphSpec Alignment=\"{a}\" FirstIndent=\"0.00\" Leading=\"Regular\" LeftIndent=\"{l:.2}\" RightIndent=\"{r:.2}\" SpaceBefore=\"{sb}\" Spacing=\"1\" StartsNewPage=\"No\"/>\n    <Behavior PaginateAs=\"{n}\" ReturnKey=\"{rk}\" Shortcut=\"{k}\"/>\n  </ElementSettings>\n",
+            n = e.name(),
+            a = f.align.name(),
+            l = f.left,
+            r = f.right,
+            sb = u32::from(f.before) * 12,
+            rk = f.enter.name(),
+            k = e.index() + 1,
+        ));
+    }
     let t = &s.title;
     if !t.is_empty() {
         out.push_str("  <TitlePage>\n    <Content>\n");

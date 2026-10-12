@@ -166,6 +166,8 @@ pub fn menu_bar(app: &mut ScriptApp, ui: &mut Ui) {
                     }
                 }
                 ui.separator();
+                item(app, ui, "Element Settings…", "ui.elementSettings", "");
+                ui.separator();
                 item(app, ui, "Bold", "format.bold", "Mod+B");
                 item(app, ui, "Italic", "format.italic", "Mod+I");
                 item(app, ui, "Underline", "format.underline", "Mod+U");
@@ -561,6 +563,73 @@ pub fn dialogs(app: &mut ScriptApp, ctx: &egui::Context) {
             app.run("title.set", json!({"fields": fields}));
         }
         app.title_dialog = open;
+    }
+    if app.element_dialog {
+        let mut open = true;
+        let mut changes: Vec<serde_json::Value> = Vec::new();
+        let mut reset = false;
+        egui::Window::new("Element Settings")
+            .open(&mut open)
+            .resizable(false)
+            .collapsible(false)
+            .pivot(egui::Align2::CENTER_TOP)
+            .default_pos(ctx.content_rect().center_top() + vec2(0.0, 110.0))
+            .show(ctx, |ui| {
+                ui.label(RichText::new("Indents in inches from the left edge of the paper; space before in blank lines.").size(11.5));
+                ui.add_space(6.0);
+                egui::Grid::new("elements").num_columns(9).spacing([10.0, 6.0]).striped(true).show(ui, |ui| {
+                    for h in ["Element", "Left", "Right", "Before", "Align", "Caps", "Enter goes to", "Tab goes to", "Tab when empty"] {
+                        ui.label(RichText::new(h).strong());
+                    }
+                    ui.end_row();
+                    for e in Element::ALL {
+                        let f = app.session.script.settings.elements.get(e);
+                        let id = e.id();
+                        ui.label(e.name());
+                        let (mut l, mut r, mut b, mut caps) = (f.left, f.right, f.before, f.uppercase);
+                        if ui.add(egui::DragValue::new(&mut l).speed(0.05).range(0.0..=8.0).fixed_decimals(2)).changed() {
+                            changes.push(json!({"element": id, "left": l}));
+                        }
+                        if ui.add(egui::DragValue::new(&mut r).speed(0.05).range(0.5..=8.5).fixed_decimals(2)).changed() {
+                            changes.push(json!({"element": id, "right": r}));
+                        }
+                        if ui.add(egui::DragValue::new(&mut b).range(0..=6)).changed() {
+                            changes.push(json!({"element": id, "before": b}));
+                        }
+                        egui::ComboBox::from_id_salt(("align", id)).width(70.0).selected_text(f.align.name()).show_ui(ui, |ui| {
+                            for a in [scriptcraft_doc::Align::Left, scriptcraft_doc::Align::Center, scriptcraft_doc::Align::Right] {
+                                if ui.selectable_label(f.align == a, a.name()).clicked() {
+                                    changes.push(json!({"element": id, "align": a.name()}));
+                                }
+                            }
+                        });
+                        if ui.checkbox(&mut caps, "").changed() {
+                            changes.push(json!({"element": id, "uppercase": caps}));
+                        }
+                        for (key, cur) in [("enter", f.enter), ("tab", f.tab), ("tabEmpty", f.tab_empty)] {
+                            egui::ComboBox::from_id_salt((key, id)).width(110.0).selected_text(cur.name()).show_ui(ui, |ui| {
+                                for t in Element::ALL {
+                                    if ui.selectable_label(cur == t, t.name()).clicked() {
+                                        changes.push(json!({"element": id, key: t.id()}));
+                                    }
+                                }
+                            });
+                        }
+                        ui.end_row();
+                    }
+                });
+                ui.add_space(8.0);
+                if ui.button("Reset to Standard").clicked() {
+                    reset = true;
+                }
+            });
+        for c in changes {
+            app.run("settings.element", c);
+        }
+        if reset {
+            app.run("settings.resetElements", json!({}));
+        }
+        app.element_dialog = open;
     }
     if app.about {
         let mut open = true;

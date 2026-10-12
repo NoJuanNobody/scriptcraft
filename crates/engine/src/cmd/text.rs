@@ -89,7 +89,7 @@ pub(crate) fn insert(s: &mut Session, v: &Value) -> CmdResult {
     for (i, line) in text.split('\n').enumerate() {
         if i > 0 {
             let e = s.script.para(at.para).map_or(Element::Action, |p| p.element);
-            at = s.script.split(at, enter_next(e))?;
+            at = s.script.split(at, enter_next(&s.script, e))?;
         }
         at = type_str(s, at, line.trim_end_matches('\r'))?;
     }
@@ -118,7 +118,7 @@ fn enter(s: &mut Session, _: &Value) -> CmdResult {
         return sel_result(s);
     }
     let tail_empty = p.text.get(at.off..).is_none_or(|t| t.trim().is_empty());
-    let next = if tail_empty { enter_next(p.element) } else { p.element };
+    let next = if tail_empty { enter_next(&s.script, p.element) } else { p.element };
     let n = s.script.split(at, next)?;
     set_caret(s, n);
     if tail_empty {
@@ -135,11 +135,11 @@ fn tab(s: &mut Session, _: &Value) -> CmdResult {
     let at = s.sel.focus;
     let Some(p) = s.script.para(at.para).cloned() else { return sel_result(s) };
     if is_blank(&p) {
-        convert(s, at.para, tab_empty(p.element))?;
+        convert(s, at.para, tab_empty(&s.script, p.element))?;
     } else if at_end(&p, at.off) {
-        new_after(s, at.para, tab_next(p.element))?;
+        new_after(s, at.para, tab_next(&s.script, p.element))?;
     } else {
-        convert(s, at.para, tab_empty(p.element))?;
+        convert(s, at.para, tab_empty(&s.script, p.element))?;
     }
     sel_result(s)
 }

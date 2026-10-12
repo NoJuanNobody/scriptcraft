@@ -7,10 +7,12 @@
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 mod element;
+mod format;
 mod style;
 mod text;
 
 pub use element::Element;
+pub use format::{Align, ElementFormat, ElementFormats};
 pub use style::{Flag, Span, Style};
 pub use text::{next_boundary, prev_boundary, word_left, word_right};
 
@@ -213,11 +215,14 @@ pub struct Settings {
     pub auto_contd: bool,
     /// Print the title page (when it has any content).
     pub title_page: bool,
+    /// Element indents, spacing, capitals and Enter/Tab flow.
+    #[serde(skip_serializing_if = "ElementFormats::is_default")]
+    pub elements: ElementFormats,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Settings { show_scene_numbers: false, more_contd: true, auto_contd: true, title_page: true }
+        Settings { show_scene_numbers: false, more_contd: true, auto_contd: true, title_page: true, elements: ElementFormats::default() }
     }
 }
 
@@ -287,6 +292,11 @@ impl Script {
         if self.paras.is_empty() {
             self.paras.push(Para::new(Element::Action, ""));
         }
+        for e in Element::ALL {
+            let f = self.settings.elements.get(e);
+            self.settings.elements.set(e, f);
+        }
+        let caps = Element::ALL.map(|e| self.upper(e));
         for p in &mut self.paras {
             let clean = sanitize(&p.text);
             if clean != p.text {
@@ -294,7 +304,7 @@ impl Script {
                 p.spans.clear();
             }
             p.spans = style::fix(&p.text, &p.spans);
-            if p.element.uppercase() && p.text.chars().any(char::is_lowercase) {
+            if caps.get(p.element.index()).copied().unwrap_or(false) && p.text.chars().any(char::is_lowercase) {
                 let st = p.styles();
                 let t = p.text.clone();
                 p.set_text_styled(&t, &st, true);
@@ -315,6 +325,11 @@ impl Script {
 
     pub fn para_mut(&mut self, i: usize) -> Result<&mut Para, DocError> {
         self.paras.get_mut(i).ok_or(DocError::NoPara(i))
+    }
+
+    /// Whether `e` is typed in capitals in this script.
+    pub fn upper(&self, e: Element) -> bool {
+        self.settings.elements.get(e).uppercase
     }
 
     /// The position at the end of the script.
@@ -345,9 +360,10 @@ impl Script {
     /// Insert `text` in style `st` at `pos`; returns the position after it.
     pub fn insert_styled(&mut self, pos: Pos, text: &str, st: Style) -> Result<Pos, DocError> {
         let pos = self.clamp(pos);
+        let caps = self.para(pos.para).is_some_and(|p| self.upper(p.element));
         let p = self.para_mut(pos.para)?;
         let mut ins = sanitize(text);
-        if p.element.uppercase() {
+        if caps {
             ins = ins.to_uppercase();
         }
         let room = MAX_PARA_BYTES.saturating_sub(p.text.len());
@@ -426,13 +442,13 @@ impl Script {
             Some(q) => (q.text.get(b.off..).unwrap_or("").to_string(), q.styles().get(b.off..).map(<[Style]>::to_vec).unwrap_or_default()),
             None => (String::new(), Vec::new()),
         };
+        let upper = self.para(a.para).is_some_and(|p| self.upper(p.element));
         if let Some(p) = self.paras.get_mut(a.para) {
             let mut st = p.styles();
             st.truncate(a.off);
             st.extend(tail_st);
             let mut t = p.text.get(..a.off).unwrap_or("").to_string();
             t.push_str(&tail);
-            let upper = p.element.uppercase();
             p.set_text_styled(&t, &st, upper);
         }
         let end = b.para.min(self.paras.len().saturating_sub(1));
@@ -449,22 +465,24 @@ impl Script {
             return Err(DocError::TooLarge(self.paras.len() + 1));
         }
         let pos = self.clamp(pos);
+        let caps = self.upper(element);
         let p = self.para_mut(pos.para)?;
         let mut st = p.styles();
         let tail_st = st.split_off(pos.off.min(st.len()));
         let tail = p.text.split_off(pos.off);
         p.spans = style::compress(&p.text, &st);
         let mut next = Para::new(element, "");
-        next.set_text_styled(&tail, &tail_st, element.uppercase());
+        next.set_text_styled(&tail, &tail_st, caps);
         self.paras.insert(pos.para + 1, next);
         Ok(Pos::new(pos.para + 1, 0))
     }
 
     /// Change a paragraph's element (uppercasing the text when the element asks for it).
     pub fn set_element(&mut self, para: usize, element: Element) -> Result<(), DocError> {
+        let caps = self.upper(element);
         let p = self.para_mut(para)?;
         p.element = element;
-        if element.uppercase() {
+        if caps {
             let st = p.styles();
             let t = p.text.clone();
             p.set_text_styled(&t, &st, true);

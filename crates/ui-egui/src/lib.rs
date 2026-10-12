@@ -54,6 +54,7 @@ pub const UI_COMMANDS: &[(&str, &str, &str, &str)] = &[
     ("ui.find", "Find…", "Edit", "Mod+F"),
     ("ui.toggleSpelling", "Check Spelling as You Type", "Tools", ""),
     ("ui.titlePage", "Title Page…", "Document", ""),
+    ("ui.elementSettings", "Element Settings…", "Format", ""),
     ("ui.open", "Open…", "File", "Mod+O"),
     ("ui.save", "Save", "File", "Mod+S"),
     ("ui.saveAs", "Save As…", "File", "Mod+Shift+S"),
@@ -74,6 +75,7 @@ pub struct ScriptApp {
     pub canvas: canvas::CanvasState,
     pub find: Option<FindBar>,
     pub title_dialog: bool,
+    pub element_dialog: bool,
     pub about: bool,
     /// Native file dialogs are allowed (off in tests and headless screenshots).
     pub dialogs: bool,
@@ -116,6 +118,7 @@ impl ScriptApp {
             canvas: canvas::CanvasState::default(),
             find: None,
             title_dialog: false,
+            element_dialog: false,
             about: false,
             dialogs: true,
             confirm_close: false,
@@ -205,6 +208,7 @@ impl ScriptApp {
                 self.find = Some(f);
             }
             "ui.titlePage" => self.title_dialog = !self.title_dialog,
+            "ui.elementSettings" => self.element_dialog = !self.element_dialog,
             "ui.about" => self.about = true,
             "ui.open" => {
                 let Some(path) = path.or_else(|| self.pick(false, "Open Script", &["fountain", "fdx", "spmd", "txt"], "")) else {

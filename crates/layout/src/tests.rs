@@ -222,3 +222,27 @@ fn styled_lines_carry_spans() {
     assert_eq!(segs.iter().map(|s| s.1).collect::<String>(), b[0].text);
     assert_eq!(b[1].segments()[0].0, 0);
 }
+
+#[test]
+fn element_settings_move_text() {
+    let mut sc = s(vec![p(Element::Action, "A chair."), p(Element::Transition, "CUT TO:")]);
+    let mut f = sc.settings.elements.get(Element::Action);
+    f.left = 2.0;
+    f.before = 3;
+    sc.settings.elements.set(Element::Action, f);
+    let mut t = sc.settings.elements.get(Element::Transition);
+    t.align = Align::Center;
+    t.left = 1.5;
+    sc.settings.elements.set(Element::Transition, t);
+    let l = layout(&sc);
+    let b = body(&l.pages[0]);
+    assert_eq!(b[0].x, 144.0);
+    assert!((b[1].x - (108.0 + 540.0 - 7.0 * 7.2) / 2.0).abs() < 0.01);
+    // Hostile values are clamped.
+    f.left = f32::NAN;
+    f.right = -4.0;
+    sc.settings.elements.set(Element::Action, f);
+    let g = sc.settings.elements.get(Element::Action);
+    assert!(g.left >= 0.0 && g.right > g.left);
+    let _ = layout(&sc);
+}

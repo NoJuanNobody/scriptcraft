@@ -23,12 +23,7 @@ use scriptcraft_doc::{Element, Pos, Script, Span, character_name};
 use scriptcraft_geom::{BASELINE, CHAR_W, LINE_H, PAGE_W, TOP, body_lines, chars_between, inch};
 use serde::Serialize;
 
-/// Horizontal alignment of an element.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
-pub enum Align {
-    Left,
-    Right,
-}
+pub use scriptcraft_doc::Align;
 
 /// Where an element sits on the page.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize)]
@@ -44,22 +39,24 @@ pub struct Spec {
 
 /// The standard indents (inches from the left edge of the paper).
 pub const fn spec(e: Element) -> Spec {
-    let (left, right, before, align) = match e {
-        Element::SceneHeading => (1.5, 7.5, 1, Align::Left),
-        Element::Action => (1.5, 7.5, 1, Align::Left),
-        Element::Character => (3.7, 7.5, 1, Align::Left),
-        Element::Parenthetical => (3.1, 5.6, 0, Align::Left),
-        Element::Dialogue => (2.5, 6.0, 0, Align::Left),
-        Element::Transition => (4.0, 7.5, 1, Align::Right),
-        Element::Shot => (1.5, 7.5, 1, Align::Left),
-        Element::General => (1.5, 7.5, 0, Align::Left),
-    };
-    Spec { left, right, before, align }
+    let f = scriptcraft_doc::ElementFormat::default_for(e);
+    Spec { left: f.left, right: f.right, before: f.before as usize, align: f.align }
 }
 
-/// Characters per line for an element.
+/// The indents of `e` in this script (its element settings).
+pub fn spec_in(script: &Script, e: Element) -> Spec {
+    let f = script.settings.elements.get(e);
+    Spec { left: f.left, right: f.right, before: f.before as usize, align: f.align }
+}
+
+/// Characters per line for an element (standard indents).
 pub fn width_chars(e: Element) -> usize {
     let s = spec(e);
+    chars_between(inch(s.left), inch(s.right))
+}
+
+fn width_in(script: &Script, e: Element) -> usize {
+    let s = spec_in(script, e);
     chars_between(inch(s.left), inch(s.right))
 }
 
@@ -363,7 +360,7 @@ fn dual_item(script: &Script, para: usize, col: (f32, f32)) -> Option<Item> {
 
 fn item(script: &Script, para: usize) -> Option<Item> {
     let p = script.paras.get(para)?;
-    Some(Item { para, el: p.element, lines: wrap(&p.text, width_chars(p.element)), suffix: String::new(), cols: None })
+    Some(Item { para, el: p.element, lines: wrap(&p.text, width_in(script, p.element)), suffix: String::new(), cols: None })
 }
 
 fn block_end(script: &Script, i: usize) -> usize {
@@ -470,11 +467,12 @@ impl Builder<'_> {
             })
             .unwrap_or_default();
         let sfx = if suffix && k + 1 == it.lines.len() { it.suffix.clone() } else { String::new() };
-        let s = spec(it.el);
+        let s = spec_in(self.script, it.el);
         let (l, r) = it.cols.unwrap_or((inch(s.left), inch(s.right)));
         let n = text.chars().count() + sfx.chars().count();
         let x = match s.align {
             Align::Right if it.cols.is_none() => (r - n as f32 * CHAR_W).max(l),
+            Align::Center if it.cols.is_none() => ((l + r - n as f32 * CHAR_W) / 2.0).max(l),
             _ => l,
         };
         let y = self.y();
@@ -499,7 +497,7 @@ impl Builder<'_> {
 
     /// Place a single paragraph.
     fn single(&mut self, it: &Item, keep: usize) {
-        let before = spec(it.el).before;
+        let before = spec_in(self.script, it.el).before;
         let need = it.lines.len();
         let fits = |b: &Self| b.row == 0 || b.row + before + need + keep <= b.rows;
         if !fits(self) {
@@ -560,7 +558,7 @@ impl Builder<'_> {
 
     /// Place a dialogue block, splitting it with (MORE)/(CONT'D) when needed.
     fn dialogue(&mut self, items: &[Item]) {
-        let before = items.first().map_or(0, |i| spec(i.el).before);
+        let before = items.first().map_or(0, |i| spec_in(self.script, i.el).before);
         let rows: Vec<(usize, usize)> = items.iter().enumerate().flat_map(|(a, it)| (0..it.lines.len()).map(move |k| (a, k))).collect();
         let has_cue = items.first().is_some_and(|i| i.el == Element::Character);
         let total = rows.len();
@@ -647,7 +645,7 @@ impl Builder<'_> {
     }
 
     fn dual(&mut self, a: &[Item], b: &[Item]) {
-        let before = a.first().map_or(1, |i| spec(i.el).before);
+        let before = a.first().map_or(1, |i| spec_in(self.script, i.el).before);
         let h = dual_height(a, b);
         if self.row > 0 && self.row + before + h > self.rows {
             self.new_page();
@@ -724,7 +722,7 @@ pub fn layout(script: &Script) -> Layout {
         match u {
             Unit::Single(it) => {
                 let keep = if matches!(it.el, Element::SceneHeading | Element::Shot) {
-                    us.get(i + 1).map_or(0, |n| spec(n.first_el()).before + n.min_lines())
+                    us.get(i + 1).map_or(0, |n| spec_in(script, n.first_el()).before + n.min_lines())
                 } else {
                     0
                 };

@@ -92,7 +92,13 @@ pub const FEATURES: &[Feature] = &[
     f("Writing", "Format Assistant", Missing, &[], ""),
     f("Writing", "Speech-to-script (dictation)", Missing, &[], ""),
     f("Writing", "Read script aloud (text to speech, cast voices)", Missing, &[], ""),
-    f("Writing", "Element settings (custom indents, fonts, spacing)", Missing, &[], "standard indents are fixed"),
+    f(
+        "Writing",
+        "Element settings (indents, spacing, alignment, capitals, Enter/Tab)",
+        Done,
+        &["settings.elements", "settings.element", "settings.resetElements", "ui.elementSettings"],
+        "kept in FDX ElementSettings (Tab targets ScriptCraft-only); font is always Courier 12",
+    ),
     f("Writing", "Templates (TV, stage play, multi-camera)", Missing, &[], "feature-film format only"),
     // Pagination
     f("Pagination", "Industry pagination (Letter, Courier 12, 6 lines/inch, 54 lines)", Done, &["document.layout"], ""),

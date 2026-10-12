@@ -21,6 +21,15 @@ fn sample() -> Script {
     s.paras[6].dual = true;
     s.set_flag(scriptcraft_doc::Pos::new(2, 0), scriptcraft_doc::Pos::new(2, 4), scriptcraft_doc::Flag::Bold, true);
     s.set_flag(scriptcraft_doc::Pos::new(2, 2), scriptcraft_doc::Pos::new(2, 9), scriptcraft_doc::Flag::Underline, true);
+    let mut f = s.settings.elements.get(Element::Action);
+    f.left = 1.75;
+    f.before = 2;
+    f.enter = Element::Character;
+    s.settings.elements.set(Element::Action, f);
+    let mut t = s.settings.elements.get(Element::Transition);
+    t.align = scriptcraft_doc::Align::Center;
+    t.uppercase = false;
+    s.settings.elements.set(Element::Transition, t);
     s.title.title = "The Long Night".into();
     s.title.credit = "Written by".into();
     s.title.author = "Ada Lovelace".into();

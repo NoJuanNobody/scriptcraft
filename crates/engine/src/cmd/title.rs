@@ -1,6 +1,6 @@
 //! Title page and script settings.
 
-use scriptcraft_doc::TitlePage;
+use scriptcraft_doc::{Align, Element, ElementFormats, TitlePage};
 use serde_json::{Value, json};
 
 use crate::{CmdError, CmdResult, CommandSpec, Session, p};
@@ -14,6 +14,11 @@ pub fn specs() -> Vec<CommandSpec> {
         CommandSpec::new("settings.set", "Change Script Settings", "Document", set_settings)
             .params(r#"{"sceneNumbers": bool, "moreContd": bool, "autoContd": bool, "titlePage": bool}"#),
         CommandSpec::new("view.toggleSceneNumbers", "Show Scene Numbers", "View", toggle_numbers),
+        CommandSpec::new("settings.elements", "Element Settings", "Format › Elements", elements).pure(),
+        CommandSpec::new("settings.element", "Change Element Settings", "Format › Elements", set_element).params(
+            r#"{"element": string, "left": inches, "right": inches, "before": lines, "align": "left"|"center"|"right", "uppercase": bool, "enter": element, "tab": element, "tabEmpty": element}"#,
+        ),
+        CommandSpec::new("settings.resetElements", "Reset Element Settings", "Format › Elements", reset_elements),
     ]
 }
 
@@ -68,4 +73,62 @@ fn toggle_numbers(s: &mut Session, _: &Value) -> CmdResult {
         s.script.number_scenes();
     }
     get_settings(s, &Value::Null)
+}
+
+fn elements(s: &mut Session, _: &Value) -> CmdResult {
+    let f = &s.script.settings.elements;
+    Ok(Value::Array(
+        Element::ALL
+            .iter()
+            .map(|e| {
+                let x = f.get(*e);
+                json!({"element": e.id(), "name": e.name(), "left": x.left, "right": x.right, "before": x.before, "align": x.align,
+                       "uppercase": x.uppercase, "enter": x.enter.id(), "tab": x.tab.id(), "tabEmpty": x.tab_empty.id()})
+            })
+            .collect(),
+    ))
+}
+
+fn set_element(s: &mut Session, v: &Value) -> CmdResult {
+    let name = p::req_str(v, "element")?;
+    let e = Element::parse(name).ok_or_else(|| CmdError::Params(format!("unknown element `{name}`")))?;
+    let mut f = s.script.settings.elements.get(e);
+    let num = |k: &str| v.get(k).and_then(Value::as_f64).filter(|x| x.is_finite()).map(|x| x as f32);
+    let el = |k: &str| -> Result<Option<Element>, CmdError> {
+        match p::str(v, k) {
+            None => Ok(None),
+            Some(n) => Element::parse(n).map(Some).ok_or_else(|| CmdError::Params(format!("`{k}`: unknown element `{n}`"))),
+        }
+    };
+    if let Some(x) = num("left") {
+        f.left = x;
+    }
+    if let Some(x) = num("right") {
+        f.right = x;
+    }
+    if let Some(x) = p::usize(v, "before") {
+        f.before = x.min(u8::MAX as usize) as u8;
+    }
+    if let Some(a) = p::str(v, "align") {
+        f.align = Align::parse(a).ok_or_else(|| CmdError::Params(format!("unknown alignment `{a}`")))?;
+    }
+    if let Some(b) = p::bool(v, "uppercase") {
+        f.uppercase = b;
+    }
+    if let Some(x) = el("enter")? {
+        f.enter = x;
+    }
+    if let Some(x) = el("tab")? {
+        f.tab = x;
+    }
+    if let Some(x) = el("tabEmpty")? {
+        f.tab_empty = x;
+    }
+    s.script.settings.elements.set(e, f);
+    elements(s, v)
+}
+
+fn reset_elements(s: &mut Session, v: &Value) -> CmdResult {
+    s.script.settings.elements = ElementFormats::default();
+    elements(s, v)
 }
