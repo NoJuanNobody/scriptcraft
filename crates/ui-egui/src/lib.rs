@@ -308,18 +308,13 @@ impl ScriptApp {
         if self.synthetic.is_empty() {
             return;
         }
+        let pointer = |e: &egui::Event| matches!(e, egui::Event::PointerMoved(_) | egui::Event::PointerButton { .. });
+        // A pointer move with the clicks that follow it arrives in one frame (so a double click
+        // is one); keys and text arrive together up to the next pointer event.
         let n = match self.synthetic.first() {
-            Some(egui::Event::PointerMoved(_) | egui::Event::PointerButton { .. }) => 1,
-            _ => self
-                .synthetic
-                .iter()
-                .position(|e| matches!(e, egui::Event::PointerMoved(_) | egui::Event::PointerButton { .. }))
-                .unwrap_or(self.synthetic.len()),
+            Some(e) if pointer(e) => self.synthetic.iter().position(|e| !pointer(e)).unwrap_or(self.synthetic.len()),
+            _ => self.synthetic.iter().position(pointer).unwrap_or(self.synthetic.len()),
         };
-        if let Some(egui::Event::PointerButton { pos, .. }) = self.synthetic.first() {
-            raw.events.push(egui::Event::PointerMoved(*pos));
-        }
-        let n = n.clamp(1, self.synthetic.len());
         raw.events.extend(self.synthetic.drain(..n));
     }
 
