@@ -1,0 +1,17 @@
+[package]
+name = "scriptcraft-layout"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "ScriptCraft pagination: industry-standard screenplay page layout, (MORE)/(CONT'D), hit testing (L2)"
+
+[lints]
+workspace = true
+
+[dependencies]
+scriptcraft-geom = { workspace = true }
+scriptcraft-doc = { workspace = true }
+serde = { workspace = true }
+
+[dev-dependencies]
+scriptcraft-fountain = { workspace = true }

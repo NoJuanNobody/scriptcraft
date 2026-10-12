@@ -1,0 +1,12 @@
+[package]
+name = "scriptcraft-fountain"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Fountain (fountain.io) screenplay import and export for ScriptCraft (L2)"
+
+[lints]
+workspace = true
+
+[dependencies]
+scriptcraft-doc = { workspace = true }

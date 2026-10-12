@@ -1,0 +1,14 @@
+[package]
+name = "scriptcraft-fdx"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Final Draft XML (.fdx) import and export for ScriptCraft, from the format's observed public structure (L2)"
+
+[lints]
+workspace = true
+
+[dependencies]
+scriptcraft-doc = { workspace = true }
+quick-xml = { workspace = true }
+thiserror = { workspace = true }

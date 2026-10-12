@@ -1,0 +1,12 @@
+[package]
+name = "scriptcraft-geom"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "ScriptCraft units and page geometry (L0)"
+
+[lints]
+workspace = true
+
+[dependencies]
+serde = { workspace = true }
