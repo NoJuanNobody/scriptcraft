@@ -146,6 +146,13 @@ pub const FEATURES: &[Feature] = &[
     f("View", "Zoom (menus, Ctrl/Cmd+wheel, pinch, fit page width)", Done, &["ui.zoomIn", "ui.zoomOut", "ui.zoomFit"], ""),
     f("View", "Speed view (no page breaks)", Done, &["view.speed", "ui.view.speed"], ""),
     f("View", "Focus / typewriter mode", Missing, &[], ""),
+    f(
+        "View",
+        "Runs in the browser (WebAssembly)",
+        Done,
+        &["file.load", "document.export"],
+        "cargo xtask web; open via the file picker, save as a download",
+    ),
     // Automation (beyond Final Draft)
     f("Automation", "Command-line conversion", Done, &["file.open", "file.exportPdf"], "scriptcraft-cli convert"),
     f("Automation", "MCP server and JSON control channel", Done, &["document.inspect"], "scriptcraft-cli mcp"),

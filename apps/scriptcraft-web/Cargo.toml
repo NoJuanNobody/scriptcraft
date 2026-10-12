@@ -1,0 +1,24 @@
+[package]
+name = "scriptcraft-web"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "ScriptCraft in the browser (WebAssembly): the same window, with browser file open and download"
+
+[lints]
+workspace = true
+
+# Everything is wasm-only: on native targets this is an empty binary that says how to build it.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+scriptcraft-engine = { workspace = true }
+scriptcraft-ui-egui = { workspace = true }
+egui = { workspace = true }
+eframe = { workspace = true, features = ["default_fonts", "glow"] }
+log = { workspace = true }
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+js-sys = "0.3"
+web-sys = { version = "0.3", features = ["Window", "Document", "Element", "HtmlElement", "HtmlCanvasElement", "HtmlAnchorElement", "Blob", "BlobPropertyBag", "Url"] }
+# The browser's file picker (an <input type=file>) for File › Open.
+rfd = { workspace = true }

@@ -3,3 +3,4 @@
 *.pdf
 !docs/**/*.pdf
 .DS_Store
+/apps/scriptcraft-web/dist

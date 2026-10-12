@@ -325,3 +325,20 @@ fn spelling() {
     assert!(s.run("spell.addWord", &json!({"word": "two words"})).is_err());
     assert_eq!(run(&mut s, "spell.suggest", json!({"word": "barometr"}))["suggestions"][0], "barometer");
 }
+
+#[test]
+fn load_and_export_data() {
+    let mut s = Session::sample();
+    let e = run(&mut s, "document.export", json!({"format": "fdx"}));
+    assert_eq!(e["name"], "Night Signal.fdx");
+    let mut t = Session::new(scriptcraft_doc::Script::new());
+    run(&mut t, "file.load", json!({"name": "x.fdx", "data": e["data"]}));
+    assert_eq!(t.script.paras, s.script.paras);
+    run(&mut t, "file.load", json!({"name": "y.fountain", "text": "INT. A - DAY\n\nHi."}));
+    assert_eq!(t.script.paras.len(), 2);
+    let pdf = run(&mut s, "document.export", json!({"format": "pdf"}));
+    assert!(crate::b64::decode(pdf["data"].as_str().unwrap()).unwrap().starts_with(b"%PDF"));
+    assert!(t.run("file.load", &json!({"name": "z.doc", "text": "x"})).is_err());
+    assert!(t.run("file.load", &json!({"name": "z.fdx", "data": "!!"})).is_err());
+    assert!(t.run("document.export", &json!({"format": "docx"})).is_err());
+}

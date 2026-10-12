@@ -6,6 +6,7 @@
 //! and the MCP server all call [`Session::run`].
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
+pub mod b64;
 pub mod catalog;
 pub mod cmd;
 pub mod io;

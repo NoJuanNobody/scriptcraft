@@ -5,6 +5,8 @@
 //! - `assets`: every font/image file in the repo has a row in ATTRIBUTION.md
 //! - `layers`: crates only depend on lower layers; nothing below the UI depends on egui
 //! - `stats`: lines of Rust per crate
+//! - `wasm`: check the browser build compiles (`wasm32-unknown-unknown`)
+//! - `web`: build the browser app into `apps/scriptcraft-web/dist/` (needs `wasm-bindgen-cli`)
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
@@ -20,11 +22,13 @@ fn main() -> ExitCode {
         "parity" => parity(),
         "assets" => assets(),
         "layers" => layers(),
+        "wasm" => wasm(),
+        "web" => web(),
         "stats" => {
             stats();
             Ok(())
         }
-        _ => Err("usage: cargo xtask <ci|parity|assets|layers|stats>".to_string()),
+        _ => Err("usage: cargo xtask <ci|parity|assets|layers|stats|wasm|web>".to_string()),
     };
     match r {
         Ok(()) => ExitCode::SUCCESS,
@@ -52,6 +56,11 @@ fn ci() -> Result<(), String> {
     cargo(&["test", "--workspace"])?;
     assets()?;
     layers()?;
+    if wasm_target_installed() {
+        wasm()?;
+    } else {
+        eprintln!("ci: skipping the browser build check (rustup target add wasm32-unknown-unknown)");
+    }
     let doc = std::fs::read_to_string(root().join("docs/parity-checklist.md")).unwrap_or_default();
     if doc != scriptcraft_engine::catalog::markdown() {
         return Err("docs/parity-checklist.md is stale: run `cargo xtask parity`".into());
@@ -175,4 +184,38 @@ fn stats() {
         println!("{:<28} {n:>6}", d.file_name().and_then(|n| n.to_str()).unwrap_or(""));
     }
     println!("{:<28} {total:>6}", "total");
+}
+
+fn wasm_target_installed() -> bool {
+    Command::new("rustup")
+        .args(["target", "list", "--installed"])
+        .output()
+        .map(|o| String::from_utf8_lossy(&o.stdout).lines().any(|l| l.trim() == "wasm32-unknown-unknown"))
+        .unwrap_or(false)
+}
+
+fn wasm() -> Result<(), String> {
+    cargo(&["clippy", "--target", "wasm32-unknown-unknown", "-p", "scriptcraft-web", "--", "-D", "warnings"])
+}
+
+fn web() -> Result<(), String> {
+    cargo(&["build", "--release", "--target", "wasm32-unknown-unknown", "-p", "scriptcraft-web"])?;
+    let r = root();
+    let target = std::env::var("CARGO_TARGET_DIR").map(PathBuf::from).unwrap_or_else(|_| r.join("target"));
+    let wasm = target.join("wasm32-unknown-unknown/release/scriptcraft-web.wasm");
+    let dist = r.join("apps/scriptcraft-web/dist");
+    std::fs::create_dir_all(&dist).map_err(|e| e.to_string())?;
+    let ok = Command::new("wasm-bindgen")
+        .args(["--target", "web", "--no-typescript", "--out-name", "scriptcraft_web", "--out-dir"])
+        .arg(&dist)
+        .arg(&wasm)
+        .status()
+        .map_err(|e| format!("wasm-bindgen not found ({e}): cargo install wasm-bindgen-cli --version <the wasm-bindgen version in Cargo.lock>"))?
+        .success();
+    if !ok {
+        return Err("wasm-bindgen failed".into());
+    }
+    std::fs::copy(r.join("apps/scriptcraft-web/index.html"), dist.join("index.html")).map_err(|e| e.to_string())?;
+    eprintln!("web: wrote {} (serve it with any static server, e.g. `python3 -m http.server -d {}`)", dist.display(), dist.display());
+    Ok(())
 }

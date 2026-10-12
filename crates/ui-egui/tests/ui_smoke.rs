@@ -220,3 +220,43 @@ fn closing_with_unsaved_changes_asks() {
     let names: Vec<String> = h.state().dialog_buttons.iter().map(|(n, _)| n.clone()).collect();
     assert_eq!(names, ["Save", "Don't Save", "Cancel"]);
 }
+
+/// A file host like the browser's: records downloads, and "picks" a file into the inbox.
+struct MockHost {
+    saved: std::sync::Arc<std::sync::Mutex<Vec<(String, Vec<u8>)>>>,
+    pick: Option<(String, Vec<u8>)>,
+}
+
+impl scriptcraft_ui_egui::FileHost for MockHost {
+    fn open(&self, inbox: scriptcraft_ui_egui::Inbox) {
+        if let Some(f) = self.pick.clone() {
+            inbox.lock().unwrap().push(f);
+        }
+    }
+    fn save(&self, name: &str, bytes: Vec<u8>) {
+        self.saved.lock().unwrap().push((name.to_string(), bytes));
+    }
+}
+
+#[test]
+fn browser_style_open_and_download() {
+    let saved = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let mut app = ScriptApp::new(Session::sample());
+    app.dialogs = false;
+    app.host = Some(Box::new(MockHost { saved: saved.clone(), pick: Some(("pier.fountain".into(), b"EXT. PIER - DAWN\n\nGulls.\n".to_vec())) }));
+    let mut h = harness(app);
+    step(&mut h, 3);
+    h.state_mut().execute("ui.exportPdf", json!({})).unwrap();
+    h.state_mut().execute("ui.exportFdx", json!({})).unwrap();
+    {
+        let s = saved.lock().unwrap();
+        assert_eq!(s[0].0, "Night Signal.pdf");
+        assert!(s[0].1.starts_with(b"%PDF"));
+        assert_eq!(s[1].0, "Night Signal.fdx");
+    }
+    h.state_mut().execute("ui.open", json!({})).unwrap();
+    step(&mut h, 2);
+    let st = h.state();
+    assert_eq!(st.session.script.paras.len(), 2);
+    assert_eq!(st.session.script.paras[0].text, "EXT. PIER - DAWN");
+}

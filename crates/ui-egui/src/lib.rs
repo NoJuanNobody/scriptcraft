@@ -21,6 +21,18 @@ use serde_json::{Value, json};
 
 pub use control::ControlRequest;
 
+/// Files without a file system (the browser): the host opens a picker and delivers the chosen
+/// file to [`ScriptApp::inbox`], and saves by handing bytes to the user (a download).
+pub trait FileHost {
+    /// Ask the user for a script file; deliver `(name, bytes)` to the inbox when chosen.
+    fn open(&self, inbox: Inbox);
+    /// Give the user a file.
+    fn save(&self, name: &str, bytes: Vec<u8>);
+}
+
+/// Files that arrived asynchronously: `(name, bytes)`.
+pub type Inbox = std::sync::Arc<std::sync::Mutex<Vec<(String, Vec<u8>)>>>;
+
 /// The main view.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum View {
@@ -105,6 +117,10 @@ pub struct ScriptApp {
     pub prefs: persist::Prefs,
     /// An autosaved script found at start-up, offered for recovery.
     pub recovery_offer: Option<persist::Recovery>,
+    /// Where files are opened from and saved to when there is no file system (the web build).
+    pub host: Option<Box<dyn FileHost>>,
+    /// Files delivered by the host or dropped on the window.
+    pub inbox: Inbox,
     /// Buttons of the open modal dialog this frame (label, screen rect), for `ui.inspect`.
     pub dialog_buttons: Vec<(String, egui::Rect)>,
     /// An open/new waiting for the user to save or discard unsaved changes.
@@ -159,6 +175,8 @@ impl ScriptApp {
             last_autosave: 0.0,
             confirm_replace: None,
             dialog_buttons: Vec::new(),
+            host: None,
+            inbox: Inbox::default(),
             status: None,
             control: None,
             synthetic: Vec::new(),
@@ -358,6 +376,15 @@ impl ScriptApp {
                     let _ = persist::save_prefs(dir, &self.prefs);
                 }
             }
+            "ui.open" if self.host.is_some() && path.is_none() => {
+                if let Some(h) = &self.host {
+                    h.open(self.inbox.clone());
+                }
+            }
+            "ui.save" | "ui.saveAs" if self.host.is_some() && path.is_none() => return self.host_save("fountain"),
+            "ui.exportPdf" if self.host.is_some() && path.is_none() => return self.host_save("pdf"),
+            "ui.exportFdx" if self.host.is_some() && path.is_none() => return self.host_save("fdx"),
+            "ui.exportFountain" if self.host.is_some() && path.is_none() => return self.host_save("fountain"),
             "ui.open" => {
                 let Some(path) = path.or_else(|| self.pick(false, "Open Script", &["fountain", "fdx", "spmd", "txt"], "")) else {
                     return Ok(json!({}));
@@ -389,6 +416,47 @@ impl ScriptApp {
             other => return Err(CmdError::Unknown(other.to_string())),
         }
         Ok(json!({"view": self.view.id(), "dark": self.dark, "zoom": self.canvas.zoom, "navigator": self.navigator}))
+    }
+
+    /// Save through the host: export the script and hand the bytes over (a browser download).
+    fn host_save(&mut self, format: &str) -> Result<Value, CmdError> {
+        let v = self.session.run("document.export", &json!({"format": format}))?;
+        let name = v["name"].as_str().unwrap_or("Untitled").to_string();
+        let bytes = scriptcraft_engine::b64::decode(v["data"].as_str().unwrap_or("")).map_err(CmdError::Failed)?;
+        if let Some(h) = &self.host {
+            h.save(&name, bytes);
+        }
+        if format == "fountain" {
+            self.session.dirty = false;
+        }
+        Ok(json!({"name": name}))
+    }
+
+    /// Open files that arrived from the host or were dropped on the window.
+    fn drain_inbox(&mut self, ctx: &egui::Context) {
+        #[cfg(not(target_arch = "wasm32"))]
+        let dropped: Vec<(String, Vec<u8>)> = ctx.input(|i| {
+            i.raw
+                .dropped_files
+                .iter()
+                .filter_map(|f| {
+                    let name = f.path().file_name()?.to_str()?.to_string();
+                    let bytes = f.bytes().ok()?;
+                    Some((name, bytes))
+                })
+                .collect()
+        });
+        // In the browser, files come through the host's picker instead.
+        #[cfg(target_arch = "wasm32")]
+        let dropped: Vec<(String, Vec<u8>)> = {
+            let _ = ctx;
+            Vec::new()
+        };
+        let mut files = std::mem::take(&mut *self.inbox.lock().unwrap_or_else(|e| e.into_inner()));
+        files.extend(dropped);
+        for (name, bytes) in files {
+            let _ = self.execute("file.load", json!({"name": name, "data": scriptcraft_engine::b64::encode(&bytes)}));
+        }
     }
 
     /// A native file dialog (none in tests, headless runs or the browser).
@@ -445,6 +513,7 @@ impl ScriptApp {
         ctx.set_visuals(self.tokens().visuals());
         let now = ctx.input(|i| i.time);
         self.autosave(now);
+        self.drain_inbox(ctx);
         if let Some((_, t)) = &mut self.status
             && *t == 0.0
         {
@@ -479,6 +548,8 @@ impl ScriptApp {
         let name = self.session.path.as_ref().and_then(|p| p.file_name()).and_then(|n| n.to_str()).unwrap_or("Untitled").to_string();
         let title = format!("{name}{} — ScriptCraft", if self.session.dirty { " •" } else { "" });
         if title != self.sent_title {
+            // The browser backend has no window title.
+            #[cfg(not(target_arch = "wasm32"))]
             ctx.send_viewport_cmd(egui::ViewportCommand::Title(title.clone()));
             self.sent_title = title;
         }
