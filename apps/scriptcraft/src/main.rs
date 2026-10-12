@@ -131,7 +131,8 @@ fn main() -> eframe::Result<()> {
     {
         eprintln!("scriptcraft: {e}");
     }
-    let options = eframe::NativeOptions {
+    #[cfg_attr(not(target_os = "macos"), allow(unused_mut))]
+    let mut options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([1440.0, 900.0])
             .with_min_inner_size([720.0, 480.0])
@@ -139,6 +140,16 @@ fn main() -> eframe::Result<()> {
             .with_icon(icon()),
         ..Default::default()
     };
+    // macOS: winit's default app menu has a Quit item (Cmd+Q) that calls `terminate:` directly,
+    // which would skip the unsaved-changes prompt. Without it, Cmd+Q reaches the app as a
+    // shortcut (ui.quit) and goes through the same prompt as the close button.
+    #[cfg(target_os = "macos")]
+    {
+        options.event_loop_builder = Some(Box::new(|b| {
+            use winit::platform::macos::EventLoopBuilderExtMacOS;
+            b.with_default_menu(false);
+        }));
+    }
     eframe::run_native(
         "ScriptCraft",
         options,
