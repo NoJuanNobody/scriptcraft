@@ -1,0 +1,27 @@
+[package]
+name = "scriptcraft-ui-egui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "ScriptCraft egui front end (Final Draft-style page view, navigator, index cards, reports); swappable: nothing below depends on it (L6)"
+
+[lints]
+workspace = true
+
+[dependencies]
+scriptcraft-geom = { workspace = true }
+scriptcraft-doc = { workspace = true }
+scriptcraft-fonts = { workspace = true }
+scriptcraft-layout = { workspace = true }
+scriptcraft-engine = { workspace = true }
+egui = { workspace = true }
+serde_json = { workspace = true }
+# Window screenshots from the control channel are written as PNG.
+image = { version = "0.25", default-features = false, features = ["png"] }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+rfd = { workspace = true }
+
+[dev-dependencies]
+egui_kittest = { workspace = true, features = ["wgpu", "snapshot"] }
+serde_json = { workspace = true }

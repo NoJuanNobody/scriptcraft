@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/geom", "crates/doc", "crates/fonts", "crates/fountain", "crates/fdx", "crates/layout", "crates/pdf", "crates/engine", "crates/control-key", "crates/mcp", "apps/scriptcraft-cli"]
+members = ["crates/*", "apps/*", "xtask"]
 
 [workspace.package]
 version = "0.1.0"

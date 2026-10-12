@@ -12,6 +12,3 @@ workspace = true
 scriptcraft-geom = { workspace = true }
 scriptcraft-doc = { workspace = true }
 serde = { workspace = true }
-
-[dev-dependencies]
-scriptcraft-fountain = { workspace = true }

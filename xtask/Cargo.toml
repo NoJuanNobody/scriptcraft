@@ -1,0 +1,13 @@
+[package]
+name = "xtask"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "ScriptCraft developer tasks: ci, parity, assets, layers, stats"
+
+[lints]
+workspace = true
+
+[dependencies]
+scriptcraft-engine = { workspace = true }
