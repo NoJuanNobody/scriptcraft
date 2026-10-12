@@ -89,7 +89,7 @@ in [docs/parity-checklist.md](docs/parity-checklist.md): **41 implemented · 1 p
 
 ## Quick start
 
-Requires Rust 1.90+ (edition 2024).
+Requires Rust 1.95+ (edition 2024).
 
 ```sh
 git clone https://github.com/NoJuanNobody/scriptcraft && cd scriptcraft
@@ -97,6 +97,19 @@ cargo run --release -p scriptcraft                       # opens the sample scri
 cargo run --release -p scriptcraft -- --new              # blank script
 cargo run --release -p scriptcraft -- my-script.fdx      # open a Final Draft or Fountain file
 ```
+
+### Settings and data
+
+ScriptCraft stores settings like the other Craft apps, through
+[`craft-settings`](https://github.com/storytold/craft-libs/tree/main/crates/settings): one
+commented `config.toml` (`[appearance]`, `[editing]`, `[files]`), saved half a second after a
+change, with a `.bak`, recovery of damaged files and hand edits preserved. The folder is the
+first match of `--config-dir <dir>`, `SCRIPTCRAFT_CONFIG_DIR` (set but empty = isolated: nothing
+read or written), a `portable` marker next to the app (settings in `config/` beside it), then the
+platform folder (`~/Library/Application Support/scriptcraft`, `%APPDATA%\scriptcraft`,
+`~/.config/scriptcraft`). Autosave recovery, backups and the user dictionary are not settings:
+they live in the data folder, so a settings reset never loses work. The first run imports an older
+`prefs.json` and leaves it in place. Help › About shows the folders in use.
 
 In the browser: `cargo xtask web` (needs `rustup target add wasm32-unknown-unknown` and
 `cargo install wasm-bindgen-cli` at the version in Cargo.lock), then serve

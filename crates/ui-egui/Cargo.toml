@@ -15,6 +15,9 @@ scriptcraft-fonts = { workspace = true }
 scriptcraft-layout = { workspace = true }
 scriptcraft-engine = { workspace = true }
 scriptcraft-spell = { workspace = true }
+scriptcraft-control-key = { workspace = true }
+# Settings storage shared with the other Craft apps (storytold/craft-libs#22).
+craft-settings = { workspace = true }
 egui = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

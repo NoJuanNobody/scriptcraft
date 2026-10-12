@@ -137,8 +137,9 @@ pub const FEATURES: &[Feature] = &[
     f("Files", "PDF export", Done, &["file.exportPdf"], "embedded Courier Prime, selectable text"),
     f("Files", "Print", Partial, &["file.exportPdf"], "export a PDF and print it"),
     f("Files", "Templates (.fdxt)", Missing, &[], ""),
-    f("Files", "Autosave, crash recovery and backups", Done, &[], "settings folder; recovery offered after a crash, previous versions kept on save"),
+    f("Files", "Autosave, crash recovery and backups", Done, &[], "data folder; recovery offered after a crash, previous versions kept on save"),
     f("Files", "Recent files", Done, &["ui.openRecent", "ui.clearRecent"], ""),
+    f("Files", "Settings shared with the other Craft apps (config.toml, folder rules)", Done, &[], "craft-settings from storytold/craft-libs"),
     f("Files", "Import from other formats (Word, Celtx, PDF)", Missing, &[], ""),
     // View
     f("View", "Page view with page breaks", Done, &["ui.view.page"], ""),

@@ -129,11 +129,11 @@ fn autosave_backups_and_recent_files() {
     std::fs::write(&file, scriptcraft_engine::sample::FOUNTAIN).unwrap();
     let mut app = ScriptApp::new(Session::new(Default::default())).with_state_dir(dir.clone());
     app.dialogs = false;
-    app.prefs.autosave_secs = 1;
+    app.prefs.files.autosave_seconds = 1;
     let mut h = harness(app);
     step(&mut h, 3);
     h.state_mut().execute("file.open", json!({"path": file.to_str().unwrap()})).unwrap();
-    assert_eq!(h.state().prefs.recent, vec![file.display().to_string()]);
+    assert_eq!(h.state().prefs.files.recent, vec![file.display().to_string()]);
     h.state_mut().execute("text.insert", json!({"text": "Edited. "})).unwrap();
     assert!(h.state().session.dirty);
     step(&mut h, 12);
@@ -146,11 +146,15 @@ fn autosave_backups_and_recent_files() {
     let backups: Vec<_> = std::fs::read_dir(dir.join(persist::BACKUPS)).unwrap().flatten().collect();
     assert_eq!(backups.len(), 1);
     assert_eq!(std::fs::read_to_string(backups[0].path()).unwrap(), scriptcraft_engine::sample::FOUNTAIN);
+    // Settings are written to config.toml when the app exits.
+    h.state_mut().on_exit();
+    let toml = std::fs::read_to_string(dir.join("config.toml")).unwrap();
+    assert!(toml.contains("[files]") && toml.contains("draft.fountain"), "{toml}");
     // A recovery file left by a crash is offered on the next start.
     persist::write_recovery(&dir, Some(&file), &scriptcraft_engine::sample::script()).unwrap();
     let next = ScriptApp::new(Session::new(Default::default())).with_state_dir(dir.clone());
     assert!(next.recovery_offer.is_some());
-    assert_eq!(next.prefs.recent.len(), 1);
+    assert_eq!(next.prefs.files.recent.len(), 1);
     let _ = std::fs::remove_dir_all(&dir);
 }
 

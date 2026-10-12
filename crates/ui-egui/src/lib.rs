@@ -113,12 +113,19 @@ pub struct ScriptApp {
     pub spelling: bool,
     /// Enter in an empty paragraph shows the element list (otherwise it changes the element).
     pub enter_picker: bool,
-    /// The settings folder for state kept between runs (user dictionary…); `None` in tests.
+    /// The data folder (recovery, backups, user dictionary); `None` in tests and when isolated.
     pub state_dir: Option<std::path::PathBuf>,
-    /// Preferences kept between runs (recent files, autosave and backup settings).
+    /// Where settings and data live and which rule chose them (craft-settings folder rules).
+    pub folders: Option<scriptcraft_control_key::Folders>,
+    /// Settings kept between runs (theme, zoom, spelling, recent files, autosave, backups).
     pub prefs: persist::Prefs,
+    /// The `config.toml` store (craft-settings); saves during use. Not on the web yet.
+    #[cfg(not(target_arch = "wasm32"))]
+    settings: Option<craft_settings::SettingsStore<persist::Prefs>>,
     /// An autosaved script found at start-up, offered for recovery.
     pub recovery_offer: Option<persist::Recovery>,
+    /// The folder the offered recovery copy came from (the data folder, or the legacy folder).
+    pub recovery_dir: Option<std::path::PathBuf>,
     /// Where files are opened from and saved to when there is no file system (the web build).
     pub host: Option<Box<dyn FileHost>>,
     /// Files delivered by the host or dropped on the window.
@@ -173,8 +180,12 @@ impl ScriptApp {
             spelling: true,
             enter_picker: true,
             state_dir: None,
+            folders: None,
             prefs: persist::Prefs::default(),
+            #[cfg(not(target_arch = "wasm32"))]
+            settings: None,
             recovery_offer: None,
+            recovery_dir: None,
             last_autosave: 0.0,
             confirm_replace: None,
             dialog_buttons: Vec::new(),
@@ -190,46 +201,150 @@ impl ScriptApp {
         }
     }
 
-    /// Keep state (user dictionary, preferences, autosave, backups) in `dir` and load what is
-    /// there; an autosaved script left by a run that did not end cleanly is offered back.
-    pub fn with_state_dir(mut self, dir: std::path::PathBuf) -> Self {
-        self.session.user_words = persist::load_words(&dir);
-        self.prefs = persist::load_prefs(&dir);
-        if let Some(d) = self.prefs.dark {
-            self.dark = d;
-        }
-        self.canvas.zoom = self.prefs.zoom;
-        self.spelling = self.prefs.spelling;
-        self.enter_picker = self.prefs.enter_picker;
-        self.recovery_offer = persist::read_recovery(&dir);
-        self.state_dir = Some(dir);
+    /// Use ScriptCraft's folders (see [`scriptcraft_control_key::folders`]): open the settings
+    /// store (`config.toml`, importing the old `prefs.json` once), load the user dictionary and
+    /// offer an autosaved script left by a run that did not end cleanly. Data left in the legacy
+    /// folder by ScriptCraft 0.2 is still found.
+    pub fn with_folders(mut self, f: scriptcraft_control_key::Folders) -> Self {
+        self.use_folders(f);
         self
     }
 
-    /// Write preferences (the app calls this on exit). A script with no unsaved changes, or one
+    /// [`ScriptApp::with_folders`] on an app that is already running.
+    pub fn use_folders(&mut self, f: scriptcraft_control_key::Folders) {
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let (store, report) = persist::open_settings(&f);
+            if let Some(msg) = persist::load_problems(&report) {
+                self.set_status(msg);
+            }
+            self.apply_prefs(store.get().clone().sanitized());
+            self.settings = Some(store);
+        }
+        if let Some(dir) = f.data.clone() {
+            let mut words = persist::load_words(&dir);
+            if words.is_empty()
+                && let Some(old) = &f.legacy
+            {
+                words = persist::load_words(old);
+            }
+            self.session.user_words = words;
+            let found = persist::read_recovery(&dir)
+                .map(|r| (r, dir.clone()))
+                .or_else(|| f.legacy.as_ref().and_then(|old| persist::read_recovery(old).map(|r| (r, old.clone()))));
+            if let Some((r, from)) = found {
+                self.recovery_offer = Some(r);
+                self.recovery_dir = Some(from);
+            }
+            self.state_dir = Some(dir);
+        }
+        self.folders = Some(f);
+    }
+
+    /// Keep settings and data in one folder (tests, demos).
+    pub fn with_state_dir(self, dir: std::path::PathBuf) -> Self {
+        self.with_folders(scriptcraft_control_key::Folders { config: Some(dir.clone()), data: Some(dir), rule: "override".into(), legacy: None })
+    }
+
+    /// Show loaded settings.
+    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
+    fn apply_prefs(&mut self, p: persist::Prefs) {
+        match p.appearance.theme {
+            persist::Theme::Dark => self.dark = true,
+            persist::Theme::Light => self.dark = false,
+            persist::Theme::System => {}
+        }
+        self.canvas.zoom = p.appearance.zoom as f32;
+        self.spelling = p.editing.spelling;
+        self.enter_picker = p.editing.element_list_on_enter;
+        self.prefs = p;
+    }
+
+    /// Copy the window's current choices into `prefs` and hand them to the store, which saves
+    /// them half a second later (only when something changed).
+    fn sync_prefs(&mut self) {
+        self.prefs.appearance.zoom = (f64::from(self.canvas.zoom) * 100.0).round() / 100.0;
+        self.prefs.editing.spelling = self.spelling;
+        self.prefs.editing.element_list_on_enter = self.enter_picker;
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some(store) = self.settings.as_mut()
+            && store.get() != &self.prefs
+        {
+            let p = self.prefs.clone();
+            store.update(move |s| *s = p);
+        }
+    }
+
+    /// Save settings now (exit, termination).
+    fn flush_prefs(&mut self) {
+        self.sync_prefs();
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some(store) = self.settings.as_mut()
+            && let Err(e) = store.flush()
+        {
+            eprintln!("scriptcraft: settings not saved: {e}");
+        }
+    }
+
+    /// Per frame: let the store save pending changes and wake the window when it needs to.
+    #[cfg(not(target_arch = "wasm32"))]
+    fn tick_prefs(&mut self, ctx: &egui::Context) {
+        self.sync_prefs();
+        let Some(store) = self.settings.as_mut() else { return };
+        let now = std::time::Instant::now();
+        let r = store.tick(now);
+        if let craft_settings::SaveStatus::Failed(e) = r.status {
+            self.status = Some((format!("Settings not saved, retrying: {e}"), 0.0));
+        }
+        if let Some(d) = r.next_deadline {
+            ctx.request_repaint_after(d.saturating_duration_since(now));
+        }
+    }
+
+    /// Where settings live, for the About box and `ui.inspect`.
+    pub fn settings_location(&self) -> Value {
+        #[cfg(not(target_arch = "wasm32"))]
+        let (file, persistent, read_only) =
+            self.settings.as_ref().map_or((None, false, false), |s| (s.path().map(|p| p.display().to_string()), s.is_persistent(), s.is_read_only()));
+        #[cfg(target_arch = "wasm32")]
+        let (file, persistent, read_only): (Option<String>, bool, bool) = (None, false, false);
+        json!({
+            "file": file,
+            "persistent": persistent,
+            "readOnly": read_only,
+            "rule": self.folders.as_ref().map(|f| f.rule.clone()),
+            "data": self.state_dir.as_ref().map(|d| d.display().to_string()),
+        })
+    }
+
+    /// Write settings (the app calls this on exit). A script with no unsaved changes, or one
     /// the user chose not to save, leaves no recovery file behind.
     pub fn on_exit(&mut self) {
-        let Some(dir) = self.state_dir.clone() else { return };
-        self.prefs.dark = Some(self.dark);
-        self.prefs.zoom = self.canvas.zoom;
-        self.prefs.spelling = self.spelling;
-        self.prefs.enter_picker = self.enter_picker;
-        let _ = persist::save_prefs(&dir, &self.prefs);
+        self.flush_prefs();
         if !self.session.dirty || self.quit_requested {
+            self.clear_recovery();
+        }
+    }
+
+    /// Remove the recovery copy (and one left in the legacy folder that was offered).
+    pub fn clear_recovery(&mut self) {
+        if let Some(dir) = &self.state_dir {
+            persist::clear_recovery(dir);
+        }
+        if let Some(dir) = self.recovery_dir.take() {
             persist::clear_recovery(&dir);
         }
     }
 
     /// The process is being terminated: keep unsaved changes as a recovery copy (offered at the
-    /// next start) and save preferences. Unlike [`ScriptApp::on_exit`] it never clears recovery.
+    /// next start) and save settings. Unlike [`ScriptApp::on_exit`] it never clears recovery.
     pub fn emergency_save(&mut self) {
-        let Some(dir) = self.state_dir.clone() else { return };
-        if self.session.dirty {
+        if let Some(dir) = self.state_dir.clone()
+            && self.session.dirty
+        {
             let _ = persist::write_recovery(&dir, self.session.path.as_deref(), &self.session.script);
         }
-        self.prefs.dark = Some(self.dark);
-        self.prefs.zoom = self.canvas.zoom;
-        let _ = persist::save_prefs(&dir, &self.prefs);
+        self.flush_prefs();
     }
 
     /// Before a save over an existing file: keep the old version in the backups folder.
@@ -240,7 +355,7 @@ impl ScriptApp {
         }
         let target = params.get("path").and_then(Value::as_str).map(std::path::PathBuf::from).or_else(|| self.session.path.clone());
         if let Some(t) = target
-            && let Err(e) = persist::backup(&dir, &t, self.prefs.backups)
+            && let Err(e) = persist::backup(&dir, &t, self.prefs.files.backups_kept)
         {
             self.status = Some((format!("Backup failed: {e}"), 0.0));
         }
@@ -248,24 +363,22 @@ impl ScriptApp {
 
     /// After a successful open or save: remember the file; a saved script needs no recovery copy.
     fn after_file(&mut self, id: &str) {
-        let Some(dir) = self.state_dir.clone() else { return };
         if !matches!(id, "file.open" | "file.save" | "file.saveAs") {
             return;
         }
         if let Some(p) = self.session.path.as_ref().map(|p| p.display().to_string()) {
             self.prefs.touch_recent(&p);
-            let _ = persist::save_prefs(&dir, &self.prefs);
         }
-        if !self.session.dirty {
-            persist::clear_recovery(&dir);
+        if !self.session.dirty && self.state_dir.is_some() {
+            self.clear_recovery();
             self.recovery_offer = None;
         }
     }
 
-    /// Autosave a script with unsaved changes every `prefs.autosave_secs`.
+    /// Autosave a script with unsaved changes every `prefs.files.autosave_seconds`.
     fn autosave(&mut self, now: f64) {
         let Some(dir) = self.state_dir.clone() else { return };
-        let every = f64::from(self.prefs.autosave_secs);
+        let every = f64::from(self.prefs.files.autosave_seconds);
         if every <= 0.0 || !self.session.dirty || self.recovery_offer.is_some() || now - self.last_autosave < every {
             return;
         }
@@ -341,11 +454,20 @@ impl ScriptApp {
             "ui.view.cards" => self.view = View::Cards,
             "ui.view.reports" => self.view = View::Reports,
             "ui.toggleNavigator" => self.navigator = !self.navigator,
-            "ui.theme.toggle" => self.dark = !self.dark,
+            "ui.theme.toggle" => {
+                self.dark = !self.dark;
+                self.prefs.appearance.theme = if self.dark { persist::Theme::Dark } else { persist::Theme::Light };
+            }
             "ui.toggleSpelling" => self.spelling = !self.spelling,
             "ui.toggleEnterPicker" => self.enter_picker = !self.enter_picker,
-            "ui.theme.dark" => self.dark = true,
-            "ui.theme.light" => self.dark = false,
+            "ui.theme.dark" => {
+                self.dark = true;
+                self.prefs.appearance.theme = persist::Theme::Dark;
+            }
+            "ui.theme.light" => {
+                self.dark = false;
+                self.prefs.appearance.theme = persist::Theme::Light;
+            }
             "ui.zoomIn" => self.canvas.zoom = (self.canvas.zoom * 1.1).min(3.0),
             "ui.zoomOut" => self.canvas.zoom = (self.canvas.zoom / 1.1).max(0.4),
             "ui.zoomReset" => self.canvas.zoom = 1.0,
@@ -370,14 +492,11 @@ impl ScriptApp {
             "ui.about" => self.about = true,
             "ui.quit" => self.close_wanted = true,
             "ui.openRecent" => {
-                let path = path.or_else(|| self.prefs.recent.first().cloned()).ok_or_else(|| CmdError::Disabled("no recent files".into()))?;
+                let path = path.or_else(|| self.prefs.files.recent.first().cloned()).ok_or_else(|| CmdError::Disabled("no recent files".into()))?;
                 return self.execute("file.open", json!({"path": path}));
             }
             "ui.clearRecent" => {
-                self.prefs.recent.clear();
-                if let Some(dir) = &self.state_dir {
-                    let _ = persist::save_prefs(dir, &self.prefs);
-                }
+                self.prefs.files.recent.clear();
             }
             "ui.open" if self.host.is_some() && path.is_none() => {
                 if let Some(h) = &self.host {
@@ -516,6 +635,8 @@ impl ScriptApp {
         ctx.set_visuals(self.tokens().visuals());
         let now = ctx.input(|i| i.time);
         self.autosave(now);
+        #[cfg(not(target_arch = "wasm32"))]
+        self.tick_prefs(ctx);
         self.drain_inbox(ctx);
         if let Some((_, t)) = &mut self.status
             && *t == 0.0
