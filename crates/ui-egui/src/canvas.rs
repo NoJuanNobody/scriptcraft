@@ -48,6 +48,17 @@ fn courier(size: f32) -> FontId {
     FontId::new(size, FontFamily::Name("courier".into()))
 }
 
+/// The Courier Prime face for a style.
+pub fn courier_styled(size: f32, st: scriptcraft_doc::Style) -> FontId {
+    let fam = match (st.bold, st.italic) {
+        (false, false) => "courier",
+        (true, false) => "courier-bold",
+        (false, true) => "courier-italic",
+        (true, true) => "courier-bolditalic",
+    };
+    FontId::new(size, FontFamily::Name(fam.into()))
+}
+
 /// SmartType suggestions the popup would show now.
 fn current_suggest(app: &ScriptApp) -> Option<Suggest> {
     let s = &app.session;
@@ -234,8 +245,16 @@ fn paint_page(ui: &Ui, app: &ScriptApp, l: &Layout, i: usize, pr: Rect) {
             LineKind::PageNumber | LineKind::More | LineKind::Contd | LineKind::SceneNumber => t.ink_soft,
             _ => t.ink,
         };
-        let pos = pr.min + vec2(line.x * z, line.y * z + 0.5 * z);
-        p.text(pos, Align2::LEFT_TOP, &line.text, font.clone(), color);
+        for (col, text, st) in line.segments() {
+            let x = line.x + col as f32 * CHAR_W;
+            let pos = pr.min + vec2(x * z, line.y * z + 0.5 * z);
+            p.text(pos, Align2::LEFT_TOP, text, courier_styled(FONT_SIZE * z, st), color);
+            if st.underline {
+                let y = pr.top() + (line.baseline() + 1.8) * z;
+                let x1 = x + text.chars().count() as f32 * CHAR_W;
+                p.line_segment([pos2(pr.left() + x * z, y), pos2(pr.left() + x1 * z, y)], Stroke::new(0.7 * z, color));
+            }
+        }
         if !line.suffix.is_empty() {
             let x = line.x + line.text.chars().count() as f32 * CHAR_W;
             p.text(pr.min + vec2(x * z, line.y * z + 0.5 * z), Align2::LEFT_TOP, &line.suffix, font.clone(), t.ink_soft);

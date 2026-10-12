@@ -208,3 +208,17 @@ fn hostile_layouts() {
     let _ = l.caret(Pos::new(999, 999));
     let _ = l.hit(0, f32::NAN, f32::INFINITY);
 }
+
+#[test]
+fn styled_lines_carry_spans() {
+    let mut sc = s(vec![p(Element::Action, "A long action line that certainly wraps onto a second line of text, maybe a third.")]);
+    sc.set_flag(Pos::new(0, 55), Pos::new(0, 70), scriptcraft_doc::Flag::Bold, true);
+    let l = layout(&sc);
+    let b = body(&l.pages[0]);
+    assert_eq!(b[0].spans.len(), 1);
+    assert_eq!(b[1].spans.len(), 1);
+    let segs = b[0].segments();
+    assert!(segs.last().unwrap().2.bold);
+    assert_eq!(segs.iter().map(|s| s.1).collect::<String>(), b[0].text);
+    assert_eq!(b[1].segments()[0].0, 0);
+}

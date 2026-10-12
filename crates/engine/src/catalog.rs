@@ -72,7 +72,13 @@ pub const FEATURES: &[Feature] = &[
     f("Writing", "Cut, copy, paste", Done, &["edit.cut", "edit.copy", "edit.paste"], "plain text"),
     f("Writing", "Find and replace", Done, &["edit.find", "edit.replace", "edit.replaceAll"], ""),
     f("Writing", "Title page", Done, &["title.set", "title.get"], "fixed arrangement"),
-    f("Writing", "Bold / italic / underline", Missing, &[], "Fountain emphasis markers are kept as text"),
+    f(
+        "Writing",
+        "Bold / italic / underline",
+        Done,
+        &["format.bold", "format.italic", "format.underline", "format.plain"],
+        "kept in FDX, Fountain and PDF",
+    ),
     f("Writing", "Spelling check", Missing, &[], ""),
     f("Writing", "Thesaurus", Missing, &[], ""),
     f("Writing", "ScriptNotes", Missing, &[], ""),
@@ -113,7 +119,7 @@ pub const FEATURES: &[Feature] = &[
     f("Production", "Watermarks", Missing, &[], ""),
     f("Production", "Collaboration (real time)", Missing, &[], ""),
     // Files
-    f("Files", "Final Draft XML (.fdx) open and save", Done, &["file.open", "file.save", "file.exportFdx"], "text styles not kept"),
+    f("Files", "Final Draft XML (.fdx) open and save", Done, &["file.open", "file.save", "file.exportFdx"], "bold, italic, underline kept"),
     f("Files", "Fountain open and save", Done, &["file.open", "file.save", "file.exportFountain"], "Shot and General become Action"),
     f("Files", "PDF export", Done, &["file.exportPdf"], "embedded Courier Prime, selectable text"),
     f("Files", "Print", Partial, &["file.exportPdf"], "export a PDF and print it"),

@@ -56,6 +56,8 @@ pub struct Session {
     pub goal_x: Option<f32>,
     /// The SmartType popup was dismissed for this paragraph (Escape); reset when typing.
     pub suggest_dismissed: bool,
+    /// Style for the next typed text, set by Bold/Italic/Underline with no selection.
+    pub pending_style: Option<scriptcraft_doc::Style>,
     history: Vec<Snapshot>,
     redo: Vec<Snapshot>,
     typing_open: bool,
@@ -73,6 +75,7 @@ impl Session {
             status: String::new(),
             goal_x: None,
             suggest_dismissed: false,
+            pending_style: None,
             history: Vec::new(),
             redo: Vec::new(),
             typing_open: false,
@@ -98,6 +101,7 @@ impl Session {
         self.layout = None;
         self.dirty = false;
         self.goal_x = None;
+        self.pending_style = None;
     }
 
     /// The pagination of the current script (cached until the next change).
@@ -179,6 +183,9 @@ impl Session {
         }
         if !matches!(id, "caret.up" | "caret.down") {
             self.goal_x = None;
+        }
+        if !id.starts_with("format.") && id != "text.insert" && id != "edit.paste" {
+            self.pending_style = None;
         }
         if id.starts_with("text.") || id.starts_with("element.") {
             self.suggest_dismissed = false;

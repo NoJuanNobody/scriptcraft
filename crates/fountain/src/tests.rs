@@ -49,7 +49,7 @@ fn parses_elements() {
         vec![
             (Element::Action, "FADE IN:"),
             (Element::SceneHeading, "INT. DINER - NIGHT"),
-            (Element::Action, "Rain streaks the window. **MARGO** (40s) stirs her coffee."),
+            (Element::Action, "Rain streaks the window. MARGO (40s) stirs her coffee."),
             (Element::Character, "MARGO"),
             (Element::Parenthetical, "(quietly)"),
             (Element::Dialogue, "Not tonight. Not again."),
@@ -110,4 +110,25 @@ fn hostile_input() {
     }
     let big = "Hello world.\n\n".repeat(10_000);
     assert_eq!(parse(&big).paras.len(), 10_000);
+}
+
+#[test]
+fn emphasis_round_trip() {
+    use scriptcraft_doc::Style;
+    let src = "A *quiet* **loud** ***both*** _under_ and _**mixed**_ room. Literal \\* star, snake\\_case, 2*3.\n";
+    let s = parse(src);
+    let p = &s.paras[0];
+    assert_eq!(p.text, "A quiet loud both under and mixed room. Literal * star, snake_case, 2*3.");
+    let st = |w: &str| {
+        let i = p.text.find(w).unwrap();
+        p.styles()[i]
+    };
+    assert_eq!(st("quiet"), Style { italic: true, ..Style::PLAIN });
+    assert_eq!(st("loud"), Style { bold: true, ..Style::PLAIN });
+    assert_eq!(st("both"), Style { bold: true, italic: true, ..Style::PLAIN });
+    assert_eq!(st("under"), Style { underline: true, ..Style::PLAIN });
+    assert_eq!(st("mixed"), Style { bold: true, underline: true, ..Style::PLAIN });
+    assert!(st("Literal").is_plain());
+    let out = write(&s);
+    assert_eq!(parse(&out), s, "{out}");
 }

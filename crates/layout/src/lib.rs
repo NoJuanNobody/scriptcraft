@@ -19,7 +19,7 @@
 //! same scene, and scene numbers print in both margins.
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
-use scriptcraft_doc::{Element, Pos, Script, character_name};
+use scriptcraft_doc::{Element, Pos, Script, Span, character_name};
 use scriptcraft_geom::{BASELINE, CHAR_W, LINE_H, PAGE_W, TOP, body_lines, chars_between, inch};
 use serde::Serialize;
 
@@ -94,6 +94,9 @@ pub struct Line {
     /// Display-only text after it (an automatic ` (CONT'D)`).
     #[serde(skip_serializing_if = "String::is_empty")]
     pub suffix: String,
+    /// Styled runs, as byte ranges of `text` (plain lines have none).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub spans: Vec<Span>,
     /// The script paragraph this line shows (`None` for decorations).
     pub para: Option<usize>,
     pub start: usize,
@@ -108,6 +111,25 @@ impl Line {
     /// The whole visible text.
     pub fn display(&self) -> String {
         format!("{}{}", self.text, self.suffix)
+    }
+    /// The text in styled segments: (column, text, style), covering the whole line.
+    pub fn segments(&self) -> Vec<(usize, &str, scriptcraft_doc::Style)> {
+        let mut out = Vec::new();
+        let mut at = 0;
+        let mut col = 0;
+        let push = |a: usize, b: usize, st, col: &mut usize, out: &mut Vec<_>| {
+            if let Some(t) = self.text.get(a..b).filter(|t| !t.is_empty()) {
+                out.push((*col, t, st));
+                *col += t.chars().count();
+            }
+        };
+        for sp in &self.spans {
+            push(at, sp.start.max(at), scriptcraft_doc::Style::PLAIN, &mut col, &mut out);
+            push(sp.start.max(at), sp.end, sp.style, &mut col, &mut out);
+            at = sp.end.max(at);
+        }
+        push(at, self.text.len(), scriptcraft_doc::Style::PLAIN, &mut col, &mut out);
+        out
     }
     fn chars(&self) -> usize {
         self.text.chars().count()
@@ -436,7 +458,17 @@ impl Builder<'_> {
 
     fn emit(&mut self, it: &Item, k: usize, suffix: bool) {
         let Some(&(start, end)) = it.lines.get(k) else { return };
-        let text = self.script.paras.get(it.para).and_then(|p| p.text.get(start..end)).unwrap_or("").to_string();
+        let para = self.script.paras.get(it.para);
+        let text = para.and_then(|p| p.text.get(start..end)).unwrap_or("").to_string();
+        let spans: Vec<Span> = para
+            .map(|p| {
+                p.spans
+                    .iter()
+                    .filter(|sp| sp.end > start && sp.start < end)
+                    .map(|sp| Span { start: sp.start.max(start) - start, end: sp.end.min(end) - start, style: sp.style })
+                    .collect()
+            })
+            .unwrap_or_default();
         let sfx = if suffix && k + 1 == it.lines.len() { it.suffix.clone() } else { String::new() };
         let s = spec(it.el);
         let (l, r) = it.cols.unwrap_or((inch(s.left), inch(s.right)));
@@ -455,7 +487,7 @@ impl Builder<'_> {
             self.cur.push(deco(LineKind::SceneNumber, inch(1.0) - w, y, &num));
             self.cur.push(deco(LineKind::SceneNumber, inch(7.75), y, &num));
         }
-        self.cur.push(Line { kind: LineKind::Body, element: Some(it.el), x, y, text, suffix: sfx, para: Some(it.para), start, end });
+        self.cur.push(Line { kind: LineKind::Body, element: Some(it.el), x, y, text, suffix: sfx, spans, para: Some(it.para), start, end });
         self.row += 1;
     }
 
@@ -639,7 +671,7 @@ impl Builder<'_> {
 }
 
 fn deco(kind: LineKind, x: f32, y: f32, text: &str) -> Line {
-    Line { kind, element: None, x, y, text: text.to_string(), suffix: String::new(), para: None, start: 0, end: 0 }
+    Line { kind, element: None, x, y, text: text.to_string(), suffix: String::new(), spans: Vec::new(), para: None, start: 0, end: 0 }
 }
 
 fn title_page(script: &Script) -> Option<Page> {

@@ -254,7 +254,11 @@ impl ScriptApp {
         fonts.font_data.insert("courier-prime".into(), std::sync::Arc::new(egui::FontData::from_static(scriptcraft_fonts::REGULAR)));
         fonts.font_data.insert("courier-prime-bold".into(), std::sync::Arc::new(egui::FontData::from_static(scriptcraft_fonts::BOLD)));
         fonts.families.insert(egui::FontFamily::Name("courier".into()), vec!["courier-prime".into()]);
+        fonts.font_data.insert("courier-prime-italic".into(), std::sync::Arc::new(egui::FontData::from_static(scriptcraft_fonts::ITALIC)));
+        fonts.font_data.insert("courier-prime-bolditalic".into(), std::sync::Arc::new(egui::FontData::from_static(scriptcraft_fonts::BOLD_ITALIC)));
         fonts.families.insert(egui::FontFamily::Name("courier-bold".into()), vec!["courier-prime-bold".into()]);
+        fonts.families.insert(egui::FontFamily::Name("courier-italic".into()), vec!["courier-prime-italic".into()]);
+        fonts.families.insert(egui::FontFamily::Name("courier-bolditalic".into()), vec!["courier-prime-bolditalic".into()]);
         ctx.set_fonts(fonts);
         self.fonts_installed = true;
     }

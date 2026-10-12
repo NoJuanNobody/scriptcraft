@@ -16,13 +16,14 @@
 //! </FinalDraft>
 //! ```
 //!
-//! Text runs (`<Text Style="Bold">`) are concatenated: inline styles are not modelled yet.
+//! Text runs keep their `Style` (`Bold`, `Italic`, `Underline`, combined with `+`); other style
+//! values (`AllCaps`, `Strikeout`…) are ignored.
 //! Unknown paragraph types (`Cast List`, `New Act`, `Lyrics`…) import as General.
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 use quick_xml::Reader;
 use quick_xml::events::Event;
-use scriptcraft_doc::{Element, MAX_PARA_BYTES, MAX_PARAS, Para, Script, TitlePage};
+use scriptcraft_doc::{Element, MAX_PARA_BYTES, MAX_PARAS, Para, Script, Style, TitlePage};
 
 /// Largest input we parse, bytes.
 pub const MAX_INPUT: usize = 128 << 20;
@@ -52,6 +53,8 @@ struct Open {
     number: Option<String>,
     align: String,
     text: String,
+    runs: Vec<(String, Style)>,
+    style: Style,
     summary: String,
     wrapper: bool,
     in_text: bool,
@@ -103,6 +106,8 @@ pub fn parse(src: &str) -> Result<Script, FdxError> {
                             number: attr("Number"),
                             align: attr("Alignment").unwrap_or_default(),
                             text: String::new(),
+                            runs: Vec::new(),
+                            style: Style::PLAIN,
                             summary: String::new(),
                             wrapper: false,
                             in_text: false,
@@ -114,8 +119,10 @@ pub fn parse(src: &str) -> Result<Script, FdxError> {
                         }
                     }
                     "Text" => {
+                        let st = attr("Style").map(|v| parse_style(&v)).unwrap_or_default();
                         if let Some(o) = open.last_mut() {
                             o.in_text = !empty;
+                            o.style = st;
                         }
                     }
                     "DualDialogue" => {
@@ -155,12 +162,12 @@ pub fn parse(src: &str) -> Result<Script, FdxError> {
             }
             Event::Text(t) => {
                 if let Some(o) = open.last_mut().filter(|o| o.in_text) {
-                    push_text(&mut o.text, &t.decode().map_err(|e| FdxError::Xml(e.to_string()))?);
+                    push_text(o, &t.decode().map_err(|e| FdxError::Xml(e.to_string()))?);
                 }
             }
             Event::CData(t) => {
                 if let Some(o) = open.last_mut().filter(|o| o.in_text) {
-                    push_text(&mut o.text, &t.decode().map_err(|e| FdxError::Xml(e.to_string()))?);
+                    push_text(o, &t.decode().map_err(|e| FdxError::Xml(e.to_string()))?);
                 }
             }
             Event::GeneralRef(g) => {
@@ -177,7 +184,7 @@ pub fn parse(src: &str) -> Result<Script, FdxError> {
                         },
                     };
                     if let Some(c) = c {
-                        push_text(&mut o.text, &c);
+                        push_text(o, &c);
                     }
                 }
             }
@@ -196,10 +203,35 @@ pub fn parse(src: &str) -> Result<Script, FdxError> {
     Ok(s)
 }
 
-fn push_text(dst: &mut String, s: &str) {
-    if dst.len() + s.len() <= MAX_PARA_BYTES {
-        dst.push_str(s);
+fn push_text(o: &mut Open, s: &str) {
+    if o.text.len() + s.len() > MAX_PARA_BYTES {
+        return;
     }
+    o.text.push_str(s);
+    match o.runs.last_mut() {
+        Some((t, st)) if *st == o.style => t.push_str(s),
+        _ => o.runs.push((s.to_string(), o.style)),
+    }
+}
+
+/// `Bold+Italic+Underline` (any order, other values ignored).
+fn parse_style(v: &str) -> Style {
+    let mut st = Style::PLAIN;
+    for part in v.split('+') {
+        match part.trim() {
+            "Bold" => st.bold = true,
+            "Italic" => st.italic = true,
+            "Underline" => st.underline = true,
+            _ => {}
+        }
+    }
+    st
+}
+
+fn style_attr(st: Style) -> String {
+    let parts: Vec<&str> =
+        [(st.bold, "Bold"), (st.italic, "Italic"), (st.underline, "Underline")].iter().filter(|(on, _)| *on).map(|(_, n)| *n).collect();
+    if parts.is_empty() { String::new() } else { format!(" Style=\"{}\"", parts.join("+")) }
 }
 
 fn finish(o: Open, open: &mut [Open], paras: &mut Vec<Para>, title_lines: &mut Vec<(String, String)>, dual_chars: &mut Option<usize>) {
@@ -224,7 +256,7 @@ fn finish(o: Open, open: &mut [Open], paras: &mut Vec<Para>, title_lines: &mut V
                 Some("Lyrics") | Some("Cast List") => Element::Action,
                 _ => Element::General,
             });
-            let mut p = Para::new(element, o.text);
+            let mut p = if o.runs.iter().any(|(_, st)| !st.is_plain()) { Para::styled(element, &o.runs) } else { Para::new(element, o.text) };
             if element == Element::SceneHeading {
                 p.scene_number = o.number.filter(|n| !n.trim().is_empty());
                 p.summary = o.summary;
@@ -324,7 +356,10 @@ fn para_xml(out: &mut String, indent: &str, p: &Para) {
             esc(p.summary.trim())
         ));
     }
-    out.push_str(&format!("{indent}  <Text>{}</Text>\n{indent}</Paragraph>\n", esc(&p.text)));
+    for (t, st) in p.runs() {
+        out.push_str(&format!("{indent}  <Text{}>{}</Text>\n", style_attr(st), esc(t)));
+    }
+    out.push_str(&format!("{indent}</Paragraph>\n"));
 }
 
 /// The dialogue block starting at `i` (a Character and its Parenthetical/Dialogue lines): its end.

@@ -166,6 +166,11 @@ pub fn menu_bar(app: &mut ScriptApp, ui: &mut Ui) {
                     }
                 }
                 ui.separator();
+                item(app, ui, "Bold", "format.bold", "Mod+B");
+                item(app, ui, "Italic", "format.italic", "Mod+I");
+                item(app, ui, "Underline", "format.underline", "Mod+U");
+                item(app, ui, "Plain Text", "format.plain", "Mod+Shift+T");
+                ui.separator();
                 item(app, ui, "Dual Dialogue", "dialogue.toggleDual", "Mod+D");
             });
             ui.menu_button("Document", |ui| {
@@ -247,6 +252,41 @@ pub fn toolbar(app: &mut ScriptApp, ui: &mut Ui) {
                     .response
                     .on_hover_text("Element of the current paragraph (Enter and Tab change it as you type)");
                 ui.add_space(4.0);
+                let fs = scriptcraft_engine::cmd::format::caret_style(&app.session);
+                let (a, b) = app.session.sel.ordered();
+                let states: Vec<bool> = [scriptcraft_doc::Flag::Bold, scriptcraft_doc::Flag::Italic, scriptcraft_doc::Flag::Underline]
+                    .iter()
+                    .map(|f| if a == b { fs.get(*f) } else { app.session.script.all_have(a, b, *f) })
+                    .collect();
+                for (k, (label, tip, id, f)) in [
+                    ("B", "Bold", "format.bold", scriptcraft_doc::Flag::Bold),
+                    ("I", "Italic", "format.italic", scriptcraft_doc::Flag::Italic),
+                    ("U", "Underline", "format.underline", scriptcraft_doc::Flag::Underline),
+                ]
+                .into_iter()
+                .enumerate()
+                {
+                    let on = states.get(k).copied().unwrap_or(false);
+                    let mut text = RichText::new(label).font(crate::canvas::courier_styled(15.0, scriptcraft_doc::Style::PLAIN.with(f, true)));
+                    if on {
+                        text = text.color(egui::Color32::WHITE);
+                    }
+                    let resp = ui.add(egui::Button::selectable(on, text).min_size(vec2(26.0, 24.0)));
+                    if resp
+                        .on_hover_text(format!(
+                            "{tip} ({})",
+                            pretty_key(match f {
+                                scriptcraft_doc::Flag::Bold => "Mod+B",
+                                scriptcraft_doc::Flag::Italic => "Mod+I",
+                                scriptcraft_doc::Flag::Underline => "Mod+U",
+                            })
+                        ))
+                        .clicked()
+                    {
+                        app.run(id, json!({}));
+                    }
+                }
+                sep(ui);
                 if icons::button(ui, Icon::Dual, "Dual dialogue", false).clicked() {
                     app.run("dialogue.toggleDual", json!({}));
                 }

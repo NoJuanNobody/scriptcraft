@@ -67,7 +67,8 @@ fn type_str(s: &mut Session, at: Pos, text: &str) -> Result<Pos, CmdError> {
         }
     }
     let element = p.element;
-    let after = s.script.insert_text(at, text)?;
+    let st = s.pending_style.unwrap_or_else(|| p.style_before(at.off));
+    let after = s.script.insert_styled(at, text, st)?;
     // `int. ` typed at the start of Action makes it a Scene Heading.
     if element == Element::Action
         && let Some(p) = s.script.para(at.para)
@@ -92,6 +93,7 @@ pub(crate) fn insert(s: &mut Session, v: &Value) -> CmdResult {
         }
         at = type_str(s, at, line.trim_end_matches('\r'))?;
     }
+    s.pending_style = None;
     set_caret(s, at);
     sel_result(s)
 }

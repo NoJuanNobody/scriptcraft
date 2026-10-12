@@ -7,9 +7,11 @@
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 mod element;
+mod style;
 mod text;
 
 pub use element::Element;
+pub use style::{Flag, Span, Style};
 pub use text::{next_boundary, prev_boundary, word_left, word_right};
 
 use serde::{Deserialize, Serialize};
@@ -45,6 +47,9 @@ pub struct Para {
     /// Index-card summary (scene headings only).
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub summary: String,
+    /// Bold / italic / underline runs (byte ranges of `text`; plain text has none).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub spans: Vec<Span>,
 }
 
 impl Para {
@@ -54,7 +59,67 @@ impl Para {
             text = text.to_uppercase();
         }
         text = sanitize(&text);
-        Para { element, text, scene_number: None, dual: false, summary: String::new() }
+        Para { element, text, scene_number: None, dual: false, summary: String::new(), spans: Vec::new() }
+    }
+
+    /// A paragraph from styled text runs (FDX `<Text Style>` runs, Fountain emphasis).
+    pub fn styled(element: Element, runs: &[(String, Style)]) -> Self {
+        let mut text = String::new();
+        let mut styles = Vec::new();
+        for (t, st) in runs {
+            let t = sanitize(t);
+            if text.len() + t.len() > MAX_PARA_BYTES {
+                break;
+            }
+            styles.extend(std::iter::repeat_n(*st, t.len()));
+            text.push_str(&t);
+        }
+        let mut p = Para::new(element, "");
+        p.set_text_styled(&text, &styles, element.uppercase());
+        p
+    }
+
+    /// Per-byte styles of the text.
+    pub fn styles(&self) -> Vec<Style> {
+        style::expand(&self.spans, self.text.len())
+    }
+
+    /// Replace text and styles together (`upper` capitalises, keeping each char's style).
+    pub fn set_text_styled(&mut self, text: &str, styles: &[Style], upper: bool) {
+        if upper {
+            let (t, v) = style::upper_with(text, styles);
+            self.spans = style::compress(&t, &v);
+            self.text = t;
+        } else {
+            self.spans = style::compress(text, styles);
+            self.text = text.to_string();
+        }
+    }
+
+    /// The style of the character just before `off` (what typing at `off` continues).
+    pub fn style_before(&self, off: usize) -> Style {
+        let i = prev_boundary(&self.text, off.min(self.text.len()));
+        if off == 0 {
+            return self.spans.first().filter(|s| s.start == 0).map_or(Style::PLAIN, |s| s.style);
+        }
+        self.spans.iter().find(|s| s.start <= i && i < s.end).map_or(Style::PLAIN, |s| s.style)
+    }
+
+    /// Text runs with their styles, in order (plain runs included).
+    pub fn runs(&self) -> Vec<(&str, Style)> {
+        let mut out = Vec::new();
+        let mut at = 0;
+        for s in &self.spans {
+            if s.start > at {
+                out.push((self.text.get(at..s.start).unwrap_or(""), Style::PLAIN));
+            }
+            out.push((self.text.get(s.start..s.end).unwrap_or(""), s.style));
+            at = s.end;
+        }
+        if at < self.text.len() || out.is_empty() {
+            out.push((self.text.get(at..).unwrap_or(""), Style::PLAIN));
+        }
+        out
     }
     pub fn len(&self) -> usize {
         self.text.len()
@@ -223,9 +288,16 @@ impl Script {
             self.paras.push(Para::new(Element::Action, ""));
         }
         for p in &mut self.paras {
-            p.text = sanitize(&p.text);
-            if p.element.uppercase() {
-                p.text = p.text.to_uppercase();
+            let clean = sanitize(&p.text);
+            if clean != p.text {
+                p.text = clean;
+                p.spans.clear();
+            }
+            p.spans = style::fix(&p.text, &p.spans);
+            if p.element.uppercase() && p.text.chars().any(char::is_lowercase) {
+                let st = p.styles();
+                let t = p.text.clone();
+                p.set_text_styled(&t, &st, true);
             }
             if p.element != Element::SceneHeading {
                 p.scene_number = None;
@@ -262,9 +334,16 @@ impl Script {
         Pos { para, off }
     }
 
-    /// Insert `text` (control characters dropped; uppercased for uppercase elements) at `pos`;
-    /// returns the position after it.
+    /// Insert `text` (control characters dropped; uppercased for uppercase elements) at `pos`,
+    /// continuing the style of the character before it; returns the position after it.
     pub fn insert_text(&mut self, pos: Pos, text: &str) -> Result<Pos, DocError> {
+        let pos = self.clamp(pos);
+        let st = self.para(pos.para).map_or(Style::PLAIN, |p| p.style_before(pos.off));
+        self.insert_styled(pos, text, st)
+    }
+
+    /// Insert `text` in style `st` at `pos`; returns the position after it.
+    pub fn insert_styled(&mut self, pos: Pos, text: &str, st: Style) -> Result<Pos, DocError> {
         let pos = self.clamp(pos);
         let p = self.para_mut(pos.para)?;
         let mut ins = sanitize(text);
@@ -279,8 +358,51 @@ impl Script {
             }
             ins.truncate(cut);
         }
+        let mut styles = p.styles();
+        let at = pos.off.min(styles.len());
+        styles.splice(at..at, std::iter::repeat_n(st, ins.len()));
         p.text.insert_str(pos.off, &ins);
+        p.spans = style::compress(&p.text, &styles);
         Ok(Pos::new(pos.para, pos.off + ins.len()))
+    }
+
+    /// Set or clear a style flag over a range (in either order).
+    pub fn set_flag(&mut self, a: Pos, b: Pos, flag: Flag, on: bool) {
+        let (a, b) = (self.clamp(a), self.clamp(b));
+        let (a, b) = if a <= b { (a, b) } else { (b, a) };
+        for i in a.para..=b.para {
+            let Some(p) = self.paras.get_mut(i) else { break };
+            let from = if i == a.para { a.off } else { 0 };
+            let to = if i == b.para { b.off } else { p.text.len() };
+            let mut st = p.styles();
+            for x in st.get_mut(from..to.max(from)).into_iter().flatten() {
+                *x = x.with(flag, on);
+            }
+            p.spans = style::compress(&p.text, &st);
+        }
+    }
+
+    /// Whether every character in the range has `flag` (an empty range: the style before `a`).
+    pub fn all_have(&self, a: Pos, b: Pos, flag: Flag) -> bool {
+        let (a, b) = (self.clamp(a), self.clamp(b));
+        let (a, b) = if a <= b { (a, b) } else { (b, a) };
+        if a == b {
+            return self.para(a.para).is_some_and(|p| p.style_before(a.off).get(flag));
+        }
+        let mut any = false;
+        for i in a.para..=b.para {
+            let Some(p) = self.paras.get(i) else { break };
+            let from = if i == a.para { a.off } else { 0 };
+            let to = if i == b.para { b.off } else { p.text.len() };
+            let st = p.styles();
+            for (k, _) in p.text.char_indices().filter(|(k, _)| *k >= from && *k < to) {
+                any = true;
+                if !st.get(k).is_some_and(|s| s.get(flag)) {
+                    return false;
+                }
+            }
+        }
+        any
     }
 
     /// Delete between two positions (in either order). Paragraphs in between are removed and
@@ -293,17 +415,25 @@ impl Script {
         }
         if a.para == b.para {
             if let Some(p) = self.paras.get_mut(a.para) {
+                let mut st = p.styles();
+                st.drain(a.off..b.off.min(st.len()).max(a.off));
                 p.text.replace_range(a.off..b.off, "");
+                p.spans = style::compress(&p.text, &st);
             }
             return a;
         }
-        let tail = self.paras.get(b.para).and_then(|p| p.text.get(b.off..)).unwrap_or("").to_string();
+        let (tail, tail_st) = match self.paras.get(b.para) {
+            Some(q) => (q.text.get(b.off..).unwrap_or("").to_string(), q.styles().get(b.off..).map(<[Style]>::to_vec).unwrap_or_default()),
+            None => (String::new(), Vec::new()),
+        };
         if let Some(p) = self.paras.get_mut(a.para) {
-            p.text.truncate(a.off);
-            p.text.push_str(&tail);
-            if p.element.uppercase() {
-                p.text = p.text.to_uppercase();
-            }
+            let mut st = p.styles();
+            st.truncate(a.off);
+            st.extend(tail_st);
+            let mut t = p.text.get(..a.off).unwrap_or("").to_string();
+            t.push_str(&tail);
+            let upper = p.element.uppercase();
+            p.set_text_styled(&t, &st, upper);
         }
         let end = b.para.min(self.paras.len().saturating_sub(1));
         if a.para < end {
@@ -320,8 +450,12 @@ impl Script {
         }
         let pos = self.clamp(pos);
         let p = self.para_mut(pos.para)?;
+        let mut st = p.styles();
+        let tail_st = st.split_off(pos.off.min(st.len()));
         let tail = p.text.split_off(pos.off);
-        let next = Para::new(element, tail);
+        p.spans = style::compress(&p.text, &st);
+        let mut next = Para::new(element, "");
+        next.set_text_styled(&tail, &tail_st, element.uppercase());
         self.paras.insert(pos.para + 1, next);
         Ok(Pos::new(pos.para + 1, 0))
     }
@@ -331,7 +465,9 @@ impl Script {
         let p = self.para_mut(para)?;
         p.element = element;
         if element.uppercase() {
-            p.text = p.text.to_uppercase();
+            let st = p.styles();
+            let t = p.text.clone();
+            p.set_text_styled(&t, &st, true);
         }
         if element != Element::SceneHeading {
             p.scene_number = None;

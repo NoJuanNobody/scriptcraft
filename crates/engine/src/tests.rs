@@ -208,3 +208,36 @@ fn files_round_trip() {
     assert!(s.run("file.open", &json!({"path": dir.join("missing.fdx").to_str().unwrap()})).is_err());
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn bold_italic_underline() {
+    let mut s = Session::new(scriptcraft_doc::Script::new());
+    run(&mut s, "text.insert", json!({"text": "x"}));
+    run(&mut s, "text.enter", json!({}));
+    run(&mut s, "text.insert", json!({"text": "She is "}));
+    let st = run(&mut s, "format.bold", json!({}));
+    assert_eq!(st["bold"], true);
+    run(&mut s, "text.insert", json!({"text": "very"}));
+    run(&mut s, "format.bold", json!({}));
+    run(&mut s, "text.insert", json!({"text": " late."}));
+    let p = &s.script.paras[1];
+    assert_eq!(p.text, "She is very late.");
+    assert_eq!(p.spans, vec![scriptcraft_doc::Span { start: 7, end: 11, style: scriptcraft_doc::Style { bold: true, ..Default::default() } }]);
+    run(&mut s, "select.text", json!({"text": "late"}));
+    run(&mut s, "format.italic", json!({}));
+    run(&mut s, "format.underline", json!({}));
+    assert_eq!(run(&mut s, "format.state", json!({})), json!({"bold": false, "italic": true, "underline": true}));
+    run(&mut s, "format.italic", json!({}));
+    assert_eq!(run(&mut s, "format.state", json!({}))["italic"], false);
+    run(&mut s, "select.all", json!({}));
+    run(&mut s, "format.plain", json!({}));
+    assert!(s.script.paras.iter().all(|p| p.spans.is_empty()));
+    run(&mut s, "edit.undo", json!({}));
+    assert!(!s.script.paras[1].spans.is_empty());
+    // A caret move drops a pending style.
+    run(&mut s, "caret.docEnd", json!({}));
+    run(&mut s, "format.bold", json!({}));
+    assert_eq!(run(&mut s, "format.state", json!({}))["bold"], true);
+    run(&mut s, "caret.left", json!({}));
+    assert_eq!(run(&mut s, "format.state", json!({}))["bold"], false);
+}

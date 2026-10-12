@@ -97,3 +97,46 @@ fn json_round_trip() {
     let back: Script = serde_json::from_str(&j).unwrap();
     assert_eq!(back, s);
 }
+
+fn bold() -> Style {
+    Style { bold: true, ..Style::PLAIN }
+}
+
+#[test]
+fn styles_survive_edits() {
+    let mut s = Script::from_paras(vec![Para::new(Element::Action, "Hello world")]).unwrap();
+    s.set_flag(Pos::new(0, 6), Pos::new(0, 11), Flag::Bold, true);
+    assert_eq!(s.paras[0].spans, vec![Span { start: 6, end: 11, style: bold() }]);
+    assert!(s.all_have(Pos::new(0, 6), Pos::new(0, 11), Flag::Bold));
+    assert!(!s.all_have(Pos::new(0, 0), Pos::new(0, 11), Flag::Bold));
+    // Typing inside or right after a bold word continues it; before it does not.
+    s.insert_text(Pos::new(0, 11), "!").unwrap();
+    assert_eq!(s.paras[0].spans[0].end, 12);
+    s.insert_text(Pos::new(0, 0), ">> ").unwrap();
+    assert_eq!(s.paras[0].spans[0], Span { start: 9, end: 15, style: bold() });
+    // Split and join keep them.
+    s.split(Pos::new(0, 11), Element::Action).unwrap();
+    assert_eq!(s.paras[0].spans, vec![Span { start: 9, end: 11, style: bold() }]);
+    assert_eq!(s.paras[1].spans, vec![Span { start: 0, end: 4, style: bold() }]);
+    s.delete_range(Pos::new(0, 11), Pos::new(1, 0));
+    assert_eq!(s.paras[0].text, ">> Hello world!");
+    assert_eq!(s.paras[0].spans, vec![Span { start: 9, end: 15, style: bold() }]);
+    // Deleting part of the run shrinks it.
+    s.delete_range(Pos::new(0, 10), Pos::new(0, 12));
+    assert_eq!(s.paras[0].spans, vec![Span { start: 9, end: 13, style: bold() }]);
+    assert_eq!(s.paras[0].runs(), vec![(">> Hello ", Style::PLAIN), ("wld!", bold())]);
+}
+
+#[test]
+fn capitals_keep_styles() {
+    let mut p = Para::styled(Element::Action, &[("straße ".into(), Style::PLAIN), ("noir".into(), bold())]);
+    assert_eq!(p.spans, vec![Span { start: 8, end: 12, style: bold() }]);
+    let mut s = Script::from_paras(vec![p.clone()]).unwrap();
+    s.set_element(0, Element::SceneHeading).unwrap();
+    assert_eq!(s.paras[0].text, "STRASSE NOIR");
+    assert_eq!(s.paras[0].spans, vec![Span { start: 8, end: 12, style: bold() }]);
+    // Hostile spans are clamped.
+    p.spans = vec![Span { start: 99, end: 2, style: bold() }, Span { start: 1, end: 3, style: bold() }];
+    let s = Script::from_paras(vec![p]).unwrap();
+    assert_eq!(s.paras[0].spans, vec![Span { start: 1, end: 3, style: bold() }]);
+}

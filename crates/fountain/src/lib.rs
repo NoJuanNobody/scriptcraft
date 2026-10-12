@@ -8,8 +8,11 @@
 //! index-card summary), sections (`#`, skipped), notes (`[[…]]`, removed), boneyard (`/* … */`,
 //! removed), page breaks (`===`, ignored) and lyrics (`~`, imported as Action).
 //!
-//! Emphasis markers (`*italic*`, `**bold**`, `_underline_`) are kept as literal text.
+//! Emphasis (`*italic*`, `**bold**`, `***bold italic***`, `_underline_`) becomes styled text, and
+//! styled text is written back with markers (literal `*` and `_` are escaped).
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
+
+mod emphasis;
 
 use scriptcraft_doc::{Element, MAX_PARAS, Para, Script, TitlePage};
 
@@ -114,6 +117,9 @@ pub fn parse(src: &str) -> Script {
             continue;
         }
         push_action(&mut paras, line, was_blank);
+    }
+    for p in &mut paras {
+        emphasis::apply(p);
     }
     let mut s = Script::from_paras(paras).unwrap_or_default();
     s.title = title;
@@ -280,7 +286,8 @@ pub fn write(s: &Script) -> String {
     }
     let mut prev: Option<Element> = None;
     for p in &s.paras {
-        let text = p.text.trim();
+        let encoded = emphasis::write(p);
+        let text = encoded.trim();
         if text.is_empty() && p.summary.is_empty() {
             continue;
         }
