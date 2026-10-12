@@ -18,6 +18,8 @@ fn sample() -> Script {
     .unwrap();
     s.paras[1].scene_number = Some("1".into());
     s.paras[1].summary = "Margo waits.".into();
+    s.paras[1].color = Some(scriptcraft_doc::CardColor::Teal);
+    s.paras[1].tags = vec!["opening".into(), "rain".into()];
     s.paras[6].dual = true;
     s.set_flag(scriptcraft_doc::Pos::new(2, 0), scriptcraft_doc::Pos::new(2, 4), scriptcraft_doc::Flag::Bold, true);
     s.set_flag(scriptcraft_doc::Pos::new(2, 2), scriptcraft_doc::Pos::new(2, 9), scriptcraft_doc::Flag::Underline, true);
@@ -44,6 +46,10 @@ fn round_trip() {
     let s = sample();
     let x = write(&s);
     assert!(x.contains("<DualDialogue>"), "{x}");
+    assert!(x.contains("Color=\"#2F2F9E9E9696\""), "{x}");
+    assert_eq!(parse_color("#FFFFFFFFFFFF"), None);
+    assert_eq!(parse_color("#E04F4F"), Some(scriptcraft_doc::CardColor::Red));
+    assert_eq!(parse_color("nonsense"), None);
     assert!(x.contains("<Paragraph Type=\"Scene Heading\" Number=\"1\">"), "{x}");
     let back = parse(&x).unwrap();
     assert_eq!(back, s, "\n{x}");

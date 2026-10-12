@@ -6,6 +6,7 @@
 //! - `document.inspect`: script structure; `ui.inspect`: view state and geometry
 //! - `ui.key {key, shift?, alt?, cmd?}`, `ui.text {text}`: keyboard input through egui
 //! - `ui.click {x, y, count?, shift?, button?: "right"}`: pointer input in window points
+//! - `ui.drag {x, y, toX, toY}`: press, move in steps and release
 //! - `ui.screenshot {path?}`: PNG of the window (base64 `png` without a path)
 
 use std::sync::mpsc::Sender;
@@ -124,6 +125,23 @@ pub fn handle(app: &mut ScriptApp, ctx: &egui::Context, req: &ControlRequest) ->
                 app.synthetic.push(egui::Event::PointerButton { pos, button, pressed: true, modifiers: m });
                 app.synthetic.push(egui::Event::PointerButton { pos, button, pressed: false, modifiers: m });
             }
+            ok(json!({}))
+        }
+        "ui.drag" => {
+            let (Some(x), Some(y), Some(tx), Some(ty)) = (f("x"), f("y"), f("toX"), f("toY")) else { return err("missing x/y/toX/toY") };
+            let m = mods(p);
+            let button = egui::PointerButton::Primary;
+            // One step per frame (a focus event separates frames), so egui sees a real drag.
+            let sep = || egui::Event::WindowFocused(true);
+            app.synthetic.push(egui::Event::PointerMoved(egui::pos2(x, y)));
+            app.synthetic.push(egui::Event::PointerButton { pos: egui::pos2(x, y), button, pressed: true, modifiers: m });
+            for k in 1..=8 {
+                let q = k as f32 / 8.0;
+                app.synthetic.push(sep());
+                app.synthetic.push(egui::Event::PointerMoved(egui::pos2(x + (tx - x) * q, y + (ty - y) * q)));
+            }
+            app.synthetic.push(sep());
+            app.synthetic.push(egui::Event::PointerButton { pos: egui::pos2(tx, ty), button, pressed: false, modifiers: m });
             ok(json!({}))
         }
         other => err(format!("unknown method `{other}`")),

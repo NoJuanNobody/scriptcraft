@@ -111,6 +111,14 @@ fn scenes_cards_and_numbers() {
     assert!(lay.pages.iter().flat_map(|p| &p.lines).any(|l| l.kind == scriptcraft_layout::LineKind::SceneNumber));
     run(&mut s, "scene.goto", json!({"index": 3}));
     assert_eq!(s.sel.focus.para, s.script.scenes()[3].para);
+    run(&mut s, "scene.setColor", json!({"index": 1, "color": "pink"}));
+    run(&mut s, "scene.setTags", json!({"index": 1, "tags": "radio, storm, radio, "}));
+    let l = run(&mut s, "scene.list", json!({}));
+    assert_eq!(l["scenes"][1]["color"], "pink");
+    assert_eq!(l["scenes"][1]["tags"], json!(["radio", "storm"]));
+    run(&mut s, "scene.setColor", json!({"index": 1, "color": null}));
+    assert_eq!(s.script.scenes()[1].color, None);
+    assert!(s.run("scene.setColor", &json!({"index": 1, "color": "plaid"})).is_err());
 }
 
 #[test]

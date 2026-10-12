@@ -84,11 +84,9 @@ pub fn parse(s: &str) -> Vec<(String, Style)> {
 /// Re-read a paragraph's text as Fountain emphasis (other fields kept).
 pub fn apply(p: &mut Para) {
     let runs = parse(&p.text);
-    let mut q = Para::styled(p.element, &runs);
-    q.scene_number = p.scene_number.take();
-    q.dual = p.dual;
-    q.summary = std::mem::take(&mut p.summary);
-    *p = q;
+    let q = Para::styled(p.element, &runs);
+    p.text = q.text;
+    p.spans = q.spans;
 }
 
 fn escape(s: &str) -> String {

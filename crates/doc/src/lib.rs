@@ -52,6 +52,84 @@ pub struct Para {
     /// Bold / italic / underline runs (byte ranges of `text`; plain text has none).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub spans: Vec<Span>,
+    /// Index-card colour (scene headings only).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<CardColor>,
+    /// Index-card tags (scene headings only).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tags: Vec<String>,
+}
+
+/// Index-card colours.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum CardColor {
+    Red,
+    Orange,
+    Yellow,
+    Green,
+    Teal,
+    Blue,
+    Purple,
+    Pink,
+}
+
+impl CardColor {
+    pub const ALL: [CardColor; 8] = [
+        CardColor::Red,
+        CardColor::Orange,
+        CardColor::Yellow,
+        CardColor::Green,
+        CardColor::Teal,
+        CardColor::Blue,
+        CardColor::Purple,
+        CardColor::Pink,
+    ];
+    pub fn id(self) -> &'static str {
+        match self {
+            CardColor::Red => "red",
+            CardColor::Orange => "orange",
+            CardColor::Yellow => "yellow",
+            CardColor::Green => "green",
+            CardColor::Teal => "teal",
+            CardColor::Blue => "blue",
+            CardColor::Purple => "purple",
+            CardColor::Pink => "pink",
+        }
+    }
+    pub fn parse(s: &str) -> Option<CardColor> {
+        CardColor::ALL.into_iter().find(|c| c.id().eq_ignore_ascii_case(s.trim()))
+    }
+    /// sRGB of the colour.
+    pub const fn rgb(self) -> [u8; 3] {
+        match self {
+            CardColor::Red => [0xe0, 0x4f, 0x4f],
+            CardColor::Orange => [0xe8, 0x8a, 0x2c],
+            CardColor::Yellow => [0xe6, 0xc2, 0x2e],
+            CardColor::Green => [0x4c, 0xae, 0x4f],
+            CardColor::Teal => [0x2f, 0x9e, 0x96],
+            CardColor::Blue => [0x4c, 0x6e, 0xf5],
+            CardColor::Purple => [0x8e, 0x5c, 0xd6],
+            CardColor::Pink => [0xd6, 0x5c, 0xa8],
+        }
+    }
+    /// The nearest colour to an sRGB value.
+    pub fn nearest(rgb: [u8; 3]) -> CardColor {
+        let d = |c: CardColor| c.rgb().iter().zip(rgb).map(|(a, b)| (i32::from(*a) - i32::from(b)).pow(2)).sum::<i32>();
+        CardColor::ALL.into_iter().min_by_key(|c| d(*c)).unwrap_or(CardColor::Blue)
+    }
+}
+
+/// Clean index-card tags: trimmed, no commas or control characters, unique, at most 20 of 40 chars.
+pub fn clean_tags<'a>(tags: impl IntoIterator<Item = &'a str>) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for t in tags {
+        let t: String = sanitize(t).replace([',', '[', ']'], " ").split_whitespace().collect::<Vec<_>>().join(" ").chars().take(40).collect();
+        if !t.is_empty() && !out.iter().any(|o| o.eq_ignore_ascii_case(&t)) && out.len() < 20 {
+            out.push(t);
+        }
+    }
+    out
 }
 
 impl Para {
@@ -61,7 +139,7 @@ impl Para {
             text = text.to_uppercase();
         }
         text = sanitize(&text);
-        Para { element, text, scene_number: None, dual: false, summary: String::new(), spans: Vec::new() }
+        Para { element, text, scene_number: None, dual: false, summary: String::new(), spans: Vec::new(), color: None, tags: Vec::new() }
     }
 
     /// A paragraph from styled text runs (FDX `<Text Style>` runs, Fountain emphasis).
@@ -251,6 +329,8 @@ pub struct Scene {
     pub heading: String,
     pub number: Option<String>,
     pub summary: String,
+    pub color: Option<CardColor>,
+    pub tags: Vec<String>,
 }
 
 /// The screenplay.
@@ -311,6 +391,11 @@ impl Script {
             }
             if p.element != Element::SceneHeading {
                 p.scene_number = None;
+                p.color = None;
+                p.tags.clear();
+            } else {
+                let t = std::mem::take(&mut p.tags);
+                p.tags = clean_tags(t.iter().map(String::as_str));
             }
             if p.element != Element::Character {
                 p.dual = false;
@@ -511,6 +596,8 @@ impl Script {
                     heading: p.text.clone(),
                     number: p.scene_number.clone(),
                     summary: p.summary.clone(),
+                    color: p.color,
+                    tags: p.tags.clone(),
                 })
             })
             .collect()

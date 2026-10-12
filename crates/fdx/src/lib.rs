@@ -20,6 +20,10 @@
 //! values (`AllCaps`, `Strikeout`…) are ignored.
 //! Unknown paragraph types (`Cast List`, `New Act`, `Lyrics`…) import as General.
 //!
+//! Scene headings' `SceneProperties` carry the index-card summary and colour (`Color`, written
+//! in Final Draft's 48-bit `#RRRRGGGGBBBB` form); card tags use a ScriptCraft-only
+//! `ScriptCraftTags` attribute.
+//!
 //! `<ElementSettings Type="…">` carry each element's indents and spacing (`ParagraphSpec`),
 //! capitals (`FontSpec Style="AllCaps"`) and Enter target (`Behavior ReturnKey`). ScriptCraft's
 //! Tab targets have no FDX equivalent and are not written.
@@ -60,6 +64,8 @@ struct Open {
     runs: Vec<(String, Style)>,
     style: Style,
     summary: String,
+    color: Option<scriptcraft_doc::CardColor>,
+    tags: Vec<String>,
     wrapper: bool,
     in_text: bool,
 }
@@ -148,6 +154,8 @@ pub fn parse(src: &str) -> Result<Script, FdxError> {
                             runs: Vec::new(),
                             style: Style::PLAIN,
                             summary: String::new(),
+                            color: None,
+                            tags: Vec::new(),
                             wrapper: false,
                             in_text: false,
                         };
@@ -155,6 +163,14 @@ pub fn parse(src: &str) -> Result<Script, FdxError> {
                             finish(o, &mut open, &mut paras, &mut title_lines, &mut dual_chars);
                         } else {
                             open.push(o);
+                        }
+                    }
+                    "SceneProperties" => {
+                        let color = attr("Color").and_then(|c| parse_color(&c));
+                        let tags = attr("ScriptCraftTags").map(|t| scriptcraft_doc::clean_tags(t.split(','))).unwrap_or_default();
+                        if let Some(o) = open.last_mut().filter(|o| o.kind == Kind::Body) {
+                            o.color = color;
+                            o.tags = tags;
                         }
                     }
                     "Text" => {
@@ -260,6 +276,22 @@ fn push_text(o: &mut Open, s: &str) {
     }
 }
 
+/// A scene colour: `#RRGGBB` or Final Draft's 48-bit `#RRRRGGGGBBBB`. White means none.
+fn parse_color(c: &str) -> Option<scriptcraft_doc::CardColor> {
+    let h = c.trim().trim_start_matches('#');
+    let step = match h.len() {
+        6 => 2,
+        12 => 4,
+        _ => return None,
+    };
+    let ch = |i: usize| h.get(i * step..i * step + 2).and_then(|x| u8::from_str_radix(x, 16).ok());
+    let rgb = [ch(0)?, ch(1)?, ch(2)?];
+    if rgb.iter().all(|v| *v >= 0xf0) {
+        return None;
+    }
+    Some(scriptcraft_doc::CardColor::nearest(rgb))
+}
+
 /// `Bold+Italic+Underline` (any order, other values ignored).
 fn parse_style(v: &str) -> Style {
     let mut st = Style::PLAIN;
@@ -306,6 +338,8 @@ fn finish(o: Open, open: &mut [Open], paras: &mut Vec<Para>, title_lines: &mut V
             if element == Element::SceneHeading {
                 p.scene_number = o.number.filter(|n| !n.trim().is_empty());
                 p.summary = o.summary;
+                p.color = o.color;
+                p.tags = o.tags;
             }
             if element == Element::Character
                 && let Some(n) = dual_chars.as_mut()
@@ -396,11 +430,23 @@ fn para_xml(out: &mut String, indent: &str, p: &Para) {
         out.push_str(&format!(" Number=\"{}\"", esc(n.trim())));
     }
     out.push_str(">\n");
-    if p.element == Element::SceneHeading && !p.summary.trim().is_empty() {
-        out.push_str(&format!(
-            "{indent}  <SceneProperties Title=\"\">\n{indent}    <Summary>\n{indent}      <Paragraph Type=\"Action\">\n{indent}        <Text>{}</Text>\n{indent}      </Paragraph>\n{indent}    </Summary>\n{indent}  </SceneProperties>\n",
-            esc(p.summary.trim())
-        ));
+    if p.element == Element::SceneHeading && (!p.summary.trim().is_empty() || p.color.is_some() || !p.tags.is_empty()) {
+        let mut attrs = String::new();
+        if let Some(c) = p.color {
+            let [r, g, b] = c.rgb();
+            attrs.push_str(&format!(" Color=\"#{r:02X}{r:02X}{g:02X}{g:02X}{b:02X}{b:02X}\""));
+        }
+        if !p.tags.is_empty() {
+            attrs.push_str(&format!(" ScriptCraftTags=\"{}\"", esc(&p.tags.join(", "))));
+        }
+        out.push_str(&format!("{indent}  <SceneProperties{attrs} Title=\"\">\n"));
+        if !p.summary.trim().is_empty() {
+            out.push_str(&format!(
+                "{indent}    <Summary>\n{indent}      <Paragraph Type=\"Action\">\n{indent}        <Text>{}</Text>\n{indent}      </Paragraph>\n{indent}    </Summary>\n",
+                esc(p.summary.trim())
+            ));
+        }
+        out.push_str(&format!("{indent}  </SceneProperties>\n"));
     }
     for (t, st) in p.runs() {
         out.push_str(&format!("{indent}  <Text{}>{}</Text>\n", style_attr(st), esc(t)));

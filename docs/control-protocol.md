@@ -32,6 +32,7 @@ One JSON object per line; one reply per line, `{"id", "ok": true, "result"}` or 
 | `ui.key` | `{key, shift?, alt?, cmd?}` | a key press through egui (`Enter`, `Tab`, `A`, `ArrowUp`…) |
 | `ui.text` | `{text}` | typed text through egui |
 | `ui.click` | `{x, y, count?, shift?, button?: "right"}` | a pointer click in window points |
+| `ui.drag` | `{x, y, toX, toY}` | press, move in steps over several frames, release |
 | `ui.screenshot` | `{path?}` | PNG of the window (base64 `png` in the reply without `path`) |
 
 ## Headless screenshots

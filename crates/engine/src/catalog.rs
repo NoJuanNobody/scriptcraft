@@ -112,7 +112,8 @@ pub const FEATURES: &[Feature] = &[
     // Navigation and structure
     f("Structure", "Navigator: scene list", Done, &["scene.list", "scene.goto"], ""),
     f("Structure", "Index cards with summaries", Done, &["scene.setSummary", "scene.setHeading", "ui.view.cards"], ""),
-    f("Structure", "Reorder scenes", Done, &["scene.move"], "move by card"),
+    f("Structure", "Reorder scenes", Done, &["scene.move"], "drag index cards"),
+    f("Structure", "Index card colours and tags", Done, &["scene.setColor", "scene.setTags"], "kept in FDX and Fountain"),
     f("Structure", "Go to page", Done, &["caret.gotoPage"], ""),
     f("Structure", "Beat Board", Missing, &[], ""),
     f("Structure", "Outline Editor (structure points)", Missing, &[], ""),

@@ -14,6 +14,10 @@ pub fn specs() -> Vec<CommandSpec> {
             .params(r#"{"index": n, "summary": string}"#),
         CommandSpec::new("scene.setHeading", "Edit Scene Heading", "View › Index Cards", set_heading).params(r#"{"index": n, "heading": string}"#),
         CommandSpec::new("scene.move", "Move Scene", "View › Index Cards", move_scene).params(r#"{"from": n, "to": n}"#),
+        CommandSpec::new("scene.setColor", "Card Colour", "View › Index Cards", set_color)
+            .params(r#"{"index": n, "color": "red"|"orange"|"yellow"|"green"|"teal"|"blue"|"purple"|"pink"|null}"#),
+        CommandSpec::new("scene.setTags", "Card Tags", "View › Index Cards", set_tags)
+            .params(r#"{"index": n, "tags": [string] or "comma, separated"}"#),
         CommandSpec::new("scene.numberAll", "Number Scenes", "Production › Scene Numbers", number_all),
         CommandSpec::new("scene.clearNumbers", "Remove Scene Numbers", "Production › Scene Numbers", clear_numbers),
         CommandSpec::new("scene.setNumber", "Set Scene Number", "Production › Scene Numbers", set_number).params(r#"{"index": n, "number": string}"#),
@@ -28,6 +32,7 @@ fn list(s: &mut Session, _: &Value) -> CmdResult {
         "scenes": s.script.scenes().iter().map(|sc| json!({
             "index": sc.index, "para": sc.para, "heading": sc.heading, "number": sc.number,
             "summary": sc.summary, "page": l.page_number_of(sc.para),
+            "color": sc.color.map(|c| c.id()), "tags": sc.tags,
         })).collect::<Vec<_>>(),
     }))
 }
@@ -86,4 +91,28 @@ fn set_number(s: &mut Session, v: &Value) -> CmdResult {
         p.scene_number = (!n.is_empty()).then_some(n);
     }
     Ok(json!({"para": para}))
+}
+
+fn set_color(s: &mut Session, v: &Value) -> CmdResult {
+    let para = scene_para(s, v)?;
+    let color = match v.get("color") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(c)) if c.is_empty() || c == "none" => None,
+        Some(Value::String(c)) => Some(scriptcraft_doc::CardColor::parse(c).ok_or_else(|| CmdError::Params(format!("unknown colour `{c}`")))?),
+        Some(_) => return Err(CmdError::Params("`color` must be a colour name or null".into())),
+    };
+    s.script.para_mut(para)?.color = color;
+    Ok(json!({"para": para, "color": color.map(|c| c.id())}))
+}
+
+fn set_tags(s: &mut Session, v: &Value) -> CmdResult {
+    let para = scene_para(s, v)?;
+    let tags: Vec<String> = match v.get("tags") {
+        Some(Value::String(t)) => scriptcraft_doc::clean_tags(t.split(',')),
+        Some(Value::Array(a)) => scriptcraft_doc::clean_tags(a.iter().filter_map(Value::as_str)),
+        None | Some(Value::Null) => Vec::new(),
+        Some(_) => return Err(CmdError::Params("`tags` must be a list or a comma-separated string".into())),
+    };
+    s.script.para_mut(para)?.tags = tags.clone();
+    Ok(json!({"para": para, "tags": tags}))
 }

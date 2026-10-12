@@ -6,7 +6,7 @@
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 mod canvas;
-mod cards;
+pub mod cards;
 mod chrome;
 pub mod control;
 pub mod icons;
@@ -77,6 +77,10 @@ pub struct ScriptApp {
     pub find: Option<FindBar>,
     pub title_dialog: bool,
     pub element_dialog: bool,
+    /// The index card being dragged.
+    pub card_drag: Option<usize>,
+    /// The tags field of an index card's menu: (scene, text).
+    pub tag_edit: Option<(usize, String)>,
     pub about: bool,
     /// Native file dialogs are allowed (off in tests and headless screenshots).
     pub dialogs: bool,
@@ -122,6 +126,8 @@ impl ScriptApp {
             find: None,
             title_dialog: false,
             element_dialog: false,
+            card_drag: None,
+            tag_edit: None,
             about: false,
             dialogs: true,
             confirm_close: false,

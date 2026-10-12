@@ -471,6 +471,10 @@ pub fn navigator(app: &mut ScriptApp, ui: &mut Ui) {
                                     egui::Color32::TRANSPARENT
                                 };
                                 ui.painter().rect_filled(r, 5.0, fill);
+                                if let Some(c) = sc.color {
+                                    let strip = egui::Rect::from_min_size(r.min + vec2(1.0, 4.0), vec2(3.0, r.height() - 8.0));
+                                    ui.painter().rect_filled(strip, 1.5, crate::cards::card_rgb(c));
+                                }
                                 let p = ui.painter();
                                 p.text(
                                     r.left_top() + vec2(8.0, 6.0),

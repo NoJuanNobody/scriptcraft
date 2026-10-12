@@ -132,3 +132,14 @@ fn emphasis_round_trip() {
     let out = write(&s);
     assert_eq!(parse(&out), s, "{out}");
 }
+
+#[test]
+fn card_colour_and_tags() {
+    let src = "INT. LAB - NIGHT\n\n= Ada wins.\n\n[[color: teal]]\n\n[[tags: climax, Ada]]\n\n[[an ordinary note]]\nBeakers bubble.\n";
+    let s = parse(src);
+    assert_eq!(s.paras[0].color, Some(scriptcraft_doc::CardColor::Teal));
+    assert_eq!(s.paras[0].tags, vec!["climax", "Ada"]);
+    assert_eq!(s.paras[0].summary, "Ada wins.");
+    assert_eq!(s.paras[1].text, "Beakers bubble.");
+    assert_eq!(parse(&write(&s)), s, "{}", write(&s));
+}
