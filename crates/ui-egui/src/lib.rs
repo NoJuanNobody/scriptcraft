@@ -96,6 +96,8 @@ pub struct ScriptApp {
     pub element_dialog: bool,
     /// The index card being dragged.
     pub card_drag: Option<usize>,
+    /// Screen rectangles of the index cards last drawn (for demos and agents).
+    pub card_rects: Vec<egui::Rect>,
     /// The tags field of an index card's menu: (scene, text).
     pub tag_edit: Option<(usize, String)>,
     pub about: bool,
@@ -161,6 +163,7 @@ impl ScriptApp {
             title_dialog: false,
             element_dialog: false,
             card_drag: None,
+            card_rects: Vec::new(),
             tag_edit: None,
             about: false,
             dialogs: true,

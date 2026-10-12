@@ -132,6 +132,7 @@ pub fn show(app: &mut ScriptApp, ui: &mut Ui) {
             ui.add_space(18.0);
         }
     });
+    app.card_rects = rects.clone();
     // Drop: the scene moves to the card under the pointer.
     if let (Some(from), Some(q)) = (drop_from, pointer)
         && let Some(to) = rects.iter().position(|r| r.contains(q))

@@ -260,3 +260,24 @@ fn browser_style_open_and_download() {
     assert_eq!(st.session.script.paras.len(), 2);
     assert_eq!(st.session.script.paras[0].text, "EXT. PIER - DAWN");
 }
+
+#[test]
+fn misspellings_update_as_you_type() {
+    // Regression: the spelling cache was keyed by the layout's address, which a new layout can
+    // reuse, so a word typed later was never underlined.
+    let mut app = ScriptApp::new(Session::sample());
+    app.dialogs = false;
+    let mut h = harness(app);
+    step(&mut h, 3);
+    for t in ["The ", "nedle ", "shivers."] {
+        h.state_mut().execute("caret.docEnd", json!({})).unwrap();
+        h.state_mut().execute("text.insert", json!({"text": t})).unwrap();
+        step(&mut h, 2);
+    }
+    let st = h.state();
+    let words: Vec<&str> = st.canvas.underlined().iter().filter_map(|&(p, a, b)| st.session.script.para(p)?.text.get(a..b)).collect();
+    assert!(words.contains(&"NEDLE"), "underlined: {words:?}");
+    let rev = h.state().session.revision();
+    h.state_mut().execute("text.insert", json!({"text": "x"})).unwrap();
+    assert!(h.state().session.revision() > rev);
+}

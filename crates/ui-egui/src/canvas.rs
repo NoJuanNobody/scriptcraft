@@ -24,7 +24,7 @@ pub struct CanvasState {
     pub suggest_shown: bool,
     pub caret_screen: Option<Rect>,
     /// Misspellings for a layout (by pointer) and dictionary size: (para, start, end).
-    spell_cache: Option<(usize, usize, std::sync::Arc<Vec<(usize, usize, usize)>>)>,
+    spell_cache: Option<(u64, usize, std::sync::Arc<Vec<(usize, usize, usize)>>)>,
     /// When the user last typed, clicked or moved the caret (the caret shows solid, then blinks).
     pub last_activity: f64,
     /// Blink the caret (off for screenshots and tests).
@@ -52,6 +52,13 @@ impl Default for CanvasState {
             last_activity: 0.0,
             blink: true,
         }
+    }
+}
+
+impl CanvasState {
+    /// The misspellings the page view last underlined: (paragraph, start, end).
+    pub fn underlined(&self) -> &[(usize, usize, usize)] {
+        self.spell_cache.as_ref().map_or(&[], |(_, _, v)| v.as_slice())
     }
 }
 
@@ -88,11 +95,12 @@ fn current_suggest(app: &ScriptApp) -> Option<Suggest> {
 }
 
 /// Misspellings of the current script, recomputed only when the script or dictionaries change.
-fn misspellings(app: &mut ScriptApp, layout: &std::sync::Arc<Layout>) -> std::sync::Arc<Vec<(usize, usize, usize)>> {
+/// Keyed by the session's revision (not the layout's address, which a new layout can reuse).
+fn misspellings(app: &mut ScriptApp) -> std::sync::Arc<Vec<(usize, usize, usize)>> {
     if !app.spelling {
         return std::sync::Arc::new(Vec::new());
     }
-    let id = std::sync::Arc::as_ptr(layout) as usize;
+    let id = app.session.revision();
     let dict = app.session.ignored_words.len() + app.session.user_words.len();
     if let Some((i, d, v)) = &app.canvas.spell_cache
         && *i == id
@@ -420,7 +428,7 @@ pub fn show(app: &mut ScriptApp, ui: &mut Ui) {
             })
             .collect();
         let clip = ui.clip_rect();
-        let bad = misspellings(app, &layout);
+        let bad = misspellings(app);
         for (i, pr) in rects.iter().enumerate() {
             if pr.intersects(clip) {
                 paint_page(ui, app, &layout, i, *pr, &bad);

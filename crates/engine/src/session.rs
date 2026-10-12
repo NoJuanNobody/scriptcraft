@@ -72,6 +72,9 @@ pub struct Session {
     /// Speed view: the page view shows one continuous page (reports still use real pages).
     pub speed: bool,
     speed_layout: Option<Arc<Layout>>,
+    /// Counts changes to the script (anything that drops the layout cache), for caches keyed
+    /// on the script's state.
+    revision: u64,
 }
 
 impl Session {
@@ -95,6 +98,7 @@ impl Session {
             layout: None,
             speed: false,
             speed_layout: None,
+            revision: 0,
         };
         let _ = s.script.normalize();
         s
@@ -147,6 +151,12 @@ impl Session {
     pub fn invalidate(&mut self) {
         self.layout = None;
         self.speed_layout = None;
+        self.revision = self.revision.wrapping_add(1);
+    }
+
+    /// Changes so far (increases whenever the script may have changed).
+    pub fn revision(&self) -> u64 {
+        self.revision
     }
 
     /// The caret paragraph's element.

@@ -36,4 +36,5 @@ the window icon in `apps/scriptcraft/src/main.rs`).
 | `docs/images/hero.png` | The ScriptCraft contributors | Screenshot of ScriptCraft rendered by `ui_shot` | MIT OR Apache-2.0 |
 | `docs/images/cards.png` | The ScriptCraft contributors | Screenshot of ScriptCraft rendered by `ui_shot` | MIT OR Apache-2.0 |
 | `docs/images/reports.png` | The ScriptCraft contributors | Screenshot of ScriptCraft rendered by `ui_shot` | MIT OR Apache-2.0 |
+| `docs/demo/pr33-tour.mp4` | The ScriptCraft contributors | Recording of ScriptCraft by `ui_demo` (docs/demo/record.sh) | MIT OR Apache-2.0 |
 | `docs/images/dark-smarttype.png` | The ScriptCraft contributors | Screenshot of ScriptCraft rendered by `ui_shot` | MIT OR Apache-2.0 |
