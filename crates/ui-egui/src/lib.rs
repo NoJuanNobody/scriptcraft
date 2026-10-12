@@ -199,6 +199,18 @@ impl ScriptApp {
         }
     }
 
+    /// The process is being terminated: keep unsaved changes as a recovery copy (offered at the
+    /// next start) and save preferences. Unlike [`ScriptApp::on_exit`] it never clears recovery.
+    pub fn emergency_save(&mut self) {
+        let Some(dir) = self.state_dir.clone() else { return };
+        if self.session.dirty {
+            let _ = persist::write_recovery(&dir, self.session.path.as_deref(), &self.session.script);
+        }
+        self.prefs.dark = Some(self.dark);
+        self.prefs.zoom = self.canvas.zoom;
+        let _ = persist::save_prefs(&dir, &self.prefs);
+    }
+
     /// Before a save over an existing file: keep the old version in the backups folder.
     fn before_save(&mut self, id: &str, params: &Value) {
         let Some(dir) = self.state_dir.clone() else { return };

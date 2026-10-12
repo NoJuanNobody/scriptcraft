@@ -9,8 +9,10 @@ scriptcraft --control 7990            # or SCRIPTCRAFT_CONTROL_PORT=7990
 
 ## Keys
 
-On start the app writes a random 256-bit key to `<settings>/control-key.local-<port>` (mode 0600;
-removed on a clean exit). Settings: macOS `~/Library/Application Support/ScriptCraft`, Windows
+On start the app writes a random 256-bit key to `<settings>/control-key.local-<port>` (mode 0600),
+followed on a second line by the app's process id. The file is removed when the app exits,
+including on SIGTERM, SIGINT or SIGHUP (unsaved changes are kept as a recovery copy first).
+Clients read the first line; a file whose process is no longer running is reported as stale. Settings: macOS `~/Library/Application Support/ScriptCraft`, Windows
 `%APPDATA%\ScriptCraft`, else `$XDG_CONFIG_HOME/scriptcraft`. Every request must carry it as
 `key`; requests with a missing or wrong key are refused. The server binds 127.0.0.1 only.
 

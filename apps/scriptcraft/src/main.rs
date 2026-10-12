@@ -13,10 +13,24 @@ use scriptcraft_engine::Session;
 use scriptcraft_ui_egui::ScriptApp;
 use serde_json::json;
 
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
+
+/// Set by the signal handler: the process is being terminated.
+static TERMINATING: AtomicBool = AtomicBool::new(false);
+
 struct App(ScriptApp, Option<control_server::KeyFile>);
 
 impl eframe::App for App {
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        if TERMINATING.load(Ordering::SeqCst) {
+            // SIGTERM/SIGINT/SIGHUP: keep unsaved work as a recovery copy, drop the key, exit.
+            self.0.emergency_save();
+            if let Some(k) = &self.1 {
+                k.remove();
+            }
+            std::process::exit(0);
+        }
         self.0.logic(ctx);
         if std::mem::take(&mut self.0.close_wanted) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
@@ -69,7 +83,32 @@ fn icon() -> egui::IconData {
     egui::IconData { rgba, width: n as u32, height: n as u32 }
 }
 
+/// On SIGTERM/SIGINT/SIGHUP, wake the UI so it saves and exits; if it does not within 3 s
+/// (frozen), remove the key file and exit anyway.
+fn install_signal_handler(ctx: Arc<Mutex<Option<egui::Context>>>, key: Arc<Mutex<Option<control_server::KeyFile>>>) {
+    let r = ctrlc::set_handler(move || {
+        TERMINATING.store(true, Ordering::SeqCst);
+        if let Some(c) = ctx.lock().ok().and_then(|g| g.clone()) {
+            c.request_repaint();
+        }
+        let key = key.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_secs(3));
+            if let Some(k) = key.lock().ok().and_then(|g| g.clone()) {
+                k.remove();
+            }
+            std::process::exit(1);
+        });
+    });
+    if let Err(e) = r {
+        eprintln!("scriptcraft: no signal handler ({e})");
+    }
+}
+
 fn main() -> eframe::Result<()> {
+    let ctx_slot: Arc<Mutex<Option<egui::Context>>> = Arc::new(Mutex::new(None));
+    let key_slot: Arc<Mutex<Option<control_server::KeyFile>>> = Arc::new(Mutex::new(None));
+    install_signal_handler(ctx_slot.clone(), key_slot.clone());
     let mut control_port: Option<u16> = std::env::var("SCRIPTCRAFT_CONTROL_PORT").ok().and_then(|p| p.parse().ok());
     let mut file: Option<String> = None;
     let mut blank = false;
@@ -104,6 +143,9 @@ fn main() -> eframe::Result<()> {
         "ScriptCraft",
         options,
         Box::new(move |cc| {
+            if let Ok(mut g) = ctx_slot.lock() {
+                *g = Some(cc.egui_ctx.clone());
+            }
             let mut app = ScriptApp::new(session);
             app.dark = cc.egui_ctx.system_theme() == Some(egui::Theme::Dark);
             if let Some(dir) = scriptcraft_control_key::settings_dir() {
@@ -114,6 +156,9 @@ fn main() -> eframe::Result<()> {
                 && let Some((rx, kf)) = control_server::start(port, cc.egui_ctx.clone())
             {
                 app = app.with_control(rx);
+                if let Ok(mut g) = key_slot.lock() {
+                    g.clone_from(&kf);
+                }
                 key_file = kf;
             }
             Ok(Box::new(App(app, key_file)))
