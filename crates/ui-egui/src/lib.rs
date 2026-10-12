@@ -63,6 +63,8 @@ pub const UI_COMMANDS: &[(&str, &str, &str, &str)] = &[
     ("ui.exportFdx", "Export Final Draft (FDX)…", "File", ""),
     ("ui.exportFountain", "Export Fountain…", "File", ""),
     ("ui.about", "About ScriptCraft", "Help", ""),
+    ("ui.openRecent", "Open Recent", "File", ""),
+    ("ui.clearRecent", "Clear Recent Files", "File", ""),
 ];
 
 /// The application state.
@@ -93,6 +95,14 @@ pub struct ScriptApp {
     pub enter_picker: bool,
     /// The settings folder for state kept between runs (user dictionary…); `None` in tests.
     pub state_dir: Option<std::path::PathBuf>,
+    /// Preferences kept between runs (recent files, autosave and backup settings).
+    pub prefs: persist::Prefs,
+    /// An autosaved script found at start-up, offered for recovery.
+    pub recovery_offer: Option<persist::Recovery>,
+    /// An open/new waiting for the user to save or discard unsaved changes.
+    pub confirm_replace: Option<(String, Value)>,
+    /// When the script was last autosaved (seconds of UI time).
+    last_autosave: f64,
     /// Status-bar message and when it was set (seconds since start).
     status: Option<(String, f64)>,
     control: Option<Receiver<ControlRequest>>,
@@ -135,6 +145,10 @@ impl ScriptApp {
             spelling: true,
             enter_picker: true,
             state_dir: None,
+            prefs: persist::Prefs::default(),
+            recovery_offer: None,
+            last_autosave: 0.0,
+            confirm_replace: None,
             status: None,
             control: None,
             synthetic: Vec::new(),
@@ -145,11 +159,77 @@ impl ScriptApp {
         }
     }
 
-    /// Keep state (user dictionary…) in `dir` and load what is there.
+    /// Keep state (user dictionary, preferences, autosave, backups) in `dir` and load what is
+    /// there; an autosaved script left by a run that did not end cleanly is offered back.
     pub fn with_state_dir(mut self, dir: std::path::PathBuf) -> Self {
         self.session.user_words = persist::load_words(&dir);
+        self.prefs = persist::load_prefs(&dir);
+        if let Some(d) = self.prefs.dark {
+            self.dark = d;
+        }
+        self.canvas.zoom = self.prefs.zoom;
+        self.spelling = self.prefs.spelling;
+        self.enter_picker = self.prefs.enter_picker;
+        self.recovery_offer = persist::read_recovery(&dir);
         self.state_dir = Some(dir);
         self
+    }
+
+    /// Write preferences (the app calls this on exit). A script with no unsaved changes, or one
+    /// the user chose not to save, leaves no recovery file behind.
+    pub fn on_exit(&mut self) {
+        let Some(dir) = self.state_dir.clone() else { return };
+        self.prefs.dark = Some(self.dark);
+        self.prefs.zoom = self.canvas.zoom;
+        self.prefs.spelling = self.spelling;
+        self.prefs.enter_picker = self.enter_picker;
+        let _ = persist::save_prefs(&dir, &self.prefs);
+        if !self.session.dirty || self.quit_requested {
+            persist::clear_recovery(&dir);
+        }
+    }
+
+    /// Before a save over an existing file: keep the old version in the backups folder.
+    fn before_save(&mut self, id: &str, params: &Value) {
+        let Some(dir) = self.state_dir.clone() else { return };
+        if !matches!(id, "file.save" | "file.saveAs") {
+            return;
+        }
+        let target = params.get("path").and_then(Value::as_str).map(std::path::PathBuf::from).or_else(|| self.session.path.clone());
+        if let Some(t) = target
+            && let Err(e) = persist::backup(&dir, &t, self.prefs.backups)
+        {
+            self.status = Some((format!("Backup failed: {e}"), 0.0));
+        }
+    }
+
+    /// After a successful open or save: remember the file; a saved script needs no recovery copy.
+    fn after_file(&mut self, id: &str) {
+        let Some(dir) = self.state_dir.clone() else { return };
+        if !matches!(id, "file.open" | "file.save" | "file.saveAs") {
+            return;
+        }
+        if let Some(p) = self.session.path.as_ref().map(|p| p.display().to_string()) {
+            self.prefs.touch_recent(&p);
+            let _ = persist::save_prefs(&dir, &self.prefs);
+        }
+        if !self.session.dirty {
+            persist::clear_recovery(&dir);
+            self.recovery_offer = None;
+        }
+    }
+
+    /// Autosave a script with unsaved changes every `prefs.autosave_secs`.
+    fn autosave(&mut self, now: f64) {
+        let Some(dir) = self.state_dir.clone() else { return };
+        let every = f64::from(self.prefs.autosave_secs);
+        if every <= 0.0 || !self.session.dirty || self.recovery_offer.is_some() || now - self.last_autosave < every {
+            return;
+        }
+        self.last_autosave = now;
+        if let Err(e) = persist::write_recovery(&dir, self.session.path.as_deref(), &self.session.script) {
+            self.status = Some((format!("Autosave failed: {e}"), 0.0));
+        }
     }
 
     /// Accept control-channel requests from `rx`.
@@ -168,9 +248,22 @@ impl ScriptApp {
 
     /// Run a command: `ui.*` here, everything else in the engine. Errors go to the status bar.
     pub fn execute(&mut self, id: &str, params: Value) -> Result<Value, CmdError> {
+        // Replacing a script with unsaved changes asks first (interactive windows only).
+        if self.dialogs
+            && self.session.dirty
+            && matches!(id, "file.new" | "file.sample" | "file.open" | "ui.open" | "ui.openRecent")
+            && self.confirm_replace.is_none()
+        {
+            self.confirm_replace = Some((id.to_string(), params));
+            return Ok(json!({"pending": "unsaved changes"}));
+        }
+        if !id.starts_with("ui.") {
+            self.before_save(id, &params);
+        }
         let r = if id.starts_with("ui.") { self.ui_command(id, &params) } else { self.session.run(id, &params) };
         match &r {
             Ok(_) => {
+                self.after_file(id);
                 if id == "spell.addWord"
                     && let Some(dir) = &self.state_dir
                     && let Err(e) = persist::save_words(dir, &self.session.user_words)
@@ -221,15 +314,25 @@ impl ScriptApp {
             "ui.titlePage" => self.title_dialog = !self.title_dialog,
             "ui.elementSettings" => self.element_dialog = !self.element_dialog,
             "ui.about" => self.about = true,
+            "ui.openRecent" => {
+                let path = path.or_else(|| self.prefs.recent.first().cloned()).ok_or_else(|| CmdError::Disabled("no recent files".into()))?;
+                return self.execute("file.open", json!({"path": path}));
+            }
+            "ui.clearRecent" => {
+                self.prefs.recent.clear();
+                if let Some(dir) = &self.state_dir {
+                    let _ = persist::save_prefs(dir, &self.prefs);
+                }
+            }
             "ui.open" => {
                 let Some(path) = path.or_else(|| self.pick(false, "Open Script", &["fountain", "fdx", "spmd", "txt"], "")) else {
                     return Ok(json!({}));
                 };
-                return self.session.run("file.open", &json!({"path": path}));
+                return self.execute("file.open", json!({"path": path}));
             }
             "ui.save" => {
                 if self.session.path.is_some() && path.is_none() {
-                    return self.session.run("file.save", &json!({}));
+                    return self.execute("file.save", json!({}));
                 }
                 return self.ui_command("ui.saveAs", p);
             }
@@ -237,7 +340,7 @@ impl ScriptApp {
                 let Some(path) = path.or_else(|| self.pick(true, "Save Script", &["fountain", "fdx"], "Untitled.fountain")) else {
                     return Ok(json!({}));
                 };
-                return self.session.run("file.saveAs", &json!({"path": path}));
+                return self.execute("file.saveAs", json!({"path": path}));
             }
             "ui.exportPdf" | "ui.exportFdx" | "ui.exportFountain" => {
                 let (ext, cmd) = match id {
@@ -305,6 +408,7 @@ impl ScriptApp {
         self.install_fonts(ctx);
         ctx.set_visuals(self.tokens().visuals());
         let now = ctx.input(|i| i.time);
+        self.autosave(now);
         if let Some((_, t)) = &mut self.status
             && *t == 0.0
         {

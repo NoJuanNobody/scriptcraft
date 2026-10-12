@@ -113,6 +113,21 @@ pub fn menu_bar(app: &mut ScriptApp, ui: &mut Ui) {
             ui.menu_button("File", |ui| {
                 item(app, ui, "New Script", "file.new", "Mod+N");
                 item(app, ui, "Open…", "ui.open", "Mod+O");
+                ui.menu_button("Open Recent", |ui| {
+                    let recent = app.prefs.recent.clone();
+                    if recent.is_empty() {
+                        ui.label(RichText::new("No recent files").italics());
+                    }
+                    for p in recent {
+                        let name = std::path::Path::new(&p).file_name().and_then(|n| n.to_str()).unwrap_or(&p).to_string();
+                        if ui.button(name).on_hover_text(&p).clicked() {
+                            app.run("ui.openRecent", json!({"path": p}));
+                            ui.close();
+                        }
+                    }
+                    ui.separator();
+                    item(app, ui, "Clear Menu", "ui.clearRecent", "");
+                });
                 item(app, ui, "Open Sample Script", "file.sample", "");
                 ui.separator();
                 item(app, ui, "Save", "ui.save", "Mod+S");
@@ -646,6 +661,79 @@ pub fn dialogs(app: &mut ScriptApp, ctx: &egui::Context) {
             ui.hyperlink_to("getartcraft.com/apps", "https://getartcraft.com/apps");
         });
         app.about = open;
+    }
+    if let Some(r) = app.recovery_offer.clone() {
+        let mut choice = None;
+        egui::Window::new("Recover unsaved changes?").collapsible(false).resizable(false).anchor(egui::Align2::CENTER_CENTER, vec2(0.0, 0.0)).show(
+            ctx,
+            |ui| {
+                let name = r
+                    .path
+                    .as_deref()
+                    .and_then(|p| std::path::Path::new(p).file_name())
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("an untitled script")
+                    .to_string();
+                ui.label(format!(
+                    "ScriptCraft did not close normally. An autosaved copy of {name} ({} scenes) is available.",
+                    r.script.scenes().len()
+                ));
+                ui.horizontal(|ui| {
+                    if ui.button("Recover").clicked() {
+                        choice = Some(true);
+                    }
+                    if ui.button("Discard").clicked() {
+                        choice = Some(false);
+                    }
+                });
+            },
+        );
+        match choice {
+            Some(true) => {
+                app.session.replace_script(r.script);
+                app.session.path = r.path.map(std::path::PathBuf::from);
+                app.session.dirty = true;
+                app.recovery_offer = None;
+                app.set_status("Recovered unsaved changes; save to keep them");
+            }
+            Some(false) => {
+                app.recovery_offer = None;
+                if let Some(dir) = &app.state_dir {
+                    crate::persist::clear_recovery(dir);
+                }
+            }
+            None => {}
+        }
+    }
+    if let Some((id, params)) = app.confirm_replace.clone() {
+        let mut choice = None;
+        egui::Window::new("Save changes first?").collapsible(false).resizable(false).anchor(egui::Align2::CENTER_CENTER, vec2(0.0, 0.0)).show(
+            ctx,
+            |ui| {
+                ui.label("This script has unsaved changes.");
+                ui.horizontal(|ui| {
+                    if ui.button("Save").clicked() {
+                        choice = Some(1);
+                    }
+                    if ui.button("Don't Save").clicked() {
+                        choice = Some(2);
+                    }
+                    if ui.button("Cancel").clicked() {
+                        choice = Some(0);
+                    }
+                });
+            },
+        );
+        if let Some(c) = choice {
+            if c == 1 {
+                let _ = app.execute("ui.save", json!({}));
+            }
+            if c == 2 || (c == 1 && !app.session.dirty) {
+                app.session.dirty = false;
+                let _ = app.execute(&id, params);
+            }
+            app.confirm_replace = None;
+        }
     }
     if app.confirm_close {
         egui::Window::new("Save changes?").collapsible(false).resizable(false).anchor(egui::Align2::CENTER_CENTER, vec2(0.0, 0.0)).show(ctx, |ui| {

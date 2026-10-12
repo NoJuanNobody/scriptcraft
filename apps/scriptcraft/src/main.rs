@@ -32,6 +32,7 @@ impl eframe::App for App {
         self.0.ui(ui);
     }
     fn on_exit(&mut self) {
+        self.0.on_exit();
         if let Some(k) = &self.1 {
             k.remove();
         }
@@ -101,10 +102,10 @@ fn main() -> eframe::Result<()> {
         options,
         Box::new(move |cc| {
             let mut app = ScriptApp::new(session);
+            app.dark = cc.egui_ctx.system_theme() == Some(egui::Theme::Dark);
             if let Some(dir) = scriptcraft_control_key::settings_dir() {
                 app = app.with_state_dir(dir);
             }
-            app.dark = cc.egui_ctx.system_theme() == Some(egui::Theme::Dark);
             let mut key_file = None;
             if let Some(port) = control_port
                 && let Some((rx, kf)) = control_server::start(port, cc.egui_ctx.clone())

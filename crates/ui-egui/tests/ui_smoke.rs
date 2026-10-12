@@ -118,3 +118,55 @@ fn enter_in_an_empty_paragraph_shows_the_element_list() {
     assert_eq!(h.state().session.element(), scriptcraft_doc::Element::Action);
     assert_eq!(h.state().session.script.paras.len(), 2);
 }
+
+#[test]
+fn autosave_backups_and_recent_files() {
+    use scriptcraft_ui_egui::persist;
+    let dir = std::env::temp_dir().join(format!("scriptcraft-ui-state-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("draft.fountain");
+    std::fs::write(&file, scriptcraft_engine::sample::FOUNTAIN).unwrap();
+    let mut app = ScriptApp::new(Session::new(Default::default())).with_state_dir(dir.clone());
+    app.dialogs = false;
+    app.prefs.autosave_secs = 1;
+    let mut h = harness(app);
+    step(&mut h, 3);
+    h.state_mut().execute("file.open", json!({"path": file.to_str().unwrap()})).unwrap();
+    assert_eq!(h.state().prefs.recent, vec![file.display().to_string()]);
+    h.state_mut().execute("text.insert", json!({"text": "Edited. "})).unwrap();
+    assert!(h.state().session.dirty);
+    step(&mut h, 12);
+    let r = persist::read_recovery(&dir).expect("autosaved");
+    assert!(r.script.paras[0].text.starts_with("Edited."));
+    // Saving keeps the previous version and removes the recovery copy.
+    h.state_mut().execute("ui.save", json!({})).unwrap();
+    assert!(!h.state().session.dirty);
+    assert!(persist::read_recovery(&dir).is_none());
+    let backups: Vec<_> = std::fs::read_dir(dir.join(persist::BACKUPS)).unwrap().flatten().collect();
+    assert_eq!(backups.len(), 1);
+    assert_eq!(std::fs::read_to_string(backups[0].path()).unwrap(), scriptcraft_engine::sample::FOUNTAIN);
+    // A recovery file left by a crash is offered on the next start.
+    persist::write_recovery(&dir, Some(&file), &scriptcraft_engine::sample::script()).unwrap();
+    let next = ScriptApp::new(Session::new(Default::default())).with_state_dir(dir.clone());
+    assert!(next.recovery_offer.is_some());
+    assert_eq!(next.prefs.recent.len(), 1);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn new_script_with_unsaved_changes_asks_first() {
+    let mut app = ScriptApp::new(Session::sample());
+    app.execute("text.insert", json!({"text": "x"})).unwrap();
+    let before = app.session.script.paras.len();
+    let r = app.execute("file.new", json!({})).unwrap();
+    assert_eq!(r["pending"], "unsaved changes");
+    assert_eq!(app.session.script.paras.len(), before, "nothing replaced yet");
+    assert!(app.confirm_replace.is_some());
+    // Agents and tests (no dialogs) are never asked.
+    let mut quiet = ScriptApp::new(Session::sample());
+    quiet.dialogs = false;
+    quiet.execute("text.insert", json!({"text": "x"})).unwrap();
+    quiet.execute("file.new", json!({})).unwrap();
+    assert_eq!(quiet.session.script.paras.len(), 1);
+}

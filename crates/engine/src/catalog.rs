@@ -137,7 +137,8 @@ pub const FEATURES: &[Feature] = &[
     f("Files", "PDF export", Done, &["file.exportPdf"], "embedded Courier Prime, selectable text"),
     f("Files", "Print", Partial, &["file.exportPdf"], "export a PDF and print it"),
     f("Files", "Templates (.fdxt)", Missing, &[], ""),
-    f("Files", "Backup / autosave", Missing, &[], ""),
+    f("Files", "Autosave, crash recovery and backups", Done, &[], "settings folder; recovery offered after a crash, previous versions kept on save"),
+    f("Files", "Recent files", Done, &["ui.openRecent", "ui.clearRecent"], ""),
     f("Files", "Import from other formats (Word, Celtx, PDF)", Missing, &[], ""),
     // View
     f("View", "Page view with page breaks", Done, &["ui.view.page"], ""),
