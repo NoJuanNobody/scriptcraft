@@ -53,6 +53,7 @@ pub const UI_COMMANDS: &[(&str, &str, &str, &str)] = &[
     ("ui.zoomReset", "Actual Size", "View", "Mod+0"),
     ("ui.find", "Find…", "Edit", "Mod+F"),
     ("ui.toggleSpelling", "Check Spelling as You Type", "Tools", ""),
+    ("ui.toggleEnterPicker", "Element List on Enter in an Empty Paragraph", "Format", ""),
     ("ui.titlePage", "Title Page…", "Document", ""),
     ("ui.elementSettings", "Element Settings…", "Format", ""),
     ("ui.open", "Open…", "File", "Mod+O"),
@@ -84,6 +85,8 @@ pub struct ScriptApp {
     pub quit_requested: bool,
     /// Underline misspelled words.
     pub spelling: bool,
+    /// Enter in an empty paragraph shows the element list (otherwise it changes the element).
+    pub enter_picker: bool,
     /// The settings folder for state kept between runs (user dictionary…); `None` in tests.
     pub state_dir: Option<std::path::PathBuf>,
     /// Status-bar message and when it was set (seconds since start).
@@ -124,6 +127,7 @@ impl ScriptApp {
             confirm_close: false,
             quit_requested: false,
             spelling: true,
+            enter_picker: true,
             state_dir: None,
             status: None,
             control: None,
@@ -194,6 +198,7 @@ impl ScriptApp {
             "ui.toggleNavigator" => self.navigator = !self.navigator,
             "ui.theme.toggle" => self.dark = !self.dark,
             "ui.toggleSpelling" => self.spelling = !self.spelling,
+            "ui.toggleEnterPicker" => self.enter_picker = !self.enter_picker,
             "ui.theme.dark" => self.dark = true,
             "ui.theme.light" => self.dark = false,
             "ui.zoomIn" => self.canvas.zoom = (self.canvas.zoom * 1.1).min(3.0),

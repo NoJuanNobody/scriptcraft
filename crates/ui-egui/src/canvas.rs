@@ -25,6 +25,8 @@ pub struct CanvasState {
     pub caret_screen: Option<Rect>,
     /// Misspellings for a layout (by pointer) and dictionary size: (para, start, end).
     spell_cache: Option<(usize, usize, std::sync::Arc<Vec<(usize, usize, usize)>>)>,
+    /// The element list opened by Enter in an empty paragraph: the highlighted row.
+    pub picker: Option<usize>,
     /// The misspelled word a context menu was opened on, with its suggestions.
     pub spell_target: Option<(usize, usize, usize, Vec<String>)>,
 }
@@ -42,6 +44,7 @@ impl Default for CanvasState {
             caret_screen: None,
             spell_cache: None,
             spell_target: None,
+            picker: None,
         }
     }
 }
@@ -122,7 +125,21 @@ fn handle_keys(app: &mut ScriptApp, ui: &Ui) {
     let mut sugg = current_suggest(app);
     for ev in events {
         match ev {
+            egui::Event::Key { key, pressed: true, modifiers: m, .. } if app.canvas.picker.is_some() => {
+                picker_key(app, key, m);
+                sugg = current_suggest(app);
+            }
             egui::Event::Text(t) => {
+                if let Some(e) = app.canvas.picker.take()
+                    && t.len() == 1
+                    && let Some(k) = t.chars().next().and_then(|c| c.to_digit(10)).filter(|k| (1..=8).contains(k))
+                {
+                    let _ = e;
+                    if let Some(el) = Element::ALL.get(k as usize - 1) {
+                        app.run("element.set", json!({"element": el.id()}));
+                    }
+                    continue;
+                }
                 if !t.chars().all(char::is_control) {
                     app.run("text.insert", json!({"text": t}));
                 }
@@ -178,8 +195,42 @@ fn handle_keys(app: &mut ScriptApp, ui: &Ui) {
     }
 }
 
+/// Keys while the element list is open.
+fn picker_key(app: &mut ScriptApp, key: Key, m: Modifiers) {
+    let n = Element::ALL.len();
+    let Some(i) = app.canvas.picker else { return };
+    match key {
+        Key::ArrowDown => app.canvas.picker = Some((i + 1) % n),
+        Key::ArrowUp => app.canvas.picker = Some((i + n - 1) % n),
+        Key::Enter | Key::Tab => {
+            app.canvas.picker = None;
+            if let Some(e) = Element::ALL.get(i) {
+                app.run("element.set", json!({"element": e.id()}));
+            }
+        }
+        Key::Escape => app.canvas.picker = None,
+        _ => {
+            app.canvas.picker = None;
+            key_command(app, key, m);
+        }
+    }
+}
+
+/// Whether the caret's paragraph is empty for element flow.
+fn caret_para_blank(app: &ScriptApp) -> bool {
+    let s = &app.session;
+    s.sel.is_caret()
+        && s.script.para(s.sel.focus.para).is_some_and(|p| p.text.trim().is_empty() || (p.element == Element::Parenthetical && p.text.trim() == "()"))
+}
+
 /// Map a key to a command.
 pub fn key_command(app: &mut ScriptApp, key: Key, m: Modifiers) {
+    if key == Key::Enter && !m.command && !m.shift && app.enter_picker && caret_para_blank(app) {
+        let cur = app.session.element();
+        let target = scriptcraft_engine::typing::enter_empty(cur);
+        app.canvas.picker = Element::ALL.iter().position(|e| *e == target);
+        return;
+    }
     let ext = json!({"extend": m.shift});
     let mac = cfg!(target_os = "macos");
     let plain = !m.command && !m.alt;
@@ -410,6 +461,34 @@ pub fn show(app: &mut ScriptApp, ui: &mut Ui) {
         app.canvas.canvas_rect = Some(clip);
     });
     smarttype_popup(app, ui);
+    element_picker(app, ui);
+}
+
+fn element_picker(app: &mut ScriptApp, ui: &mut Ui) {
+    let (Some(sel), Some(cr)) = (app.canvas.picker, app.canvas.caret_screen) else { return };
+    if !caret_para_blank(app) {
+        app.canvas.picker = None;
+        return;
+    }
+    let t = app.tokens();
+    let mut chosen = None;
+    egui::Area::new(Id::new("element-picker")).order(egui::Order::Foreground).fixed_pos(pos2(cr.left(), cr.bottom() + 3.0)).show(ui.ctx(), |ui| {
+        egui::Frame::popup(ui.style()).inner_margin(4.0).show(ui, |ui| {
+            ui.set_min_width(200.0);
+            ui.label(egui::RichText::new("Change element").size(10.0).color(t.text_soft));
+            for (i, e) in Element::ALL.iter().enumerate() {
+                let label = format!("{}  {}", i + 1, e.name());
+                if ui.add(egui::Button::selectable(i == sel, label).min_size(vec2(190.0, 0.0))).clicked() {
+                    chosen = Some(*e);
+                }
+            }
+            ui.label(egui::RichText::new("Arrows or 1–8 · Return chooses · Esc cancels").size(10.0).color(t.text_soft));
+        });
+    });
+    if let Some(e) = chosen {
+        app.canvas.picker = None;
+        app.run("element.set", json!({"element": e.id()}));
+    }
 }
 
 fn context_menu(app: &mut ScriptApp, ui: &mut Ui) {

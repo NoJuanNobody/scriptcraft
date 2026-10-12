@@ -79,3 +79,42 @@ fn every_ui_command_and_view_runs() {
     let cmds = h.state().describe_commands();
     assert!(cmds.as_array().unwrap().iter().any(|c| c["id"] == "ui.view.cards"));
 }
+
+#[test]
+fn enter_in_an_empty_paragraph_shows_the_element_list() {
+    let (tx, rx) = std::sync::mpsc::channel();
+    let mut app = ScriptApp::new(Session::new(Default::default())).with_control(rx);
+    app.dialogs = false;
+    let mut h = harness(app);
+    step(&mut h, 4);
+    let send = |m: &str, p: serde_json::Value| {
+        let (req, _reply) = ControlRequest::new(m, p);
+        tx.send(req).unwrap();
+    };
+    send("ui.text", json!({"text": "int. lab - night"}));
+    step(&mut h, 3);
+    send("ui.key", json!({"key": "Enter"}));
+    step(&mut h, 3);
+    // The new paragraph is an empty Action: Enter opens the list instead of changing it.
+    send("ui.key", json!({"key": "Enter"}));
+    step(&mut h, 3);
+    assert!(h.state().canvas.picker.is_some());
+    assert_eq!(h.state().session.element(), scriptcraft_doc::Element::Action);
+    send("ui.key", json!({"key": "ArrowDown"}));
+    send("ui.key", json!({"key": "Enter"}));
+    step(&mut h, 4);
+    assert!(h.state().canvas.picker.is_none());
+    // The list opened on Scene Heading (Enter's usual target); one row down is Action.
+    assert_eq!(h.state().session.element(), scriptcraft_doc::Element::Action);
+    send("ui.key", json!({"key": "Enter"}));
+    step(&mut h, 3);
+    send("ui.text", json!({"text": "3"}));
+    step(&mut h, 3);
+    assert_eq!(h.state().session.element(), scriptcraft_doc::Element::Character);
+    // Turned off, Enter changes the element directly.
+    h.state_mut().enter_picker = false;
+    send("ui.key", json!({"key": "Enter"}));
+    step(&mut h, 3);
+    assert_eq!(h.state().session.element(), scriptcraft_doc::Element::Action);
+    assert_eq!(h.state().session.script.paras.len(), 2);
+}

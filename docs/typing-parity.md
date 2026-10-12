@@ -28,10 +28,13 @@ Enter at the **end** of a non-empty paragraph starts a new paragraph:
 - Enter **in the middle** of a paragraph splits it; the tail keeps the same element.
 - Enter at the **start** of a non-empty paragraph inserts an empty paragraph of the same element above.
 - Enter just before a parenthetical's closing `)` leaves the parenthetical (new Dialogue).
-- Enter in an **empty** paragraph changes its element instead of adding a paragraph (*ours*;
-  Final Draft shows an element list here): Action → Scene Heading, Scene Heading → Action,
-  Character → Action, Dialogue → Action, Parenthetical → Dialogue, Transition → Scene Heading,
-  Shot → Action, General → Action.
+- Enter in an **empty** paragraph opens the **element list** at the caret, as Final Draft does
+  (#5): ↑/↓ or 1–8 pick, Return or Tab applies, Esc cancels, typing closes it. The highlighted row
+  starts on the element plain Enter would choose. With the list turned off (Format › Element List
+  on Enter in an Empty Paragraph), and always from the CLI, control channel and MCP
+  (`text.enter`), Enter changes the element directly: Action → Scene Heading, Scene Heading →
+  Action, Character → Action, Dialogue → Action, Parenthetical → Dialogue, Transition → Scene
+  Heading, Shot → Action, General → Action.
 
 ## Tab
 

@@ -167,6 +167,7 @@ pub fn menu_bar(app: &mut ScriptApp, ui: &mut Ui) {
                 }
                 ui.separator();
                 item(app, ui, "Element Settings…", "ui.elementSettings", "");
+                check(app, ui, "Element List on Enter in an Empty Paragraph", app.enter_picker, "ui.toggleEnterPicker", json!({}));
                 ui.separator();
                 item(app, ui, "Bold", "format.bold", "Mod+B");
                 item(app, ui, "Italic", "format.italic", "Mod+I");
