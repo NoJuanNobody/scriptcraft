@@ -1,0 +1,16 @@
+[package]
+name = "scriptcraft-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "ScriptCraft command line: convert, run commands, reports, MCP server"
+
+[lints]
+workspace = true
+
+[dependencies]
+scriptcraft-doc = { workspace = true }
+scriptcraft-engine = { workspace = true }
+scriptcraft-mcp = { workspace = true }
+serde_json = { workspace = true }

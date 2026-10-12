@@ -396,9 +396,38 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9774ba4a74de5f7b1c1451ed6cd5285a32eddb5cccb8cc655a4e50009e06477f"
 
 [[package]]
+name = "scriptcraft-cli"
+version = "0.1.0"
+dependencies = [
+ "scriptcraft-doc",
+ "scriptcraft-engine",
+ "scriptcraft-mcp",
+ "serde_json",
+]
+
+[[package]]
+name = "scriptcraft-control-key"
+version = "0.1.0"
+
+[[package]]
 name = "scriptcraft-doc"
 version = "0.1.0"
 dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
+name = "scriptcraft-engine"
+version = "0.1.0"
+dependencies = [
+ "scriptcraft-doc",
+ "scriptcraft-fdx",
+ "scriptcraft-fountain",
+ "scriptcraft-geom",
+ "scriptcraft-layout",
+ "scriptcraft-pdf",
  "serde",
  "serde_json",
  "thiserror",
@@ -439,6 +468,16 @@ dependencies = [
  "scriptcraft-fountain",
  "scriptcraft-geom",
  "serde",
+]
+
+[[package]]
+name = "scriptcraft-mcp"
+version = "0.1.0"
+dependencies = [
+ "scriptcraft-control-key",
+ "scriptcraft-doc",
+ "scriptcraft-engine",
+ "serde_json",
 ]
 
 [[package]]

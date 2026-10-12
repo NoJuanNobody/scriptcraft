@@ -1,0 +1,20 @@
+[package]
+name = "scriptcraft-engine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "ScriptCraft engine: session, undo, command registry, Final Draft-style typing, SmartType, reports (L4)"
+
+[lints]
+workspace = true
+
+[dependencies]
+scriptcraft-geom = { workspace = true }
+scriptcraft-doc = { workspace = true }
+scriptcraft-fountain = { workspace = true }
+scriptcraft-fdx = { workspace = true }
+scriptcraft-layout = { workspace = true }
+scriptcraft-pdf = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
