@@ -5,7 +5,8 @@
 //! - `engine.commands`: every command with its enablement
 //! - `document.inspect`: script structure; `ui.inspect`: view state and geometry
 //! - `ui.key {key, shift?, alt?, cmd?}`, `ui.text {text}`: keyboard input through egui
-//! - `ui.click {x, y, count?, shift?}`: pointer input in window points
+//! - `ui.click {x, y, count?, shift?, button?: "right"}`: pointer input in window points
+//! - `ui.drag {x, y, toX, toY}`: press, move in steps and release
 //! - `ui.screenshot {path?}`: PNG of the window (base64 `png` without a path)
 
 use std::sync::mpsc::Sender;
@@ -78,6 +79,8 @@ pub fn inspect(app: &mut ScriptApp, ctx: &egui::Context) -> Value {
         "element": app.session.element().id(),
         "dirty": app.session.dirty,
         "findBar": app.find.is_some(),
+        "confirmClose": app.confirm_close,
+        "dialogButtons": app.dialog_buttons.iter().map(|(n, r)| json!({"label": n, "rect": [r.left(), r.top(), r.width(), r.height()]})).collect::<Vec<_>>(),
     })
 }
 
@@ -117,11 +120,30 @@ pub fn handle(app: &mut ScriptApp, ctx: &egui::Context, req: &ControlRequest) ->
             let pos = egui::pos2(x, y);
             let m = mods(p);
             let count = p.get("count").and_then(Value::as_u64).unwrap_or(1).clamp(1, 3);
+            let button =
+                if p.get("button").and_then(Value::as_str) == Some("right") { egui::PointerButton::Secondary } else { egui::PointerButton::Primary };
             app.synthetic.push(egui::Event::PointerMoved(pos));
             for _ in 0..count {
-                app.synthetic.push(egui::Event::PointerButton { pos, button: egui::PointerButton::Primary, pressed: true, modifiers: m });
-                app.synthetic.push(egui::Event::PointerButton { pos, button: egui::PointerButton::Primary, pressed: false, modifiers: m });
+                app.synthetic.push(egui::Event::PointerButton { pos, button, pressed: true, modifiers: m });
+                app.synthetic.push(egui::Event::PointerButton { pos, button, pressed: false, modifiers: m });
             }
+            ok(json!({}))
+        }
+        "ui.drag" => {
+            let (Some(x), Some(y), Some(tx), Some(ty)) = (f("x"), f("y"), f("toX"), f("toY")) else { return err("missing x/y/toX/toY") };
+            let m = mods(p);
+            let button = egui::PointerButton::Primary;
+            // One step per frame (a focus event separates frames), so egui sees a real drag.
+            let sep = || egui::Event::WindowFocused(true);
+            app.synthetic.push(egui::Event::PointerMoved(egui::pos2(x, y)));
+            app.synthetic.push(egui::Event::PointerButton { pos: egui::pos2(x, y), button, pressed: true, modifiers: m });
+            for k in 1..=8 {
+                let q = k as f32 / 8.0;
+                app.synthetic.push(sep());
+                app.synthetic.push(egui::Event::PointerMoved(egui::pos2(x + (tx - x) * q, y + (ty - y) * q)));
+            }
+            app.synthetic.push(sep());
+            app.synthetic.push(egui::Event::PointerButton { pos: egui::pos2(tx, ty), button, pressed: false, modifiers: m });
             ok(json!({}))
         }
         other => err(format!("unknown method `{other}`")),
@@ -147,20 +169,7 @@ pub fn encode_shot(img: &egui::ColorImage, path: Option<&str>) -> Value {
 }
 
 fn base64(data: &[u8]) -> String {
-    const T: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut out = String::with_capacity(data.len().div_ceil(3) * 4);
-    for c in data.chunks(3) {
-        let b = [c.first().copied().unwrap_or(0), c.get(1).copied().unwrap_or(0), c.get(2).copied().unwrap_or(0)];
-        let n = (u32::from(b[0]) << 16) | (u32::from(b[1]) << 8) | u32::from(b[2]);
-        for (i, shift) in [18, 12, 6, 0].iter().enumerate() {
-            if i <= c.len() {
-                out.push(char::from(T[((n >> shift) & 63) as usize]));
-            } else {
-                out.push('=');
-            }
-        }
-    }
-    out
+    scriptcraft_engine::b64::encode(data)
 }
 
 #[cfg(test)]

@@ -1,9 +1,9 @@
 # ScriptCraft roadmap
 
-**Stage:** v0.1 MVP — writes, paginates, imports and exports real screenplays; agent-drivable.
-**Headline numbers:** 33 of 63 Final Draft 13 catalog features implemented, 1 partial
-([docs/parity-checklist.md](docs/parity-checklist.md)); 73 engine commands + 19 window commands;
-~8.4k lines of Rust; 57 tests.
+**Stage:** v0.2 (writing comfort) complete on branch `v0.2-writing-comfort`; v0.1 MVP released.
+**Headline numbers:** 41 of 66 Final Draft 13 catalog features implemented, 1 partial
+([docs/parity-checklist.md](docs/parity-checklist.md)); 91 engine commands + 31 window commands;
+~11.8k lines of Rust; 81 tests; native and browser builds.
 
 ## v0.1 (this release)
 
@@ -18,18 +18,18 @@ All open work is tracked as [GitHub issues](https://github.com/NoJuanNobody/scri
 
 ## Next (v0.2): writing comfort
 
-- [ ] [#1](https://github.com/NoJuanNobody/scriptcraft/issues/1) Inline bold, italic and underline
-- [ ] [#2](https://github.com/NoJuanNobody/scriptcraft/issues/2) Spelling check (offline)
-- [ ] [#3](https://github.com/NoJuanNobody/scriptcraft/issues/3) Element settings editor (indents, spacing, capitals, Enter/Tab targets)
-- [ ] [#4](https://github.com/NoJuanNobody/scriptcraft/issues/4) Decide: Tab in an empty Action → Character or Transition?
-- [ ] [#5](https://github.com/NoJuanNobody/scriptcraft/issues/5) Element picker on Enter in an empty paragraph
-- [ ] [#6](https://github.com/NoJuanNobody/scriptcraft/issues/6) Copy and paste that keeps element types
-- [ ] [#7](https://github.com/NoJuanNobody/scriptcraft/issues/7) Drag to reorder index cards; card colours and tags
-- [ ] [#8](https://github.com/NoJuanNobody/scriptcraft/issues/8) Autosave, backups and recent files
-- [ ] [#9](https://github.com/NoJuanNobody/scriptcraft/issues/9) Caret blink, wheel/pinch zoom, page-width zoom and a non-paginated speed view
-- [ ] [#10](https://github.com/NoJuanNobody/scriptcraft/issues/10) Verify the unsaved-changes prompt on close in the native window
-- [ ] [#11](https://github.com/NoJuanNobody/scriptcraft/issues/11) Remove the control key file when the app is terminated
-- [ ] [#12](https://github.com/NoJuanNobody/scriptcraft/issues/12) Web build (wasm)
+- [x] [#1](https://github.com/NoJuanNobody/scriptcraft/issues/1) Inline bold, italic and underline
+- [x] [#2](https://github.com/NoJuanNobody/scriptcraft/issues/2) Spelling check (offline)
+- [x] [#3](https://github.com/NoJuanNobody/scriptcraft/issues/3) Element settings editor (indents, spacing, capitals, Enter/Tab targets)
+- [x] [#4](https://github.com/NoJuanNobody/scriptcraft/issues/4) Decide: Tab in an empty Action → Character or Transition?
+- [x] [#5](https://github.com/NoJuanNobody/scriptcraft/issues/5) Element picker on Enter in an empty paragraph
+- [x] [#6](https://github.com/NoJuanNobody/scriptcraft/issues/6) Copy and paste that keeps element types
+- [x] [#7](https://github.com/NoJuanNobody/scriptcraft/issues/7) Drag to reorder index cards; card colours and tags
+- [x] [#8](https://github.com/NoJuanNobody/scriptcraft/issues/8) Autosave, backups and recent files
+- [x] [#9](https://github.com/NoJuanNobody/scriptcraft/issues/9) Caret blink, wheel/pinch zoom, page-width zoom and a non-paginated speed view
+- [x] [#10](https://github.com/NoJuanNobody/scriptcraft/issues/10) Verify the unsaved-changes prompt on close in the native window
+- [x] [#11](https://github.com/NoJuanNobody/scriptcraft/issues/11) Remove the control key file when the app is terminated
+- [x] [#12](https://github.com/NoJuanNobody/scriptcraft/issues/12) Web build (wasm)
 
 ## v0.3: production
 
@@ -68,3 +68,7 @@ All open work is tracked as [GitHub issues](https://github.com/NoJuanNobody/scri
 - 2026-10-12 — v0.1: model, Fountain/FDX/PDF, pagination, engine with 73 commands, MCP, CLI,
   egui window with page view, navigator, index cards, reports, dark mode; README screenshots.
 - 2026-10-12 — published at github.com/NoJuanNobody/scriptcraft; 32 issues filed for the known gaps.
+- 2026-10-12 — v0.2 writing comfort (#1–#12): inline styles, spelling, element settings, element
+  list on Enter, structured copy/paste, card colours/tags and drag reorder, autosave/recovery/
+  backups/recent files, caret blink, zoom and speed view, verified quit prompt, signal-safe
+  control key, browser build.

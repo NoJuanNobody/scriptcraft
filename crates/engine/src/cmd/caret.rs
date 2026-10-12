@@ -81,7 +81,7 @@ fn right(s: &mut Session, v: &Value) -> CmdResult {
 }
 
 fn vertical(s: &mut Session, v: &Value, dir: i32) -> CmdResult {
-    let l = s.layout();
+    let l = s.view_layout();
     let at = s.sel.focus;
     match l.vertical(at, dir, s.goal_x) {
         Some((to, gx)) => {
@@ -118,13 +118,13 @@ fn wright(s: &mut Session, v: &Value) -> CmdResult {
 }
 
 fn home(s: &mut Session, v: &Value) -> CmdResult {
-    let l = s.layout();
+    let l = s.view_layout();
     let to = l.line_edge(s.sel.focus, false).unwrap_or(Pos::new(s.sel.focus.para, 0));
     go(s, v, to)
 }
 
 fn end(s: &mut Session, v: &Value) -> CmdResult {
-    let l = s.layout();
+    let l = s.view_layout();
     let len = s.script.para(s.sel.focus.para).map_or(0, |p| p.len());
     let to = l.line_edge(s.sel.focus, true).unwrap_or(Pos::new(s.sel.focus.para, len));
     go(s, v, to)

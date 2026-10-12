@@ -746,6 +746,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "460fbee9c2c2f33933d720630a6a0bac33ba7053db5344fac858d4b8952d77d5"
 
 [[package]]
+name = "ctrlc"
+version = "3.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e0b1fab2ae45819af2d0731d60f2afe17227ebb1a1538a236da84c93e9a60162"
+dependencies = [
+ "dispatch2",
+ "nix",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
 name = "cursor-icon"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -835,6 +846,7 @@ dependencies = [
  "egui-wgpu",
  "egui-winit",
  "egui_glow",
+ "glow",
  "glutin",
  "glutin-winit",
  "image",
@@ -1894,6 +1906,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "nix"
+version = "0.31.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cf20d2fde8ff38632c426f1165ed7436270b44f199fc55284c38276f9db47c3d"
+dependencies = [
+ "bitflags 2.13.2",
+ "cfg-if",
+ "cfg_aliases",
+ "libc",
+]
+
+[[package]]
 name = "nohash-hasher"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2801,6 +2825,7 @@ checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
 name = "scriptcraft"
 version = "0.1.0"
 dependencies = [
+ "ctrlc",
  "eframe",
  "egui",
  "getrandom 0.3.4",
@@ -2809,6 +2834,7 @@ dependencies = [
  "scriptcraft-engine",
  "scriptcraft-ui-egui",
  "serde_json",
+ "winit",
 ]
 
 [[package]]
@@ -2844,6 +2870,7 @@ dependencies = [
  "scriptcraft-geom",
  "scriptcraft-layout",
  "scriptcraft-pdf",
+ "scriptcraft-spell",
  "serde",
  "serde_json",
  "thiserror 2.0.21",
@@ -2908,6 +2935,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "scriptcraft-spell"
+version = "0.1.0"
+
+[[package]]
 name = "scriptcraft-ui-egui"
 version = "0.1.0"
 dependencies = [
@@ -2920,7 +2951,25 @@ dependencies = [
  "scriptcraft-fonts",
  "scriptcraft-geom",
  "scriptcraft-layout",
+ "scriptcraft-spell",
+ "serde",
  "serde_json",
+]
+
+[[package]]
+name = "scriptcraft-web"
+version = "0.1.0"
+dependencies = [
+ "eframe",
+ "egui",
+ "js-sys",
+ "log",
+ "rfd",
+ "scriptcraft-engine",
+ "scriptcraft-ui-egui",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
 ]
 
 [[package]]

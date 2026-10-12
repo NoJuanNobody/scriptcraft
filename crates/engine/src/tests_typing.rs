@@ -218,3 +218,29 @@ fn smarttype_suggestions() {
     assert_eq!(s.script.paras[s.sel.focus.para].text, "INT. WEATHER STATION - RADIO ROOM - NIGHT");
     assert!(s.run("smarttype.accept", &json!({})).is_err());
 }
+
+#[test]
+fn element_settings_change_the_flow() {
+    // #4: empty Action + Tab goes to Character by default (Final Draft's convention) and can be
+    // set to Transition per script.
+    let mut s = blank();
+    keys(&mut s, &["x", "⏎", "⇥"]);
+    assert_eq!(s.element(), Element::Character);
+    s.run("edit.undo", &json!({})).unwrap();
+    s.run("settings.element", &json!({"element": "action", "tabEmpty": "transition"})).unwrap();
+    keys(&mut s, &["⇥"]);
+    assert_eq!(s.element(), Element::Transition);
+    // Enter targets and capitals too.
+    s.run("settings.element", &json!({"element": "dialogue", "enter": "character"})).unwrap();
+    s.run("settings.element", &json!({"element": "general", "uppercase": true})).unwrap();
+    s.run("element.set", &json!({"element": "character"})).unwrap();
+    keys(&mut s, &["ana", "⏎", "Hi.", "⏎"]);
+    assert_eq!(s.element(), Element::Character);
+    s.run("element.set", &json!({"element": "general"})).unwrap();
+    keys(&mut s, &["shout"]);
+    assert_eq!(s.script.paras[s.sel.focus.para].text, "SHOUT");
+    assert!(s.run("settings.element", &json!({"element": "action", "tab": "nope"})).is_err());
+    assert!(s.run("settings.element", &json!({"element": "action", "left": 1e30, "right": -1})).is_ok());
+    s.run("settings.resetElements", &json!({})).unwrap();
+    assert!(s.script.settings.elements.is_default());
+}

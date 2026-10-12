@@ -19,16 +19,11 @@
 //! same scene, and scene numbers print in both margins.
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
-use scriptcraft_doc::{Element, Pos, Script, character_name};
+use scriptcraft_doc::{Element, Pos, Script, Span, character_name};
 use scriptcraft_geom::{BASELINE, CHAR_W, LINE_H, PAGE_W, TOP, body_lines, chars_between, inch};
 use serde::Serialize;
 
-/// Horizontal alignment of an element.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
-pub enum Align {
-    Left,
-    Right,
-}
+pub use scriptcraft_doc::Align;
 
 /// Where an element sits on the page.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize)]
@@ -44,22 +39,24 @@ pub struct Spec {
 
 /// The standard indents (inches from the left edge of the paper).
 pub const fn spec(e: Element) -> Spec {
-    let (left, right, before, align) = match e {
-        Element::SceneHeading => (1.5, 7.5, 1, Align::Left),
-        Element::Action => (1.5, 7.5, 1, Align::Left),
-        Element::Character => (3.7, 7.5, 1, Align::Left),
-        Element::Parenthetical => (3.1, 5.6, 0, Align::Left),
-        Element::Dialogue => (2.5, 6.0, 0, Align::Left),
-        Element::Transition => (4.0, 7.5, 1, Align::Right),
-        Element::Shot => (1.5, 7.5, 1, Align::Left),
-        Element::General => (1.5, 7.5, 0, Align::Left),
-    };
-    Spec { left, right, before, align }
+    let f = scriptcraft_doc::ElementFormat::default_for(e);
+    Spec { left: f.left, right: f.right, before: f.before as usize, align: f.align }
 }
 
-/// Characters per line for an element.
+/// The indents of `e` in this script (its element settings).
+pub fn spec_in(script: &Script, e: Element) -> Spec {
+    let f = script.settings.elements.get(e);
+    Spec { left: f.left, right: f.right, before: f.before as usize, align: f.align }
+}
+
+/// Characters per line for an element (standard indents).
 pub fn width_chars(e: Element) -> usize {
     let s = spec(e);
+    chars_between(inch(s.left), inch(s.right))
+}
+
+fn width_in(script: &Script, e: Element) -> usize {
+    let s = spec_in(script, e);
     chars_between(inch(s.left), inch(s.right))
 }
 
@@ -94,6 +91,9 @@ pub struct Line {
     /// Display-only text after it (an automatic ` (CONT'D)`).
     #[serde(skip_serializing_if = "String::is_empty")]
     pub suffix: String,
+    /// Styled runs, as byte ranges of `text` (plain lines have none).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub spans: Vec<Span>,
     /// The script paragraph this line shows (`None` for decorations).
     pub para: Option<usize>,
     pub start: usize,
@@ -108,6 +108,25 @@ impl Line {
     /// The whole visible text.
     pub fn display(&self) -> String {
         format!("{}{}", self.text, self.suffix)
+    }
+    /// The text in styled segments: (column, text, style), covering the whole line.
+    pub fn segments(&self) -> Vec<(usize, &str, scriptcraft_doc::Style)> {
+        let mut out = Vec::new();
+        let mut at = 0;
+        let mut col = 0;
+        let push = |a: usize, b: usize, st, col: &mut usize, out: &mut Vec<_>| {
+            if let Some(t) = self.text.get(a..b).filter(|t| !t.is_empty()) {
+                out.push((*col, t, st));
+                *col += t.chars().count();
+            }
+        };
+        for sp in &self.spans {
+            push(at, sp.start.max(at), scriptcraft_doc::Style::PLAIN, &mut col, &mut out);
+            push(sp.start.max(at), sp.end, sp.style, &mut col, &mut out);
+            at = sp.end.max(at);
+        }
+        push(at, self.text.len(), scriptcraft_doc::Style::PLAIN, &mut col, &mut out);
+        out
     }
     fn chars(&self) -> usize {
         self.text.chars().count()
@@ -143,6 +162,13 @@ pub struct Layout {
 }
 
 impl Layout {
+    /// Height of page `i` in points: Letter, or as tall as its text in speed view.
+    pub fn page_height(&self, i: usize) -> f32 {
+        let Some(p) = self.pages.get(i) else { return scriptcraft_geom::PAGE_H };
+        let bottom = p.lines.iter().map(|l| l.y + LINE_H).fold(0.0f32, f32::max) + scriptcraft_geom::BOTTOM;
+        bottom.max(scriptcraft_geom::PAGE_H)
+    }
+
     /// Pages of script (not counting the title page).
     pub fn script_pages(&self) -> usize {
         self.pages.iter().filter(|p| !p.title_page).count()
@@ -341,7 +367,7 @@ fn dual_item(script: &Script, para: usize, col: (f32, f32)) -> Option<Item> {
 
 fn item(script: &Script, para: usize) -> Option<Item> {
     let p = script.paras.get(para)?;
-    Some(Item { para, el: p.element, lines: wrap(&p.text, width_chars(p.element)), suffix: String::new(), cols: None })
+    Some(Item { para, el: p.element, lines: wrap(&p.text, width_in(script, p.element)), suffix: String::new(), cols: None })
 }
 
 fn block_end(script: &Script, i: usize) -> usize {
@@ -436,13 +462,24 @@ impl Builder<'_> {
 
     fn emit(&mut self, it: &Item, k: usize, suffix: bool) {
         let Some(&(start, end)) = it.lines.get(k) else { return };
-        let text = self.script.paras.get(it.para).and_then(|p| p.text.get(start..end)).unwrap_or("").to_string();
+        let para = self.script.paras.get(it.para);
+        let text = para.and_then(|p| p.text.get(start..end)).unwrap_or("").to_string();
+        let spans: Vec<Span> = para
+            .map(|p| {
+                p.spans
+                    .iter()
+                    .filter(|sp| sp.end > start && sp.start < end)
+                    .map(|sp| Span { start: sp.start.max(start) - start, end: sp.end.min(end) - start, style: sp.style })
+                    .collect()
+            })
+            .unwrap_or_default();
         let sfx = if suffix && k + 1 == it.lines.len() { it.suffix.clone() } else { String::new() };
-        let s = spec(it.el);
+        let s = spec_in(self.script, it.el);
         let (l, r) = it.cols.unwrap_or((inch(s.left), inch(s.right)));
         let n = text.chars().count() + sfx.chars().count();
         let x = match s.align {
             Align::Right if it.cols.is_none() => (r - n as f32 * CHAR_W).max(l),
+            Align::Center if it.cols.is_none() => ((l + r - n as f32 * CHAR_W) / 2.0).max(l),
             _ => l,
         };
         let y = self.y();
@@ -455,7 +492,7 @@ impl Builder<'_> {
             self.cur.push(deco(LineKind::SceneNumber, inch(1.0) - w, y, &num));
             self.cur.push(deco(LineKind::SceneNumber, inch(7.75), y, &num));
         }
-        self.cur.push(Line { kind: LineKind::Body, element: Some(it.el), x, y, text, suffix: sfx, para: Some(it.para), start, end });
+        self.cur.push(Line { kind: LineKind::Body, element: Some(it.el), x, y, text, suffix: sfx, spans, para: Some(it.para), start, end });
         self.row += 1;
     }
 
@@ -467,7 +504,7 @@ impl Builder<'_> {
 
     /// Place a single paragraph.
     fn single(&mut self, it: &Item, keep: usize) {
-        let before = spec(it.el).before;
+        let before = spec_in(self.script, it.el).before;
         let need = it.lines.len();
         let fits = |b: &Self| b.row == 0 || b.row + before + need + keep <= b.rows;
         if !fits(self) {
@@ -528,7 +565,7 @@ impl Builder<'_> {
 
     /// Place a dialogue block, splitting it with (MORE)/(CONT'D) when needed.
     fn dialogue(&mut self, items: &[Item]) {
-        let before = items.first().map_or(0, |i| spec(i.el).before);
+        let before = items.first().map_or(0, |i| spec_in(self.script, i.el).before);
         let rows: Vec<(usize, usize)> = items.iter().enumerate().flat_map(|(a, it)| (0..it.lines.len()).map(move |k| (a, k))).collect();
         let has_cue = items.first().is_some_and(|i| i.el == Element::Character);
         let total = rows.len();
@@ -615,7 +652,7 @@ impl Builder<'_> {
     }
 
     fn dual(&mut self, a: &[Item], b: &[Item]) {
-        let before = a.first().map_or(1, |i| spec(i.el).before);
+        let before = a.first().map_or(1, |i| spec_in(self.script, i.el).before);
         let h = dual_height(a, b);
         if self.row > 0 && self.row + before + h > self.rows {
             self.new_page();
@@ -639,7 +676,7 @@ impl Builder<'_> {
 }
 
 fn deco(kind: LineKind, x: f32, y: f32, text: &str) -> Line {
-    Line { kind, element: None, x, y, text: text.to_string(), suffix: String::new(), para: None, start: 0, end: 0 }
+    Line { kind, element: None, x, y, text: text.to_string(), suffix: String::new(), spans: Vec::new(), para: None, start: 0, end: 0 }
 }
 
 fn title_page(script: &Script) -> Option<Page> {
@@ -686,13 +723,31 @@ fn title_page(script: &Script) -> Option<Page> {
 
 /// Paginate a script.
 pub fn layout(script: &Script) -> Layout {
+    layout_with(script, Mode::Pages)
+}
+
+/// How to lay out.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum Mode {
+    /// Industry pages with breaks, numbers and the title page.
+    #[default]
+    Pages,
+    /// Speed view: one continuous page, no breaks, no title page, no page numbers.
+    Speed,
+}
+
+/// Lay out a script in a mode.
+pub fn layout_with(script: &Script, mode: Mode) -> Layout {
     let us = units(script);
-    let mut b = Builder { script, pages: Vec::new(), cur: Vec::new(), row: 0, rows: body_lines() };
+    let speed = mode == Mode::Speed;
+    // Speed view: effectively unlimited rows, so nothing ever breaks.
+    let rows = if speed { usize::MAX / 4 } else { body_lines() };
+    let mut b = Builder { script, pages: Vec::new(), cur: Vec::new(), row: 0, rows };
     for (i, u) in us.iter().enumerate() {
         match u {
             Unit::Single(it) => {
                 let keep = if matches!(it.el, Element::SceneHeading | Element::Shot) {
-                    us.get(i + 1).map_or(0, |n| spec(n.first_el()).before + n.min_lines())
+                    us.get(i + 1).map_or(0, |n| spec_in(script, n.first_el()).before + n.min_lines())
                 } else {
                     0
                 };
@@ -709,13 +764,13 @@ pub fn layout(script: &Script) -> Layout {
     for (i, p) in pages.iter_mut().enumerate() {
         let n = i + 1;
         p.number = Some(n);
-        if n >= 2 {
+        if n >= 2 && !speed {
             let label = format!("{n}.");
             let x = inch(7.5) - label.chars().count() as f32 * CHAR_W;
             p.lines.push(deco(LineKind::PageNumber, x, inch(0.5), &label));
         }
     }
-    if let Some(tp) = title_page(script) {
+    if !speed && let Some(tp) = title_page(script) {
         pages.insert(0, tp);
     }
     let mut para_page = vec![usize::MAX; script.paras.len()];

@@ -23,6 +23,7 @@ fn main() {
     let session = if lines.first().is_some_and(|l| l.get("empty").is_some()) { Session::new(Default::default()) } else { Session::sample() };
     let mut app = ScriptApp::new(session).with_control(rx);
     app.dialogs = false;
+    app.canvas.blink = false;
     let w = lines.iter().find_map(|l| l.get("width").and_then(|v| v.as_f64())).unwrap_or(1440.0) as f32;
     let h = lines.iter().find_map(|l| l.get("height").and_then(|v| v.as_f64())).unwrap_or(900.0) as f32;
     let mut harness =

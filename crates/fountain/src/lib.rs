@@ -5,11 +5,15 @@
 //! and forced `.`), scene numbers (`#12A#`), action (forced `!`), characters (forced `@`, with
 //! extensions), dual dialogue (`^`), parentheticals, dialogue, transitions (natural `… TO:` and
 //! forced `>`), centered text (`>…<`, imported as Action), synopses (`=`, which become the scene's
-//! index-card summary), sections (`#`, skipped), notes (`[[…]]`, removed), boneyard (`/* … */`,
+//! index-card summary), sections (`#`, skipped), notes (`[[…]]`, removed, except ScriptCraft's
+//! `[[color: …]]` and `[[tags: …]]` card notes under a heading), boneyard (`/* … */`,
 //! removed), page breaks (`===`, ignored) and lyrics (`~`, imported as Action).
 //!
-//! Emphasis markers (`*italic*`, `**bold**`, `_underline_`) are kept as literal text.
+//! Emphasis (`*italic*`, `**bold**`, `***bold italic***`, `_underline_`) becomes styled text, and
+//! styled text is written back with markers (literal `*` and `_` are escaped).
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
+
+mod emphasis;
 
 use scriptcraft_doc::{Element, MAX_PARAS, Para, Script, TitlePage};
 
@@ -23,7 +27,22 @@ pub fn parse(src: &str) -> Script {
         cut -= 1;
     }
     let src = src.get(..cut).unwrap_or("").replace("\r\n", "\n").replace('\r', "\n");
-    let src = strip_between(&strip_between(&src, "/*", "*/"), "[[", "]]");
+    // Index-card colour and tags travel as notes on their own line: `[[color: blue]]`,
+    // `[[tags: chase, night]]`. They are kept (marked) before other notes are removed.
+    let src = strip_between(&src, "/*", "*/")
+        .split('\n')
+        .map(|l| {
+            let t = l.trim();
+            match t.strip_prefix("[[").and_then(|x| x.strip_suffix("]]")) {
+                Some(inner) if !inner.contains("[[") && (inner.trim_start().starts_with("color:") || inner.trim_start().starts_with("tags:")) => {
+                    format!("\u{1}{}", inner.trim())
+                }
+                _ => l.to_string(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    let src = strip_between(&src, "[[", "]]");
     let lines: Vec<&str> = src.split('\n').collect();
     let mut i = 0;
     let mut title = TitlePage::default();
@@ -38,8 +57,20 @@ pub fn parse(src: &str) -> Script {
             break;
         }
         let line = raw.trim();
-        let next_blank = lines.get(i + 1).is_none_or(|l| l.trim().is_empty());
+        let next_blank = lines.get(i + 1).is_none_or(|l| l.trim().is_empty() || l.starts_with('\u{1}'));
         i += 1;
+        if let Some(meta) = line.strip_prefix('\u{1}') {
+            if let Some(h) = paras.iter_mut().rev().find(|p| p.element == Element::SceneHeading) {
+                if let Some(c) = meta.strip_prefix("color:") {
+                    h.color = scriptcraft_doc::CardColor::parse(c);
+                } else if let Some(t) = meta.strip_prefix("tags:") {
+                    let mut all = std::mem::take(&mut h.tags);
+                    all.extend(t.split(',').map(str::to_string));
+                    h.tags = scriptcraft_doc::clean_tags(all.iter().map(String::as_str));
+                }
+            }
+            continue;
+        }
         if line.is_empty() {
             prev_blank = true;
             in_dialogue = false;
@@ -114,6 +145,9 @@ pub fn parse(src: &str) -> Script {
             continue;
         }
         push_action(&mut paras, line, was_blank);
+    }
+    for p in &mut paras {
+        emphasis::apply(p);
     }
     let mut s = Script::from_paras(paras).unwrap_or_default();
     s.title = title;
@@ -280,7 +314,8 @@ pub fn write(s: &Script) -> String {
     }
     let mut prev: Option<Element> = None;
     for p in &s.paras {
-        let text = p.text.trim();
+        let encoded = emphasis::write(p);
+        let text = encoded.trim();
         if text.is_empty() && p.summary.is_empty() {
             continue;
         }
@@ -317,6 +352,12 @@ pub fn write(s: &Script) -> String {
                 if !p.summary.trim().is_empty() {
                     out.push('\n');
                     out.push_str(&format!("= {}\n", p.summary.trim()));
+                }
+                if let Some(c) = p.color {
+                    out.push_str(&format!("\n[[color: {}]]\n", c.id()));
+                }
+                if !p.tags.is_empty() {
+                    out.push_str(&format!("\n[[tags: {}]]\n", p.tags.join(", ")));
                 }
             }
             Element::Character => {

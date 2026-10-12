@@ -1,0 +1,12 @@
+[package]
+name = "scriptcraft-spell"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Offline English spelling check and suggestions for ScriptCraft (SCOWL/ESDB word list) (L1)"
+include = ["src/**", "words/**", "Cargo.toml"]
+
+[lints]
+workspace = true
+
+[dependencies]

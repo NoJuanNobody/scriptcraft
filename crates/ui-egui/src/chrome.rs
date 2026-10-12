@@ -113,6 +113,21 @@ pub fn menu_bar(app: &mut ScriptApp, ui: &mut Ui) {
             ui.menu_button("File", |ui| {
                 item(app, ui, "New Script", "file.new", "Mod+N");
                 item(app, ui, "Open…", "ui.open", "Mod+O");
+                ui.menu_button("Open Recent", |ui| {
+                    let recent = app.prefs.recent.clone();
+                    if recent.is_empty() {
+                        ui.label(RichText::new("No recent files").italics());
+                    }
+                    for p in recent {
+                        let name = std::path::Path::new(&p).file_name().and_then(|n| n.to_str()).unwrap_or(&p).to_string();
+                        if ui.button(name).on_hover_text(&p).clicked() {
+                            app.run("ui.openRecent", json!({"path": p}));
+                            ui.close();
+                        }
+                    }
+                    ui.separator();
+                    item(app, ui, "Clear Menu", "ui.clearRecent", "");
+                });
                 item(app, ui, "Open Sample Script", "file.sample", "");
                 ui.separator();
                 item(app, ui, "Save", "ui.save", "Mod+S");
@@ -121,6 +136,8 @@ pub fn menu_bar(app: &mut ScriptApp, ui: &mut Ui) {
                 item(app, ui, "Export PDF…", "ui.exportPdf", "Mod+P");
                 item(app, ui, "Export Final Draft (FDX)…", "ui.exportFdx", "");
                 item(app, ui, "Export Fountain…", "ui.exportFountain", "");
+                ui.separator();
+                item(app, ui, "Quit", "ui.quit", "Mod+Q");
             });
             ui.menu_button("Edit", |ui| {
                 let undo = app.session.undo_label().map_or("Undo".to_string(), |l| format!("Undo {l}"));
@@ -147,6 +164,7 @@ pub fn menu_bar(app: &mut ScriptApp, ui: &mut Ui) {
                 check(app, ui, "Page View", app.view == View::Page, "ui.view.page", json!({}));
                 check(app, ui, "Index Cards", app.view == View::Cards, "ui.view.cards", json!({}));
                 check(app, ui, "Reports", app.view == View::Reports, "ui.view.reports", json!({}));
+                check(app, ui, "Speed View (no page breaks)", app.session.speed, "ui.view.speed", json!({}));
                 ui.separator();
                 check(app, ui, "Navigator", app.navigator, "ui.toggleNavigator", json!({}));
                 check(app, ui, "Scene Numbers", app.session.script.settings.show_scene_numbers, "view.toggleSceneNumbers", json!({}));
@@ -155,6 +173,7 @@ pub fn menu_bar(app: &mut ScriptApp, ui: &mut Ui) {
                 item(app, ui, "Zoom In", "ui.zoomIn", "Mod+=");
                 item(app, ui, "Zoom Out", "ui.zoomOut", "Mod+-");
                 item(app, ui, "Actual Size", "ui.zoomReset", "Mod+0");
+                item(app, ui, "Fit Page Width", "ui.zoomFit", "Mod+9");
             });
             ui.menu_button("Format", |ui| {
                 let cur = app.session.element();
@@ -165,6 +184,14 @@ pub fn menu_bar(app: &mut ScriptApp, ui: &mut Ui) {
                         ui.close();
                     }
                 }
+                ui.separator();
+                item(app, ui, "Element Settings…", "ui.elementSettings", "");
+                check(app, ui, "Element List on Enter in an Empty Paragraph", app.enter_picker, "ui.toggleEnterPicker", json!({}));
+                ui.separator();
+                item(app, ui, "Bold", "format.bold", "Mod+B");
+                item(app, ui, "Italic", "format.italic", "Mod+I");
+                item(app, ui, "Underline", "format.underline", "Mod+U");
+                item(app, ui, "Plain Text", "format.plain", "Mod+Shift+T");
                 ui.separator();
                 item(app, ui, "Dual Dialogue", "dialogue.toggleDual", "Mod+D");
             });
@@ -178,6 +205,10 @@ pub fn menu_bar(app: &mut ScriptApp, ui: &mut Ui) {
                 check(app, ui, "(MORE) and (CONT'D) at Page Breaks", st.more_contd, "settings.set", json!({"moreContd": !st.more_contd}));
                 check(app, ui, "Automatic Character (CONT'D)", st.auto_contd, "settings.set", json!({"autoContd": !st.auto_contd}));
                 check(app, ui, "Print Title Page", st.title_page, "settings.set", json!({"titlePage": !st.title_page}));
+            });
+            ui.menu_button("Tools", |ui| {
+                item(app, ui, "Next Misspelling", "spell.next", "Mod+;");
+                check(app, ui, "Check Spelling as You Type", app.spelling, "ui.toggleSpelling", json!({}));
             });
             ui.menu_button("Help", |ui| {
                 item(app, ui, "About ScriptCraft", "ui.about", "");
@@ -247,6 +278,41 @@ pub fn toolbar(app: &mut ScriptApp, ui: &mut Ui) {
                     .response
                     .on_hover_text("Element of the current paragraph (Enter and Tab change it as you type)");
                 ui.add_space(4.0);
+                let fs = scriptcraft_engine::cmd::format::caret_style(&app.session);
+                let (a, b) = app.session.sel.ordered();
+                let states: Vec<bool> = [scriptcraft_doc::Flag::Bold, scriptcraft_doc::Flag::Italic, scriptcraft_doc::Flag::Underline]
+                    .iter()
+                    .map(|f| if a == b { fs.get(*f) } else { app.session.script.all_have(a, b, *f) })
+                    .collect();
+                for (k, (label, tip, id, f)) in [
+                    ("B", "Bold", "format.bold", scriptcraft_doc::Flag::Bold),
+                    ("I", "Italic", "format.italic", scriptcraft_doc::Flag::Italic),
+                    ("U", "Underline", "format.underline", scriptcraft_doc::Flag::Underline),
+                ]
+                .into_iter()
+                .enumerate()
+                {
+                    let on = states.get(k).copied().unwrap_or(false);
+                    let mut text = RichText::new(label).font(crate::canvas::courier_styled(15.0, scriptcraft_doc::Style::PLAIN.with(f, true)));
+                    if on {
+                        text = text.color(egui::Color32::WHITE);
+                    }
+                    let resp = ui.add(egui::Button::selectable(on, text).min_size(vec2(26.0, 24.0)));
+                    if resp
+                        .on_hover_text(format!(
+                            "{tip} ({})",
+                            pretty_key(match f {
+                                scriptcraft_doc::Flag::Bold => "Mod+B",
+                                scriptcraft_doc::Flag::Italic => "Mod+I",
+                                scriptcraft_doc::Flag::Underline => "Mod+U",
+                            })
+                        ))
+                        .clicked()
+                    {
+                        app.run(id, json!({}));
+                    }
+                }
+                sep(ui);
                 if icons::button(ui, Icon::Dual, "Dual dialogue", false).clicked() {
                     app.run("dialogue.toggleDual", json!({}));
                 }
@@ -424,6 +490,10 @@ pub fn navigator(app: &mut ScriptApp, ui: &mut Ui) {
                                     egui::Color32::TRANSPARENT
                                 };
                                 ui.painter().rect_filled(r, 5.0, fill);
+                                if let Some(c) = sc.color {
+                                    let strip = egui::Rect::from_min_size(r.min + vec2(1.0, 4.0), vec2(3.0, r.height() - 8.0));
+                                    ui.painter().rect_filled(strip, 1.5, crate::cards::card_rgb(c));
+                                }
                                 let p = ui.painter();
                                 p.text(
                                     r.left_top() + vec2(8.0, 6.0),
@@ -518,6 +588,73 @@ pub fn dialogs(app: &mut ScriptApp, ctx: &egui::Context) {
         }
         app.title_dialog = open;
     }
+    if app.element_dialog {
+        let mut open = true;
+        let mut changes: Vec<serde_json::Value> = Vec::new();
+        let mut reset = false;
+        egui::Window::new("Element Settings")
+            .open(&mut open)
+            .resizable(false)
+            .collapsible(false)
+            .pivot(egui::Align2::CENTER_TOP)
+            .default_pos(ctx.content_rect().center_top() + vec2(0.0, 110.0))
+            .show(ctx, |ui| {
+                ui.label(RichText::new("Indents in inches from the left edge of the paper; space before in blank lines.").size(11.5));
+                ui.add_space(6.0);
+                egui::Grid::new("elements").num_columns(9).spacing([10.0, 6.0]).striped(true).show(ui, |ui| {
+                    for h in ["Element", "Left", "Right", "Before", "Align", "Caps", "Enter goes to", "Tab goes to", "Tab when empty"] {
+                        ui.label(RichText::new(h).strong());
+                    }
+                    ui.end_row();
+                    for e in Element::ALL {
+                        let f = app.session.script.settings.elements.get(e);
+                        let id = e.id();
+                        ui.label(e.name());
+                        let (mut l, mut r, mut b, mut caps) = (f.left, f.right, f.before, f.uppercase);
+                        if ui.add(egui::DragValue::new(&mut l).speed(0.05).range(0.0..=8.0).fixed_decimals(2)).changed() {
+                            changes.push(json!({"element": id, "left": l}));
+                        }
+                        if ui.add(egui::DragValue::new(&mut r).speed(0.05).range(0.5..=8.5).fixed_decimals(2)).changed() {
+                            changes.push(json!({"element": id, "right": r}));
+                        }
+                        if ui.add(egui::DragValue::new(&mut b).range(0..=6)).changed() {
+                            changes.push(json!({"element": id, "before": b}));
+                        }
+                        egui::ComboBox::from_id_salt(("align", id)).width(70.0).selected_text(f.align.name()).show_ui(ui, |ui| {
+                            for a in [scriptcraft_doc::Align::Left, scriptcraft_doc::Align::Center, scriptcraft_doc::Align::Right] {
+                                if ui.selectable_label(f.align == a, a.name()).clicked() {
+                                    changes.push(json!({"element": id, "align": a.name()}));
+                                }
+                            }
+                        });
+                        if ui.checkbox(&mut caps, "").changed() {
+                            changes.push(json!({"element": id, "uppercase": caps}));
+                        }
+                        for (key, cur) in [("enter", f.enter), ("tab", f.tab), ("tabEmpty", f.tab_empty)] {
+                            egui::ComboBox::from_id_salt((key, id)).width(110.0).selected_text(cur.name()).show_ui(ui, |ui| {
+                                for t in Element::ALL {
+                                    if ui.selectable_label(cur == t, t.name()).clicked() {
+                                        changes.push(json!({"element": id, key: t.id()}));
+                                    }
+                                }
+                            });
+                        }
+                        ui.end_row();
+                    }
+                });
+                ui.add_space(8.0);
+                if ui.button("Reset to Standard").clicked() {
+                    reset = true;
+                }
+            });
+        for c in changes {
+            app.run("settings.element", c);
+        }
+        if reset {
+            app.run("settings.resetElements", json!({}));
+        }
+        app.element_dialog = open;
+    }
     if app.about {
         let mut open = true;
         egui::Window::new("About ScriptCraft").open(&mut open).resizable(false).collapsible(false).show(ctx, |ui| {
@@ -529,22 +666,101 @@ pub fn dialogs(app: &mut ScriptApp, ctx: &egui::Context) {
         });
         app.about = open;
     }
+    if let Some(r) = app.recovery_offer.clone() {
+        let mut choice = None;
+        egui::Window::new("Recover unsaved changes?").collapsible(false).resizable(false).anchor(egui::Align2::CENTER_CENTER, vec2(0.0, 0.0)).show(
+            ctx,
+            |ui| {
+                let name = r
+                    .path
+                    .as_deref()
+                    .and_then(|p| std::path::Path::new(p).file_name())
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("an untitled script")
+                    .to_string();
+                ui.label(format!(
+                    "ScriptCraft did not close normally. An autosaved copy of {name} ({} scenes) is available.",
+                    r.script.scenes().len()
+                ));
+                ui.horizontal(|ui| {
+                    if ui.button("Recover").clicked() {
+                        choice = Some(true);
+                    }
+                    if ui.button("Discard").clicked() {
+                        choice = Some(false);
+                    }
+                });
+            },
+        );
+        match choice {
+            Some(true) => {
+                app.session.replace_script(r.script);
+                app.session.path = r.path.map(std::path::PathBuf::from);
+                app.session.dirty = true;
+                app.recovery_offer = None;
+                app.set_status("Recovered unsaved changes; save to keep them");
+            }
+            Some(false) => {
+                app.recovery_offer = None;
+                if let Some(dir) = &app.state_dir {
+                    crate::persist::clear_recovery(dir);
+                }
+            }
+            None => {}
+        }
+    }
+    if let Some((id, params)) = app.confirm_replace.clone() {
+        let mut choice = None;
+        egui::Window::new("Save changes first?").collapsible(false).resizable(false).anchor(egui::Align2::CENTER_CENTER, vec2(0.0, 0.0)).show(
+            ctx,
+            |ui| {
+                ui.label("This script has unsaved changes.");
+                ui.horizontal(|ui| {
+                    if ui.button("Save").clicked() {
+                        choice = Some(1);
+                    }
+                    if ui.button("Don't Save").clicked() {
+                        choice = Some(2);
+                    }
+                    if ui.button("Cancel").clicked() {
+                        choice = Some(0);
+                    }
+                });
+            },
+        );
+        if let Some(c) = choice {
+            if c == 1 {
+                let _ = app.execute("ui.save", json!({}));
+            }
+            if c == 2 || (c == 1 && !app.session.dirty) {
+                app.session.dirty = false;
+                let _ = app.execute(&id, params);
+            }
+            app.confirm_replace = None;
+        }
+    }
     if app.confirm_close {
         egui::Window::new("Save changes?").collapsible(false).resizable(false).anchor(egui::Align2::CENTER_CENTER, vec2(0.0, 0.0)).show(ctx, |ui| {
-            ui.label("This script has unsaved changes.");
+            ui.label("This script has unsaved changes. Save them before closing?");
             ui.horizontal(|ui| {
-                if ui.button("Save").clicked() {
+                let save = ui.button("Save");
+                let discard = ui.button("Don't Save");
+                let cancel = ui.button("Cancel");
+                for (n, r) in [("Save", &save), ("Don't Save", &discard), ("Cancel", &cancel)] {
+                    app.dialog_buttons.push((n.to_string(), r.rect));
+                }
+                if save.clicked() {
                     let _ = app.execute("ui.save", json!({}));
                     app.confirm_close = false;
                     if !app.session.dirty {
                         app.quit_requested = true;
                     }
                 }
-                if ui.button("Don't Save").clicked() {
+                if discard.clicked() {
                     app.confirm_close = false;
                     app.quit_requested = true;
                 }
-                if ui.button("Cancel").clicked() {
+                if cancel.clicked() {
                     app.confirm_close = false;
                 }
             });

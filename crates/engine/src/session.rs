@@ -56,10 +56,25 @@ pub struct Session {
     pub goal_x: Option<f32>,
     /// The SmartType popup was dismissed for this paragraph (Escape); reset when typing.
     pub suggest_dismissed: bool,
+    /// Style for the next typed text, set by Bold/Italic/Underline with no selection.
+    pub pending_style: Option<scriptcraft_doc::Style>,
+    /// Words Spelling ignores in this session (lowercase).
+    pub ignored_words: std::collections::BTreeSet<String>,
+    /// The user's own dictionary (lowercase); the app loads and saves it.
+    pub user_words: std::collections::BTreeSet<String>,
+    /// The last multi-paragraph copy: the text put on the clipboard and the paragraphs, so
+    /// pasting it back keeps every element, style and flag.
+    pub clip: Option<(String, Vec<scriptcraft_doc::Para>)>,
     history: Vec<Snapshot>,
     redo: Vec<Snapshot>,
     typing_open: bool,
     layout: Option<Arc<Layout>>,
+    /// Speed view: the page view shows one continuous page (reports still use real pages).
+    pub speed: bool,
+    speed_layout: Option<Arc<Layout>>,
+    /// Counts changes to the script (anything that drops the layout cache), for caches keyed
+    /// on the script's state.
+    revision: u64,
 }
 
 impl Session {
@@ -73,10 +88,17 @@ impl Session {
             status: String::new(),
             goal_x: None,
             suggest_dismissed: false,
+            pending_style: None,
+            ignored_words: Default::default(),
+            user_words: Default::default(),
+            clip: None,
             history: Vec::new(),
             redo: Vec::new(),
             typing_open: false,
             layout: None,
+            speed: false,
+            speed_layout: None,
+            revision: 0,
         };
         let _ = s.script.normalize();
         s
@@ -95,9 +117,10 @@ impl Session {
         self.history.clear();
         self.redo.clear();
         self.typing_open = false;
-        self.layout = None;
+        self.invalidate();
         self.dirty = false;
         self.goal_x = None;
+        self.pending_style = None;
     }
 
     /// The pagination of the current script (cached until the next change).
@@ -110,9 +133,30 @@ impl Session {
         l
     }
 
+    /// The layout the page view shows: real pages, or one continuous page in speed view.
+    /// Caret movement follows it.
+    pub fn view_layout(&mut self) -> Arc<Layout> {
+        if !self.speed {
+            return self.layout();
+        }
+        if let Some(l) = &self.speed_layout {
+            return l.clone();
+        }
+        let l = Arc::new(scriptcraft_layout::layout_with(&self.script, scriptcraft_layout::Mode::Speed));
+        self.speed_layout = Some(l.clone());
+        l
+    }
+
     /// Drop the cached layout (after changing the script directly).
     pub fn invalidate(&mut self) {
         self.layout = None;
+        self.speed_layout = None;
+        self.revision = self.revision.wrapping_add(1);
+    }
+
+    /// Changes so far (increases whenever the script may have changed).
+    pub fn revision(&self) -> u64 {
+        self.revision
     }
 
     /// The caret paragraph's element.
@@ -157,7 +201,7 @@ impl Session {
 
     fn after_change(&mut self) {
         self.typing_open = false;
-        self.layout = None;
+        self.invalidate();
         self.dirty = true;
         self.clamp_selection();
     }
@@ -179,6 +223,9 @@ impl Session {
         }
         if !matches!(id, "caret.up" | "caret.down") {
             self.goal_x = None;
+        }
+        if !id.starts_with("format.") && id != "text.insert" && id != "edit.paste" {
+            self.pending_style = None;
         }
         if id.starts_with("text.") || id.starts_with("element.") {
             self.suggest_dismissed = false;
@@ -208,14 +255,14 @@ impl Session {
                 }
                 self.typing_open = typing;
                 self.redo.clear();
-                self.layout = None;
+                self.invalidate();
                 self.dirty = true;
             }
             Ok(_) => {}
             Err(_) => {
                 self.script = old;
                 self.sel = old_sel;
-                self.layout = None;
+                self.invalidate();
             }
         }
         result

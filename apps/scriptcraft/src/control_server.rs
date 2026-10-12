@@ -15,6 +15,7 @@ use serde_json::{Value, json};
 /// Longer request lines are refused.
 const MAX_LINE: u64 = 1 << 20;
 
+#[derive(Clone)]
 pub struct KeyFile(PathBuf);
 
 impl KeyFile {
@@ -38,7 +39,8 @@ fn write_key(p: &std::path::Path, key: &str) -> Result<(), String> {
     o.write(true).create_new(true);
     #[cfg(unix)]
     std::os::unix::fs::OpenOptionsExt::mode(&mut o, 0o600);
-    o.open(p).and_then(|mut f| f.write_all(key.as_bytes())).map_err(|e| e.to_string())
+    let text = scriptcraft_control_key::key_file_contents(key, std::process::id());
+    o.open(p).and_then(|mut f| f.write_all(text.as_bytes())).map_err(|e| e.to_string())
 }
 
 /// Bind `127.0.0.1:port`, write the key file and serve.

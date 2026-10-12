@@ -14,7 +14,9 @@ scriptcraft-doc = { workspace = true }
 scriptcraft-fonts = { workspace = true }
 scriptcraft-layout = { workspace = true }
 scriptcraft-engine = { workspace = true }
+scriptcraft-spell = { workspace = true }
 egui = { workspace = true }
+serde = { workspace = true }
 serde_json = { workspace = true }
 # Window screenshots from the control channel are written as PNG.
 image = { version = "0.25", default-features = false, features = ["png"] }

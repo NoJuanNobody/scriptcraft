@@ -16,6 +16,13 @@ the window icon in `apps/scriptcraft/src/main.rs`).
 | `crates/fonts/fonts/CourierPrime-Italic.ttf` | same | same | SIL OFL 1.1 |
 | `crates/fonts/fonts/CourierPrime-BoldItalic.ttf` | same | same | SIL OFL 1.1 |
 
+## Word lists
+
+| File | Author | Source | Licence |
+|---|---|---|---|
+| `crates/spell/words/en.txt` | Kevin Atkinson (English Speller Database / SCOWL), from 12dicts and ENABLE2K (public domain) | https://app.aspell.net/create (size 60, US + British -ise) | ESDB licence: free use, copy, modification and distribution with the copyright notice (`crates/spell/words/LICENSE-SCOWL.txt`) |
+| `crates/spell/words/common.txt` | same | same (size 35) | same |
+
 ## Sample script
 
 | File | Author | Licence |
@@ -29,4 +36,5 @@ the window icon in `apps/scriptcraft/src/main.rs`).
 | `docs/images/hero.png` | The ScriptCraft contributors | Screenshot of ScriptCraft rendered by `ui_shot` | MIT OR Apache-2.0 |
 | `docs/images/cards.png` | The ScriptCraft contributors | Screenshot of ScriptCraft rendered by `ui_shot` | MIT OR Apache-2.0 |
 | `docs/images/reports.png` | The ScriptCraft contributors | Screenshot of ScriptCraft rendered by `ui_shot` | MIT OR Apache-2.0 |
+| `docs/demo/pr33-tour.mp4` | The ScriptCraft contributors | Recording of ScriptCraft by `ui_demo` (docs/demo/record.sh) | MIT OR Apache-2.0 |
 | `docs/images/dark-smarttype.png` | The ScriptCraft contributors | Screenshot of ScriptCraft rendered by `ui_shot` | MIT OR Apache-2.0 |

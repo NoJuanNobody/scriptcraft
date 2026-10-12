@@ -73,7 +73,21 @@ impl Element {
         })
     }
 
-    /// Typed in capitals (Scene Heading, Character, Transition, Shot).
+    /// Position in [`Element::ALL`].
+    pub const fn index(self) -> usize {
+        match self {
+            Element::SceneHeading => 0,
+            Element::Action => 1,
+            Element::Character => 2,
+            Element::Parenthetical => 3,
+            Element::Dialogue => 4,
+            Element::Transition => 5,
+            Element::Shot => 6,
+            Element::General => 7,
+        }
+    }
+
+    /// Typed in capitals by default (Scene Heading, Character, Transition, Shot).
     pub const fn uppercase(self) -> bool {
         matches!(self, Element::SceneHeading | Element::Character | Element::Transition | Element::Shot)
     }

@@ -14,10 +14,10 @@
 
 <p align="center">
   <img alt="Written in Rust" src="https://img.shields.io/badge/written%20in-Rust-2b47b5?style=flat-square&logo=rust&logoColor=white">
-  <img alt="Runs on macOS, Windows and Linux" src="https://img.shields.io/badge/runs%20on-macOS%20%C2%B7%20Windows%20%C2%B7%20Linux-3b5bdb?style=flat-square">
+  <img alt="Runs on macOS, Windows, Linux and the web" src="https://img.shields.io/badge/runs%20on-macOS%20%C2%B7%20Windows%20%C2%B7%20Linux%20%C2%B7%20Web-3b5bdb?style=flat-square">
   <img alt="License: MIT OR Apache-2.0" src="https://img.shields.io/badge/license-MIT%20%2F%20Apache--2.0-2b47b5?style=flat-square">
   <img alt="Agent-drivable over MCP" src="https://img.shields.io/badge/agents-MCP%20%C2%B7%20CLI-3b5bdb?style=flat-square">
-  <img alt="Version 0.1" src="https://img.shields.io/badge/version-0.1%20(MVP)-6f8cff?style=flat-square">
+  <img alt="Version 0.2 in progress" src="https://img.shields.io/badge/version-0.2%20(in%20progress)-6f8cff?style=flat-square">
 </p>
 
 <br>
@@ -57,13 +57,14 @@ Every screenshot is ScriptCraft itself, rendered offscreen by its own UI harness
 - **Familiar.** Final Draft's element flow: Enter after a scene heading gives Action, Tab after
   Action gives a Character, Enter after a Character gives Dialogue, Tab in Dialogue gives a
   Parenthetical (with the parentheses typed for you). Headings, cues and transitions capitalise
-  themselves. ⌘1–⌘8 pick an element.
+  themselves. ⌘1–⌘8 pick an element, and Enter in an empty paragraph shows the element list.
 - **Industry pages.** US Letter, 12-point Courier at ten characters and six lines per inch, standard
   indents, page numbers top-right, (MORE)/(CONT'D) when dialogue breaks across pages, no orphaned
   scene headings — the same layout on screen, in reports and in the PDF.
-- **Your files.** Opens and saves Final Draft XML (.fdx) and Fountain (.fountain); exports PDF with
-  embedded, selectable Courier Prime.
-- **Built for agents.** Every action is a command with an id. The same 73 engine commands (plus 19
+- **Your files.** Opens and saves Final Draft XML (.fdx) and Fountain (.fountain) with bold,
+  italic and underline intact; exports PDF with embedded, selectable Courier Prime. Autosave,
+  crash recovery and backups keep your work safe.
+- **Built for agents.** Every action is a command with an id. The same 91 engine commands (plus 31
   window commands) drive the menus, toolbar, keyboard shortcuts, a command-line tool, a JSON
   control channel and an MCP server.
 - **Never crashes on your script.** No `unwrap`/`panic` outside tests, hostile input is clamped, and
@@ -74,17 +75,17 @@ Every screenshot is ScriptCraft itself, rendered offscreen by its own UI harness
 
 | Area | Highlights |
 |---|---|
-| **Writing** | Eight elements (Scene Heading, Action, Character, Parenthetical, Dialogue, Transition, Shot, General); Enter/Tab/Shift+Tab element flow ([docs/typing-parity.md](docs/typing-parity.md)); automatic capitals and parentheses; `int. ` in Action becomes a heading; SmartType; dual dialogue; undo/redo (typing coalesced); cut/copy/paste; find and replace |
+| **Writing** | Eight elements (Scene Heading, Action, Character, Parenthetical, Dialogue, Transition, Shot, General); Enter/Tab/Shift+Tab element flow ([docs/typing-parity.md](docs/typing-parity.md)) and an element list on Enter in an empty paragraph; per-script Element Settings (indents, spacing, alignment, capitals, Enter/Tab targets); bold, italic, underline; offline spelling with suggestions and a user dictionary; automatic capitals and parentheses; `int. ` in Action becomes a heading; SmartType; dual dialogue; undo/redo (typing coalesced); copy and paste that keep elements; find and replace |
 | **Pages** | Letter, Courier 12, 54 lines; Action 1.5"–7.5", Character 3.7", Dialogue 2.5"–6.0", Parenthetical 3.1"–5.6", Transition right-aligned at 7.5"; page numbers from page 2; (MORE)/(CONT'D) across dialogue breaks (split at sentence ends, never after a parenthetical); headings and cues kept with what follows; action split only with two lines each side; automatic character (CONT'D); scene numbers in both margins; title page |
-| **Structure** | Navigator (scenes with summaries and pages, characters), index cards with editable summaries and scene reordering, go to scene/page |
+| **Structure** | Navigator (scenes with summaries, colours and pages; characters), index cards with editable summaries, colours and tags, drag to reorder scenes, go to scene/page |
 | **Reports** | Characters (speeches, words, scenes, first page), scenes (page, length in eighths, cast), locations (INT/EXT) |
-| **Files** | `.fdx` open/save (incl. dual dialogue, scene numbers, index-card summaries, title page), `.fountain` open/save (the public fountain.io syntax), PDF export |
-| **Window** | Menu bar, toolbar with element picker, page view with page breaks, status bar (element · page x of y · scene · words), light and dark themes, zoom |
+| **Files** | `.fdx` open/save (incl. text styles, element settings, dual dialogue, scene numbers, card summaries/colours, title page), `.fountain` open/save (the public fountain.io syntax incl. emphasis), PDF export; autosave with crash recovery, backups on save, recent files, drag-and-drop to open |
+| **Window** | Menu bar, toolbar with element picker and B/I/U, page view with page breaks or a continuous speed view, blinking caret, status bar (element · page x of y · scene · words), light and dark themes, zoom (menus, Ctrl/⌘+wheel, pinch, fit width); unsaved-changes prompts on close, quit and open; runs natively and in the browser |
 | **Agents** | `scriptcraft-cli` (convert, run, report, commands, parity), MCP server (headless or bridged to the window), keyed loopback control channel, headless screenshots |
 
 The full Final Draft 13 comparison — including what's not done yet (revisions, locked pages, Beat
 Board, Outline Editor, collaboration, tagging, ScriptNotes, track changes, speech-to-script…) — is
-in [docs/parity-checklist.md](docs/parity-checklist.md): **33 implemented · 1 partial · 29 not yet**.
+in [docs/parity-checklist.md](docs/parity-checklist.md): **41 implemented · 1 partial · 24 not yet**.
 
 ## Quick start
 
@@ -96,6 +97,10 @@ cargo run --release -p scriptcraft                       # opens the sample scri
 cargo run --release -p scriptcraft -- --new              # blank script
 cargo run --release -p scriptcraft -- my-script.fdx      # open a Final Draft or Fountain file
 ```
+
+In the browser: `cargo xtask web` (needs `rustup target add wasm32-unknown-unknown` and
+`cargo install wasm-bindgen-cli` at the version in Cargo.lock), then serve
+`apps/scriptcraft-web/dist/` with any static server, e.g. `python3 -m http.server -d apps/scriptcraft-web/dist`.
 
 Writing a scene: type `int. diner - night`, **Enter** (Action), type the action, **Tab**
 (Character), type `margo`, **Enter** (Dialogue), type the line, **Tab** for a parenthetical or
@@ -129,14 +134,14 @@ below the UI depends on egui.
 |---|---|---|
 | L0 | `scriptcraft-geom` | Letter page and Courier metrics (10 cpi, 6 lpi, 54 lines) |
 | L1 | `scriptcraft-doc` | screenplay model: element-typed paragraphs, title page, settings, clamped edit primitives |
-| L1 | `scriptcraft-fonts`, `scriptcraft-control-key` | Courier Prime (OFL); the control key file location |
+| L1 | `scriptcraft-fonts`, `scriptcraft-spell`, `scriptcraft-control-key` | Courier Prime (OFL); offline English spelling (SCOWL); the control key file |
 | L2 | `scriptcraft-fountain`, `scriptcraft-fdx` | Fountain and Final Draft XML import/export |
 | L2 | `scriptcraft-layout` | pagination, (MORE)/(CONT'D), dual dialogue, caret and hit testing |
 | L3 | `scriptcraft-pdf` | PDF export with krilla |
 | L4 | `scriptcraft-engine` | Session, undo, **command registry**, typing flow, SmartType, reports, file I/O, Final Draft 13 catalog |
 | L5 | `scriptcraft-mcp` | MCP server, headless or bridged to the app |
 | L6 | `scriptcraft-ui-egui` | the egui window (swappable) and `ui_shot` |
-| apps | `scriptcraft`, `scriptcraft-cli` | desktop app (eframe + wgpu), command line |
+| apps | `scriptcraft`, `scriptcraft-cli`, `scriptcraft-web` | desktop app (eframe + wgpu), command line, browser app (WebGL) |
 
 **Everything is a command:** a `CommandSpec` (id, label, menu location, shortcut, params doc,
 `enabled`, `run`) in `crates/engine/src/cmd/*.rs`, dispatched identically by menus, shortcuts, CLI,
@@ -146,9 +151,8 @@ layers, parity doc up to date).
 ## Roadmap
 
 See [ROADMAP.md](ROADMAP.md); every gap is tracked as a
-[GitHub issue](https://github.com/NoJuanNobody/scriptcraft/issues) under milestones v0.2–v0.4. Next up: inline bold/italic/underline, revision mode with coloured
-pages and locked pages, ScriptNotes, an Outline Editor and Beat Board, spelling, templates (TV,
-stage play), and a web build.
+[GitHub issue](https://github.com/NoJuanNobody/scriptcraft/issues) under milestones v0.2–v0.4. Next up (v0.3): revision mode with coloured
+pages, locked pages, headers and footers, notes, tagging and printing.
 
 ## Contributing
 

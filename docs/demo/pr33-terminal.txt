@@ -1,0 +1,17 @@
+$ scriptcraft --control 7994 &      # the real desktop app
+$ cat "~/Library/Application Support/ScriptCraft/control-key.local-7994"  # key, then the app's process id
+<random key>
+2477
+$ (type "Precious unsaved words" into the script over the control channel)
+  ok: True
+$ kill -TERM 2477
+$ pgrep -f 'scriptcraft --control 7994' || echo '  (app has exited)'
+  (app has exited)
+$ ls "~/Library/Application Support/ScriptCraft"  # no control-key file left; a recovery copy instead
+prefs.json
+recovery.json
+$ (first line of the recovered script)
+  Precious unsaved words. FADE IN:
+$ (an old key file from a process that no longer exists)
+$ scriptcraft-cli mcp --connect 127.0.0.1:7995 </dev/null
+error: stale control key in ~/Library/Application Support/ScriptCraft/control-key.local-7995 (the app that wrote it, process 999999, is not running): start the app with --control 7995

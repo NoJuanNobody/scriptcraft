@@ -1,20 +1,22 @@
-//! Final Draft-style element flow: what Enter and Tab do in each element.
+//! Final Draft-style element flow: what Enter and Tab do in each element. Enter and Tab
+//! targets are per-script element settings (`ElementFormat::default_for` has the defaults).
 //! The behaviour is documented in `docs/typing-parity.md` and pinned by `tests_typing.rs`.
 
-use scriptcraft_doc::Element;
+use scriptcraft_doc::{Element, Script};
 
-/// The element a new paragraph gets after Enter at the end of `e`.
-pub const fn enter_next(e: Element) -> Element {
-    match e {
-        Element::SceneHeading => Element::Action,
-        Element::Action => Element::Action,
-        Element::Character => Element::Dialogue,
-        Element::Parenthetical => Element::Dialogue,
-        Element::Dialogue => Element::Action,
-        Element::Transition => Element::SceneHeading,
-        Element::Shot => Element::Action,
-        Element::General => Element::General,
-    }
+/// The element a new paragraph gets after Enter at the end of `e` (this script's settings).
+pub fn enter_next(s: &Script, e: Element) -> Element {
+    s.settings.elements.get(e).enter
+}
+
+/// Tab at the end of a non-empty paragraph starts a new paragraph of this element.
+pub fn tab_next(s: &Script, e: Element) -> Element {
+    s.settings.elements.get(e).tab
+}
+
+/// Tab in an empty paragraph (or with the caret inside the text) changes its element.
+pub fn tab_empty(s: &Script, e: Element) -> Element {
+    s.settings.elements.get(e).tab_empty
 }
 
 /// Enter in an empty paragraph changes its element in place (no new paragraph).
@@ -26,34 +28,6 @@ pub const fn enter_empty(e: Element) -> Element {
         Element::Parenthetical => Element::Dialogue,
         Element::Dialogue => Element::Action,
         Element::Transition => Element::SceneHeading,
-        Element::Shot => Element::Action,
-        Element::General => Element::Action,
-    }
-}
-
-/// Tab at the end of a non-empty paragraph starts a new paragraph of this element.
-pub const fn tab_next(e: Element) -> Element {
-    match e {
-        Element::SceneHeading => Element::Action,
-        Element::Action => Element::Character,
-        Element::Character => Element::Parenthetical,
-        Element::Parenthetical => Element::Dialogue,
-        Element::Dialogue => Element::Parenthetical,
-        Element::Transition => Element::SceneHeading,
-        Element::Shot => Element::Action,
-        Element::General => Element::Character,
-    }
-}
-
-/// Tab in an empty paragraph (or with the caret inside the text) changes its element.
-pub const fn tab_empty(e: Element) -> Element {
-    match e {
-        Element::Action => Element::Character,
-        Element::Character => Element::Transition,
-        Element::Transition => Element::SceneHeading,
-        Element::SceneHeading => Element::Action,
-        Element::Dialogue => Element::Parenthetical,
-        Element::Parenthetical => Element::Dialogue,
         Element::Shot => Element::Action,
         Element::General => Element::Action,
     }

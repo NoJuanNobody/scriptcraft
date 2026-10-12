@@ -208,3 +208,57 @@ fn hostile_layouts() {
     let _ = l.caret(Pos::new(999, 999));
     let _ = l.hit(0, f32::NAN, f32::INFINITY);
 }
+
+#[test]
+fn styled_lines_carry_spans() {
+    let mut sc = s(vec![p(Element::Action, "A long action line that certainly wraps onto a second line of text, maybe a third.")]);
+    sc.set_flag(Pos::new(0, 55), Pos::new(0, 70), scriptcraft_doc::Flag::Bold, true);
+    let l = layout(&sc);
+    let b = body(&l.pages[0]);
+    assert_eq!(b[0].spans.len(), 1);
+    assert_eq!(b[1].spans.len(), 1);
+    let segs = b[0].segments();
+    assert!(segs.last().unwrap().2.bold);
+    assert_eq!(segs.iter().map(|s| s.1).collect::<String>(), b[0].text);
+    assert_eq!(b[1].segments()[0].0, 0);
+}
+
+#[test]
+fn element_settings_move_text() {
+    let mut sc = s(vec![p(Element::Action, "A chair."), p(Element::Transition, "CUT TO:")]);
+    let mut f = sc.settings.elements.get(Element::Action);
+    f.left = 2.0;
+    f.before = 3;
+    sc.settings.elements.set(Element::Action, f);
+    let mut t = sc.settings.elements.get(Element::Transition);
+    t.align = Align::Center;
+    t.left = 1.5;
+    sc.settings.elements.set(Element::Transition, t);
+    let l = layout(&sc);
+    let b = body(&l.pages[0]);
+    assert_eq!(b[0].x, 144.0);
+    assert!((b[1].x - (108.0 + 540.0 - 7.0 * 7.2) / 2.0).abs() < 0.01);
+    // Hostile values are clamped.
+    f.left = f32::NAN;
+    f.right = -4.0;
+    sc.settings.elements.set(Element::Action, f);
+    let g = sc.settings.elements.get(Element::Action);
+    assert!(g.left >= 0.0 && g.right > g.left);
+    let _ = layout(&sc);
+}
+
+#[test]
+fn speed_view_has_no_breaks() {
+    let paras: Vec<Para> = (0..120).map(|i| p(Element::Action, &format!("Line {i}."))).collect();
+    let mut sc = s(paras);
+    sc.title.title = "T".into();
+    let paged = layout(&sc);
+    assert!(paged.pages.len() > 3);
+    let l = layout_with(&sc, Mode::Speed);
+    assert_eq!(l.pages.len(), 1);
+    assert!(l.pages[0].lines.iter().all(|x| x.kind == LineKind::Body));
+    assert_eq!(body(&l.pages[0]).len(), 120);
+    assert!(l.page_height(0) > 2000.0);
+    let c = l.caret(Pos::new(119, 3)).unwrap();
+    assert_eq!(l.hit(0, c.x + 0.1, c.y + 6.0), Some(Pos::new(119, 3)));
+}

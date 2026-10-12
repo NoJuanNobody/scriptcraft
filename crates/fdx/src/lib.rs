@@ -16,13 +16,22 @@
 //! </FinalDraft>
 //! ```
 //!
-//! Text runs (`<Text Style="Bold">`) are concatenated: inline styles are not modelled yet.
+//! Text runs keep their `Style` (`Bold`, `Italic`, `Underline`, combined with `+`); other style
+//! values (`AllCaps`, `Strikeout`…) are ignored.
 //! Unknown paragraph types (`Cast List`, `New Act`, `Lyrics`…) import as General.
+//!
+//! Scene headings' `SceneProperties` carry the index-card summary and colour (`Color`, written
+//! in Final Draft's 48-bit `#RRRRGGGGBBBB` form); card tags use a ScriptCraft-only
+//! `ScriptCraftTags` attribute.
+//!
+//! `<ElementSettings Type="…">` carry each element's indents and spacing (`ParagraphSpec`),
+//! capitals (`FontSpec Style="AllCaps"`) and Enter target (`Behavior ReturnKey`). ScriptCraft's
+//! Tab targets have no FDX equivalent and are not written.
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 use quick_xml::Reader;
 use quick_xml::events::Event;
-use scriptcraft_doc::{Element, MAX_PARA_BYTES, MAX_PARAS, Para, Script, TitlePage};
+use scriptcraft_doc::{Align, Element, ElementFormats, MAX_PARA_BYTES, MAX_PARAS, Para, Script, Style, TitlePage};
 
 /// Largest input we parse, bytes.
 pub const MAX_INPUT: usize = 128 << 20;
@@ -52,7 +61,11 @@ struct Open {
     number: Option<String>,
     align: String,
     text: String,
+    runs: Vec<(String, Style)>,
+    style: Style,
     summary: String,
+    color: Option<scriptcraft_doc::CardColor>,
+    tags: Vec<String>,
     wrapper: bool,
     in_text: bool,
 }
@@ -70,6 +83,8 @@ pub fn parse(src: &str) -> Result<Script, FdxError> {
     // Characters seen in the current DualDialogue (the second and later are `dual`).
     let mut dual_chars: Option<usize> = None;
     let mut root_seen = false;
+    let mut formats = ElementFormats::default();
+    let mut cur_fmt: Option<(Element, scriptcraft_doc::ElementFormat)> = None;
     loop {
         let ev = r.read_event().map_err(|e| FdxError::Xml(e.to_string()))?;
         let empty = matches!(ev, Event::Empty(_));
@@ -88,7 +103,40 @@ pub fn parse(src: &str) -> Result<Script, FdxError> {
                         .find(|a| a.key.local_name().as_ref() == k.as_bytes())
                         .and_then(|a| a.normalized_value(quick_xml::XmlVersion::Implicit1_0).ok().map(|v| v.into_owned()))
                 };
+                let in_title = stack.iter().any(|n| n == "TitlePage");
                 match name.as_str() {
+                    "ElementSettings" if !in_title => {
+                        cur_fmt = attr("Type").and_then(|t| Element::parse(&t)).map(|e| (e, formats.get(e)));
+                    }
+                    "ParagraphSpec" if stack.iter().any(|n| n == "ElementSettings") => {
+                        if let Some((_, f)) = cur_fmt.as_mut() {
+                            let num = |k: &str| attr(k).and_then(|v| v.trim().parse::<f32>().ok()).filter(|x| x.is_finite());
+                            if let Some(x) = num("LeftIndent") {
+                                f.left = x;
+                            }
+                            if let Some(x) = num("RightIndent") {
+                                f.right = x;
+                            }
+                            if let Some(x) = num("SpaceBefore") {
+                                f.before = (x / 12.0).round().clamp(0.0, 6.0) as u8;
+                            }
+                            if let Some(a) = attr("Alignment").and_then(|a| Align::parse(&a)) {
+                                f.align = a;
+                            }
+                        }
+                    }
+                    "FontSpec" if stack.iter().any(|n| n == "ElementSettings") => {
+                        if let Some((_, f)) = cur_fmt.as_mut() {
+                            f.uppercase = attr("Style").is_some_and(|v| v.split('+').any(|x| x.trim() == "AllCaps"));
+                        }
+                    }
+                    "Behavior" if stack.iter().any(|n| n == "ElementSettings") => {
+                        if let Some((_, f)) = cur_fmt.as_mut()
+                            && let Some(e) = attr("ReturnKey").and_then(|r| Element::parse(&r))
+                        {
+                            f.enter = e;
+                        }
+                    }
                     "Paragraph" => {
                         let kind = if stack.iter().any(|n| n == "Summary") {
                             Kind::Summary
@@ -103,7 +151,11 @@ pub fn parse(src: &str) -> Result<Script, FdxError> {
                             number: attr("Number"),
                             align: attr("Alignment").unwrap_or_default(),
                             text: String::new(),
+                            runs: Vec::new(),
+                            style: Style::PLAIN,
                             summary: String::new(),
+                            color: None,
+                            tags: Vec::new(),
                             wrapper: false,
                             in_text: false,
                         };
@@ -113,9 +165,19 @@ pub fn parse(src: &str) -> Result<Script, FdxError> {
                             open.push(o);
                         }
                     }
+                    "SceneProperties" => {
+                        let color = attr("Color").and_then(|c| parse_color(&c));
+                        let tags = attr("ScriptCraftTags").map(|t| scriptcraft_doc::clean_tags(t.split(','))).unwrap_or_default();
+                        if let Some(o) = open.last_mut().filter(|o| o.kind == Kind::Body) {
+                            o.color = color;
+                            o.tags = tags;
+                        }
+                    }
                     "Text" => {
+                        let st = attr("Style").map(|v| parse_style(&v)).unwrap_or_default();
                         if let Some(o) = open.last_mut() {
                             o.in_text = !empty;
+                            o.style = st;
                         }
                     }
                     "DualDialogue" => {
@@ -145,6 +207,11 @@ pub fn parse(src: &str) -> Result<Script, FdxError> {
                         }
                     }
                     "DualDialogue" => dual_chars = None,
+                    "ElementSettings" => {
+                        if let Some((e, f)) = cur_fmt.take() {
+                            formats.set(e, f);
+                        }
+                    }
                     "Paragraph" => {
                         if let Some(o) = open.pop() {
                             finish(o, &mut open, &mut paras, &mut title_lines, &mut dual_chars);
@@ -155,12 +222,12 @@ pub fn parse(src: &str) -> Result<Script, FdxError> {
             }
             Event::Text(t) => {
                 if let Some(o) = open.last_mut().filter(|o| o.in_text) {
-                    push_text(&mut o.text, &t.decode().map_err(|e| FdxError::Xml(e.to_string()))?);
+                    push_text(o, &t.decode().map_err(|e| FdxError::Xml(e.to_string()))?);
                 }
             }
             Event::CData(t) => {
                 if let Some(o) = open.last_mut().filter(|o| o.in_text) {
-                    push_text(&mut o.text, &t.decode().map_err(|e| FdxError::Xml(e.to_string()))?);
+                    push_text(o, &t.decode().map_err(|e| FdxError::Xml(e.to_string()))?);
                 }
             }
             Event::GeneralRef(g) => {
@@ -177,7 +244,7 @@ pub fn parse(src: &str) -> Result<Script, FdxError> {
                         },
                     };
                     if let Some(c) = c {
-                        push_text(&mut o.text, &c);
+                        push_text(o, &c);
                     }
                 }
             }
@@ -192,14 +259,57 @@ pub fn parse(src: &str) -> Result<Script, FdxError> {
         return Err(FdxError::NotFdx(String::new()));
     }
     let mut s = Script::from_paras(paras).map_err(|_| FdxError::TooLarge)?;
+    s.settings.elements = formats;
+    s.normalize().map_err(|_| FdxError::TooLarge)?;
     s.title = title_from_lines(&title_lines);
     Ok(s)
 }
 
-fn push_text(dst: &mut String, s: &str) {
-    if dst.len() + s.len() <= MAX_PARA_BYTES {
-        dst.push_str(s);
+fn push_text(o: &mut Open, s: &str) {
+    if o.text.len() + s.len() > MAX_PARA_BYTES {
+        return;
     }
+    o.text.push_str(s);
+    match o.runs.last_mut() {
+        Some((t, st)) if *st == o.style => t.push_str(s),
+        _ => o.runs.push((s.to_string(), o.style)),
+    }
+}
+
+/// A scene colour: `#RRGGBB` or Final Draft's 48-bit `#RRRRGGGGBBBB`. White means none.
+fn parse_color(c: &str) -> Option<scriptcraft_doc::CardColor> {
+    let h = c.trim().trim_start_matches('#');
+    let step = match h.len() {
+        6 => 2,
+        12 => 4,
+        _ => return None,
+    };
+    let ch = |i: usize| h.get(i * step..i * step + 2).and_then(|x| u8::from_str_radix(x, 16).ok());
+    let rgb = [ch(0)?, ch(1)?, ch(2)?];
+    if rgb.iter().all(|v| *v >= 0xf0) {
+        return None;
+    }
+    Some(scriptcraft_doc::CardColor::nearest(rgb))
+}
+
+/// `Bold+Italic+Underline` (any order, other values ignored).
+fn parse_style(v: &str) -> Style {
+    let mut st = Style::PLAIN;
+    for part in v.split('+') {
+        match part.trim() {
+            "Bold" => st.bold = true,
+            "Italic" => st.italic = true,
+            "Underline" => st.underline = true,
+            _ => {}
+        }
+    }
+    st
+}
+
+fn style_attr(st: Style) -> String {
+    let parts: Vec<&str> =
+        [(st.bold, "Bold"), (st.italic, "Italic"), (st.underline, "Underline")].iter().filter(|(on, _)| *on).map(|(_, n)| *n).collect();
+    if parts.is_empty() { String::new() } else { format!(" Style=\"{}\"", parts.join("+")) }
 }
 
 fn finish(o: Open, open: &mut [Open], paras: &mut Vec<Para>, title_lines: &mut Vec<(String, String)>, dual_chars: &mut Option<usize>) {
@@ -224,10 +334,12 @@ fn finish(o: Open, open: &mut [Open], paras: &mut Vec<Para>, title_lines: &mut V
                 Some("Lyrics") | Some("Cast List") => Element::Action,
                 _ => Element::General,
             });
-            let mut p = Para::new(element, o.text);
+            let mut p = if o.runs.iter().any(|(_, st)| !st.is_plain()) { Para::styled(element, &o.runs) } else { Para::new(element, o.text) };
             if element == Element::SceneHeading {
                 p.scene_number = o.number.filter(|n| !n.trim().is_empty());
                 p.summary = o.summary;
+                p.color = o.color;
+                p.tags = o.tags;
             }
             if element == Element::Character
                 && let Some(n) = dual_chars.as_mut()
@@ -318,13 +430,28 @@ fn para_xml(out: &mut String, indent: &str, p: &Para) {
         out.push_str(&format!(" Number=\"{}\"", esc(n.trim())));
     }
     out.push_str(">\n");
-    if p.element == Element::SceneHeading && !p.summary.trim().is_empty() {
-        out.push_str(&format!(
-            "{indent}  <SceneProperties Title=\"\">\n{indent}    <Summary>\n{indent}      <Paragraph Type=\"Action\">\n{indent}        <Text>{}</Text>\n{indent}      </Paragraph>\n{indent}    </Summary>\n{indent}  </SceneProperties>\n",
-            esc(p.summary.trim())
-        ));
+    if p.element == Element::SceneHeading && (!p.summary.trim().is_empty() || p.color.is_some() || !p.tags.is_empty()) {
+        let mut attrs = String::new();
+        if let Some(c) = p.color {
+            let [r, g, b] = c.rgb();
+            attrs.push_str(&format!(" Color=\"#{r:02X}{r:02X}{g:02X}{g:02X}{b:02X}{b:02X}\""));
+        }
+        if !p.tags.is_empty() {
+            attrs.push_str(&format!(" ScriptCraftTags=\"{}\"", esc(&p.tags.join(", "))));
+        }
+        out.push_str(&format!("{indent}  <SceneProperties{attrs} Title=\"\">\n"));
+        if !p.summary.trim().is_empty() {
+            out.push_str(&format!(
+                "{indent}    <Summary>\n{indent}      <Paragraph Type=\"Action\">\n{indent}        <Text>{}</Text>\n{indent}      </Paragraph>\n{indent}    </Summary>\n",
+                esc(p.summary.trim())
+            ));
+        }
+        out.push_str(&format!("{indent}  </SceneProperties>\n"));
     }
-    out.push_str(&format!("{indent}  <Text>{}</Text>\n{indent}</Paragraph>\n", esc(&p.text)));
+    for (t, st) in p.runs() {
+        out.push_str(&format!("{indent}  <Text{}>{}</Text>\n", style_attr(st), esc(t)));
+    }
+    out.push_str(&format!("{indent}</Paragraph>\n"));
 }
 
 /// The dialogue block starting at `i` (a Character and its Parenthetical/Dialogue lines): its end.
@@ -360,6 +487,20 @@ pub fn write(s: &Script) -> String {
         i += 1;
     }
     out.push_str("  </Content>\n");
+    for e in Element::ALL {
+        let f = s.settings.elements.get(e);
+        let caps = if f.uppercase { " Style=\"AllCaps\"" } else { "" };
+        out.push_str(&format!(
+            "  <ElementSettings Type=\"{n}\">\n    <FontSpec Font=\"Courier Prime\" Size=\"12\"{caps}/>\n    <ParagraphSpec Alignment=\"{a}\" FirstIndent=\"0.00\" Leading=\"Regular\" LeftIndent=\"{l:.2}\" RightIndent=\"{r:.2}\" SpaceBefore=\"{sb}\" Spacing=\"1\" StartsNewPage=\"No\"/>\n    <Behavior PaginateAs=\"{n}\" ReturnKey=\"{rk}\" Shortcut=\"{k}\"/>\n  </ElementSettings>\n",
+            n = e.name(),
+            a = f.align.name(),
+            l = f.left,
+            r = f.right,
+            sb = u32::from(f.before) * 12,
+            rk = f.enter.name(),
+            k = e.index() + 1,
+        ));
+    }
     let t = &s.title;
     if !t.is_empty() {
         out.push_str("  <TitlePage>\n    <Content>\n");

@@ -18,6 +18,7 @@ scriptcraft-fountain = { path = "crates/fountain" }
 scriptcraft-fdx = { path = "crates/fdx" }
 scriptcraft-layout = { path = "crates/layout" }
 scriptcraft-pdf = { path = "crates/pdf" }
+scriptcraft-spell = { path = "crates/spell" }
 scriptcraft-engine = { path = "crates/engine" }
 scriptcraft-control-key = { path = "crates/control-key" }
 scriptcraft-mcp = { path = "crates/mcp" }

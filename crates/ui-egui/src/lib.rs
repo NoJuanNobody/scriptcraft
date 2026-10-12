@@ -6,10 +6,11 @@
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 mod canvas;
-mod cards;
+pub mod cards;
 mod chrome;
 pub mod control;
 pub mod icons;
+pub mod persist;
 mod reports;
 pub mod theme;
 
@@ -19,6 +20,18 @@ use scriptcraft_engine::{CmdError, Session};
 use serde_json::{Value, json};
 
 pub use control::ControlRequest;
+
+/// Files without a file system (the browser): the host opens a picker and delivers the chosen
+/// file to [`ScriptApp::inbox`], and saves by handing bytes to the user (a download).
+pub trait FileHost {
+    /// Ask the user for a script file; deliver `(name, bytes)` to the inbox when chosen.
+    fn open(&self, inbox: Inbox);
+    /// Give the user a file.
+    fn save(&self, name: &str, bytes: Vec<u8>);
+}
+
+/// Files that arrived asynchronously: `(name, bytes)`.
+pub type Inbox = std::sync::Arc<std::sync::Mutex<Vec<(String, Vec<u8>)>>>;
 
 /// The main view.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -50,8 +63,13 @@ pub const UI_COMMANDS: &[(&str, &str, &str, &str)] = &[
     ("ui.zoomIn", "Zoom In", "View", "Mod+="),
     ("ui.zoomOut", "Zoom Out", "View", "Mod+-"),
     ("ui.zoomReset", "Actual Size", "View", "Mod+0"),
+    ("ui.zoomFit", "Fit Page Width", "View", "Mod+9"),
+    ("ui.view.speed", "Speed View", "View", "Mod+Alt+4"),
     ("ui.find", "Find…", "Edit", "Mod+F"),
+    ("ui.toggleSpelling", "Check Spelling as You Type", "Tools", ""),
+    ("ui.toggleEnterPicker", "Element List on Enter in an Empty Paragraph", "Format", ""),
     ("ui.titlePage", "Title Page…", "Document", ""),
+    ("ui.elementSettings", "Element Settings…", "Format", ""),
     ("ui.open", "Open…", "File", "Mod+O"),
     ("ui.save", "Save", "File", "Mod+S"),
     ("ui.saveAs", "Save As…", "File", "Mod+Shift+S"),
@@ -59,6 +77,9 @@ pub const UI_COMMANDS: &[(&str, &str, &str, &str)] = &[
     ("ui.exportFdx", "Export Final Draft (FDX)…", "File", ""),
     ("ui.exportFountain", "Export Fountain…", "File", ""),
     ("ui.about", "About ScriptCraft", "Help", ""),
+    ("ui.quit", "Quit ScriptCraft", "File", "Mod+Q"),
+    ("ui.openRecent", "Open Recent", "File", ""),
+    ("ui.clearRecent", "Clear Recent Files", "File", ""),
 ];
 
 /// The application state.
@@ -72,12 +93,42 @@ pub struct ScriptApp {
     pub canvas: canvas::CanvasState,
     pub find: Option<FindBar>,
     pub title_dialog: bool,
+    pub element_dialog: bool,
+    /// The index card being dragged.
+    pub card_drag: Option<usize>,
+    /// Screen rectangles of the index cards last drawn (for demos and agents).
+    pub card_rects: Vec<egui::Rect>,
+    /// The tags field of an index card's menu: (scene, text).
+    pub tag_edit: Option<(usize, String)>,
     pub about: bool,
     /// Native file dialogs are allowed (off in tests and headless screenshots).
     pub dialogs: bool,
     /// Ask before closing with unsaved changes.
     pub confirm_close: bool,
     pub quit_requested: bool,
+    /// Quit was chosen (menu, Mod+Q, control channel): the host asks the window to close, which
+    /// goes through [`ScriptApp::close_requested`] like the close button.
+    pub close_wanted: bool,
+    /// Underline misspelled words.
+    pub spelling: bool,
+    /// Enter in an empty paragraph shows the element list (otherwise it changes the element).
+    pub enter_picker: bool,
+    /// The settings folder for state kept between runs (user dictionary…); `None` in tests.
+    pub state_dir: Option<std::path::PathBuf>,
+    /// Preferences kept between runs (recent files, autosave and backup settings).
+    pub prefs: persist::Prefs,
+    /// An autosaved script found at start-up, offered for recovery.
+    pub recovery_offer: Option<persist::Recovery>,
+    /// Where files are opened from and saved to when there is no file system (the web build).
+    pub host: Option<Box<dyn FileHost>>,
+    /// Files delivered by the host or dropped on the window.
+    pub inbox: Inbox,
+    /// Buttons of the open modal dialog this frame (label, screen rect), for `ui.inspect`.
+    pub dialog_buttons: Vec<(String, egui::Rect)>,
+    /// An open/new waiting for the user to save or discard unsaved changes.
+    pub confirm_replace: Option<(String, Value)>,
+    /// When the script was last autosaved (seconds of UI time).
+    last_autosave: f64,
     /// Status-bar message and when it was set (seconds since start).
     status: Option<(String, f64)>,
     control: Option<Receiver<ControlRequest>>,
@@ -110,10 +161,25 @@ impl ScriptApp {
             canvas: canvas::CanvasState::default(),
             find: None,
             title_dialog: false,
+            element_dialog: false,
+            card_drag: None,
+            card_rects: Vec::new(),
+            tag_edit: None,
             about: false,
             dialogs: true,
             confirm_close: false,
             quit_requested: false,
+            close_wanted: false,
+            spelling: true,
+            enter_picker: true,
+            state_dir: None,
+            prefs: persist::Prefs::default(),
+            recovery_offer: None,
+            last_autosave: 0.0,
+            confirm_replace: None,
+            dialog_buttons: Vec::new(),
+            host: None,
+            inbox: Inbox::default(),
             status: None,
             control: None,
             synthetic: Vec::new(),
@@ -121,6 +187,91 @@ impl ScriptApp {
             fonts_installed: false,
             fonts_frames: 0,
             sent_title: String::new(),
+        }
+    }
+
+    /// Keep state (user dictionary, preferences, autosave, backups) in `dir` and load what is
+    /// there; an autosaved script left by a run that did not end cleanly is offered back.
+    pub fn with_state_dir(mut self, dir: std::path::PathBuf) -> Self {
+        self.session.user_words = persist::load_words(&dir);
+        self.prefs = persist::load_prefs(&dir);
+        if let Some(d) = self.prefs.dark {
+            self.dark = d;
+        }
+        self.canvas.zoom = self.prefs.zoom;
+        self.spelling = self.prefs.spelling;
+        self.enter_picker = self.prefs.enter_picker;
+        self.recovery_offer = persist::read_recovery(&dir);
+        self.state_dir = Some(dir);
+        self
+    }
+
+    /// Write preferences (the app calls this on exit). A script with no unsaved changes, or one
+    /// the user chose not to save, leaves no recovery file behind.
+    pub fn on_exit(&mut self) {
+        let Some(dir) = self.state_dir.clone() else { return };
+        self.prefs.dark = Some(self.dark);
+        self.prefs.zoom = self.canvas.zoom;
+        self.prefs.spelling = self.spelling;
+        self.prefs.enter_picker = self.enter_picker;
+        let _ = persist::save_prefs(&dir, &self.prefs);
+        if !self.session.dirty || self.quit_requested {
+            persist::clear_recovery(&dir);
+        }
+    }
+
+    /// The process is being terminated: keep unsaved changes as a recovery copy (offered at the
+    /// next start) and save preferences. Unlike [`ScriptApp::on_exit`] it never clears recovery.
+    pub fn emergency_save(&mut self) {
+        let Some(dir) = self.state_dir.clone() else { return };
+        if self.session.dirty {
+            let _ = persist::write_recovery(&dir, self.session.path.as_deref(), &self.session.script);
+        }
+        self.prefs.dark = Some(self.dark);
+        self.prefs.zoom = self.canvas.zoom;
+        let _ = persist::save_prefs(&dir, &self.prefs);
+    }
+
+    /// Before a save over an existing file: keep the old version in the backups folder.
+    fn before_save(&mut self, id: &str, params: &Value) {
+        let Some(dir) = self.state_dir.clone() else { return };
+        if !matches!(id, "file.save" | "file.saveAs") {
+            return;
+        }
+        let target = params.get("path").and_then(Value::as_str).map(std::path::PathBuf::from).or_else(|| self.session.path.clone());
+        if let Some(t) = target
+            && let Err(e) = persist::backup(&dir, &t, self.prefs.backups)
+        {
+            self.status = Some((format!("Backup failed: {e}"), 0.0));
+        }
+    }
+
+    /// After a successful open or save: remember the file; a saved script needs no recovery copy.
+    fn after_file(&mut self, id: &str) {
+        let Some(dir) = self.state_dir.clone() else { return };
+        if !matches!(id, "file.open" | "file.save" | "file.saveAs") {
+            return;
+        }
+        if let Some(p) = self.session.path.as_ref().map(|p| p.display().to_string()) {
+            self.prefs.touch_recent(&p);
+            let _ = persist::save_prefs(&dir, &self.prefs);
+        }
+        if !self.session.dirty {
+            persist::clear_recovery(&dir);
+            self.recovery_offer = None;
+        }
+    }
+
+    /// Autosave a script with unsaved changes every `prefs.autosave_secs`.
+    fn autosave(&mut self, now: f64) {
+        let Some(dir) = self.state_dir.clone() else { return };
+        let every = f64::from(self.prefs.autosave_secs);
+        if every <= 0.0 || !self.session.dirty || self.recovery_offer.is_some() || now - self.last_autosave < every {
+            return;
+        }
+        self.last_autosave = now;
+        if let Err(e) = persist::write_recovery(&dir, self.session.path.as_deref(), &self.session.script) {
+            self.status = Some((format!("Autosave failed: {e}"), 0.0));
         }
     }
 
@@ -140,9 +291,28 @@ impl ScriptApp {
 
     /// Run a command: `ui.*` here, everything else in the engine. Errors go to the status bar.
     pub fn execute(&mut self, id: &str, params: Value) -> Result<Value, CmdError> {
+        // Replacing a script with unsaved changes asks first (interactive windows only).
+        if self.dialogs
+            && self.session.dirty
+            && matches!(id, "file.new" | "file.sample" | "file.open" | "ui.open" | "ui.openRecent")
+            && self.confirm_replace.is_none()
+        {
+            self.confirm_replace = Some((id.to_string(), params));
+            return Ok(json!({"pending": "unsaved changes"}));
+        }
+        if !id.starts_with("ui.") {
+            self.before_save(id, &params);
+        }
         let r = if id.starts_with("ui.") { self.ui_command(id, &params) } else { self.session.run(id, &params) };
         match &r {
             Ok(_) => {
+                self.after_file(id);
+                if id == "spell.addWord"
+                    && let Some(dir) = &self.state_dir
+                    && let Err(e) = persist::save_words(dir, &self.session.user_words)
+                {
+                    self.status = Some((format!("Could not save the dictionary: {e}"), 0.0));
+                }
                 if !id.starts_with("ui.") && !matches!(id, "document.inspect" | "document.stats" | "smarttype.suggest") {
                     self.canvas.scroll_to_caret = true;
                 }
@@ -164,16 +334,29 @@ impl ScriptApp {
     fn ui_command(&mut self, id: &str, p: &Value) -> Result<Value, CmdError> {
         let path = p.get("path").and_then(Value::as_str).map(str::to_string);
         match id {
-            "ui.view.page" => self.view = View::Page,
+            "ui.view.page" => {
+                self.view = View::Page;
+                self.session.speed = false;
+            }
             "ui.view.cards" => self.view = View::Cards,
             "ui.view.reports" => self.view = View::Reports,
             "ui.toggleNavigator" => self.navigator = !self.navigator,
             "ui.theme.toggle" => self.dark = !self.dark,
+            "ui.toggleSpelling" => self.spelling = !self.spelling,
+            "ui.toggleEnterPicker" => self.enter_picker = !self.enter_picker,
             "ui.theme.dark" => self.dark = true,
             "ui.theme.light" => self.dark = false,
             "ui.zoomIn" => self.canvas.zoom = (self.canvas.zoom * 1.1).min(3.0),
             "ui.zoomOut" => self.canvas.zoom = (self.canvas.zoom / 1.1).max(0.4),
             "ui.zoomReset" => self.canvas.zoom = 1.0,
+            "ui.zoomFit" => {
+                let w = self.canvas.canvas_rect.map_or(900.0, |r| r.width());
+                self.canvas.zoom = ((w - 2.0 * 28.0 - 16.0) / scriptcraft_geom::PAGE_W).clamp(0.4, 3.0);
+            }
+            "ui.view.speed" => {
+                self.view = View::Page;
+                return self.session.run("view.speed", p);
+            }
             "ui.find" => {
                 let mut f = self.find.take().unwrap_or_default();
                 if let Some(t) = p.get("text").and_then(Value::as_str) {
@@ -183,16 +366,37 @@ impl ScriptApp {
                 self.find = Some(f);
             }
             "ui.titlePage" => self.title_dialog = !self.title_dialog,
+            "ui.elementSettings" => self.element_dialog = !self.element_dialog,
             "ui.about" => self.about = true,
+            "ui.quit" => self.close_wanted = true,
+            "ui.openRecent" => {
+                let path = path.or_else(|| self.prefs.recent.first().cloned()).ok_or_else(|| CmdError::Disabled("no recent files".into()))?;
+                return self.execute("file.open", json!({"path": path}));
+            }
+            "ui.clearRecent" => {
+                self.prefs.recent.clear();
+                if let Some(dir) = &self.state_dir {
+                    let _ = persist::save_prefs(dir, &self.prefs);
+                }
+            }
+            "ui.open" if self.host.is_some() && path.is_none() => {
+                if let Some(h) = &self.host {
+                    h.open(self.inbox.clone());
+                }
+            }
+            "ui.save" | "ui.saveAs" if self.host.is_some() && path.is_none() => return self.host_save("fountain"),
+            "ui.exportPdf" if self.host.is_some() && path.is_none() => return self.host_save("pdf"),
+            "ui.exportFdx" if self.host.is_some() && path.is_none() => return self.host_save("fdx"),
+            "ui.exportFountain" if self.host.is_some() && path.is_none() => return self.host_save("fountain"),
             "ui.open" => {
                 let Some(path) = path.or_else(|| self.pick(false, "Open Script", &["fountain", "fdx", "spmd", "txt"], "")) else {
                     return Ok(json!({}));
                 };
-                return self.session.run("file.open", &json!({"path": path}));
+                return self.execute("file.open", json!({"path": path}));
             }
             "ui.save" => {
                 if self.session.path.is_some() && path.is_none() {
-                    return self.session.run("file.save", &json!({}));
+                    return self.execute("file.save", json!({}));
                 }
                 return self.ui_command("ui.saveAs", p);
             }
@@ -200,7 +404,7 @@ impl ScriptApp {
                 let Some(path) = path.or_else(|| self.pick(true, "Save Script", &["fountain", "fdx"], "Untitled.fountain")) else {
                     return Ok(json!({}));
                 };
-                return self.session.run("file.saveAs", &json!({"path": path}));
+                return self.execute("file.saveAs", json!({"path": path}));
             }
             "ui.exportPdf" | "ui.exportFdx" | "ui.exportFountain" => {
                 let (ext, cmd) = match id {
@@ -215,6 +419,47 @@ impl ScriptApp {
             other => return Err(CmdError::Unknown(other.to_string())),
         }
         Ok(json!({"view": self.view.id(), "dark": self.dark, "zoom": self.canvas.zoom, "navigator": self.navigator}))
+    }
+
+    /// Save through the host: export the script and hand the bytes over (a browser download).
+    fn host_save(&mut self, format: &str) -> Result<Value, CmdError> {
+        let v = self.session.run("document.export", &json!({"format": format}))?;
+        let name = v["name"].as_str().unwrap_or("Untitled").to_string();
+        let bytes = scriptcraft_engine::b64::decode(v["data"].as_str().unwrap_or("")).map_err(CmdError::Failed)?;
+        if let Some(h) = &self.host {
+            h.save(&name, bytes);
+        }
+        if format == "fountain" {
+            self.session.dirty = false;
+        }
+        Ok(json!({"name": name}))
+    }
+
+    /// Open files that arrived from the host or were dropped on the window.
+    fn drain_inbox(&mut self, ctx: &egui::Context) {
+        #[cfg(not(target_arch = "wasm32"))]
+        let dropped: Vec<(String, Vec<u8>)> = ctx.input(|i| {
+            i.raw
+                .dropped_files
+                .iter()
+                .filter_map(|f| {
+                    let name = f.path().file_name()?.to_str()?.to_string();
+                    let bytes = f.bytes().ok()?;
+                    Some((name, bytes))
+                })
+                .collect()
+        });
+        // In the browser, files come through the host's picker instead.
+        #[cfg(target_arch = "wasm32")]
+        let dropped: Vec<(String, Vec<u8>)> = {
+            let _ = ctx;
+            Vec::new()
+        };
+        let mut files = std::mem::take(&mut *self.inbox.lock().unwrap_or_else(|e| e.into_inner()));
+        files.extend(dropped);
+        for (name, bytes) in files {
+            let _ = self.execute("file.load", json!({"name": name, "data": scriptcraft_engine::b64::encode(&bytes)}));
+        }
     }
 
     /// A native file dialog (none in tests, headless runs or the browser).
@@ -254,7 +499,11 @@ impl ScriptApp {
         fonts.font_data.insert("courier-prime".into(), std::sync::Arc::new(egui::FontData::from_static(scriptcraft_fonts::REGULAR)));
         fonts.font_data.insert("courier-prime-bold".into(), std::sync::Arc::new(egui::FontData::from_static(scriptcraft_fonts::BOLD)));
         fonts.families.insert(egui::FontFamily::Name("courier".into()), vec!["courier-prime".into()]);
+        fonts.font_data.insert("courier-prime-italic".into(), std::sync::Arc::new(egui::FontData::from_static(scriptcraft_fonts::ITALIC)));
+        fonts.font_data.insert("courier-prime-bolditalic".into(), std::sync::Arc::new(egui::FontData::from_static(scriptcraft_fonts::BOLD_ITALIC)));
         fonts.families.insert(egui::FontFamily::Name("courier-bold".into()), vec!["courier-prime-bold".into()]);
+        fonts.families.insert(egui::FontFamily::Name("courier-italic".into()), vec!["courier-prime-italic".into()]);
+        fonts.families.insert(egui::FontFamily::Name("courier-bolditalic".into()), vec!["courier-prime-bolditalic".into()]);
         ctx.set_fonts(fonts);
         self.fonts_installed = true;
     }
@@ -262,8 +511,12 @@ impl ScriptApp {
     /// Per-frame work before layout: control requests, screenshots, theme, title.
     pub fn logic(&mut self, ctx: &egui::Context) {
         self.install_fonts(ctx);
+        // Cmd/Ctrl + =/- zoom the pages (our shortcuts), not the whole interface.
+        ctx.options_mut(|o| o.zoom_with_keyboard = false);
         ctx.set_visuals(self.tokens().visuals());
         let now = ctx.input(|i| i.time);
+        self.autosave(now);
+        self.drain_inbox(ctx);
         if let Some((_, t)) = &mut self.status
             && *t == 0.0
         {
@@ -298,6 +551,8 @@ impl ScriptApp {
         let name = self.session.path.as_ref().and_then(|p| p.file_name()).and_then(|n| n.to_str()).unwrap_or("Untitled").to_string();
         let title = format!("{name}{} — ScriptCraft", if self.session.dirty { " •" } else { "" });
         if title != self.sent_title {
+            // The browser backend has no window title.
+            #[cfg(not(target_arch = "wasm32"))]
             ctx.send_viewport_cmd(egui::ViewportCommand::Title(title.clone()));
             self.sent_title = title;
         }
@@ -352,6 +607,7 @@ impl ScriptApp {
             View::Cards => cards::show(self, ui),
             View::Reports => reports::show(self, ui),
         });
+        self.dialog_buttons.clear();
         chrome::dialogs(self, &ctx);
     }
 }
