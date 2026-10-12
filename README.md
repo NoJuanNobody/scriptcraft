@@ -91,7 +91,7 @@ in [docs/parity-checklist.md](docs/parity-checklist.md): **33 implemented · 1 p
 Requires Rust 1.90+ (edition 2024).
 
 ```sh
-git clone <this repo> scriptcraft && cd scriptcraft
+git clone https://github.com/NoJuanNobody/scriptcraft && cd scriptcraft
 cargo run --release -p scriptcraft                       # opens the sample script
 cargo run --release -p scriptcraft -- --new              # blank script
 cargo run --release -p scriptcraft -- my-script.fdx      # open a Final Draft or Fountain file
@@ -145,9 +145,15 @@ layers, parity doc up to date).
 
 ## Roadmap
 
-See [ROADMAP.md](ROADMAP.md). Next up: inline bold/italic/underline, revision mode with coloured
+See [ROADMAP.md](ROADMAP.md); every gap is tracked as a
+[GitHub issue](https://github.com/NoJuanNobody/scriptcraft/issues) under milestones v0.2–v0.4. Next up: inline bold/italic/underline, revision mode with coloured
 pages and locked pages, ScriptNotes, an Outline Editor and Beat Board, spelling, templates (TV,
 stage play), and a web build.
+
+## Contributing
+
+Issues and pull requests are welcome. Read [AGENTS.md](AGENTS.md) for the rules (never crash,
+clean room, everything is a command) and run `cargo xtask ci` before opening a PR.
 
 ## License and credits
 
