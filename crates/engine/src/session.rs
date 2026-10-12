@@ -69,6 +69,9 @@ pub struct Session {
     redo: Vec<Snapshot>,
     typing_open: bool,
     layout: Option<Arc<Layout>>,
+    /// Speed view: the page view shows one continuous page (reports still use real pages).
+    pub speed: bool,
+    speed_layout: Option<Arc<Layout>>,
 }
 
 impl Session {
@@ -90,6 +93,8 @@ impl Session {
             redo: Vec::new(),
             typing_open: false,
             layout: None,
+            speed: false,
+            speed_layout: None,
         };
         let _ = s.script.normalize();
         s
@@ -108,7 +113,7 @@ impl Session {
         self.history.clear();
         self.redo.clear();
         self.typing_open = false;
-        self.layout = None;
+        self.invalidate();
         self.dirty = false;
         self.goal_x = None;
         self.pending_style = None;
@@ -124,9 +129,24 @@ impl Session {
         l
     }
 
+    /// The layout the page view shows: real pages, or one continuous page in speed view.
+    /// Caret movement follows it.
+    pub fn view_layout(&mut self) -> Arc<Layout> {
+        if !self.speed {
+            return self.layout();
+        }
+        if let Some(l) = &self.speed_layout {
+            return l.clone();
+        }
+        let l = Arc::new(scriptcraft_layout::layout_with(&self.script, scriptcraft_layout::Mode::Speed));
+        self.speed_layout = Some(l.clone());
+        l
+    }
+
     /// Drop the cached layout (after changing the script directly).
     pub fn invalidate(&mut self) {
         self.layout = None;
+        self.speed_layout = None;
     }
 
     /// The caret paragraph's element.
@@ -171,7 +191,7 @@ impl Session {
 
     fn after_change(&mut self) {
         self.typing_open = false;
-        self.layout = None;
+        self.invalidate();
         self.dirty = true;
         self.clamp_selection();
     }
@@ -225,14 +245,14 @@ impl Session {
                 }
                 self.typing_open = typing;
                 self.redo.clear();
-                self.layout = None;
+                self.invalidate();
                 self.dirty = true;
             }
             Ok(_) => {}
             Err(_) => {
                 self.script = old;
                 self.sel = old_sel;
-                self.layout = None;
+                self.invalidate();
             }
         }
         result

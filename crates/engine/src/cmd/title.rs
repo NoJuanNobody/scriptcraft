@@ -14,6 +14,7 @@ pub fn specs() -> Vec<CommandSpec> {
         CommandSpec::new("settings.set", "Change Script Settings", "Document", set_settings)
             .params(r#"{"sceneNumbers": bool, "moreContd": bool, "autoContd": bool, "titlePage": bool}"#),
         CommandSpec::new("view.toggleSceneNumbers", "Show Scene Numbers", "View", toggle_numbers),
+        CommandSpec::new("view.speed", "Speed View", "View", speed).params(r#"{"on": bool (default: toggle)}"#).pure(),
         CommandSpec::new("settings.elements", "Element Settings", "Format › Elements", elements).pure(),
         CommandSpec::new("settings.element", "Change Element Settings", "Format › Elements", set_element).params(
             r#"{"element": string, "left": inches, "right": inches, "before": lines, "align": "left"|"center"|"right", "uppercase": bool, "enter": element, "tab": element, "tabEmpty": element}"#,
@@ -131,4 +132,9 @@ fn set_element(s: &mut Session, v: &Value) -> CmdResult {
 fn reset_elements(s: &mut Session, v: &Value) -> CmdResult {
     s.script.settings.elements = ElementFormats::default();
     elements(s, v)
+}
+
+fn speed(s: &mut Session, v: &Value) -> CmdResult {
+    s.speed = p::bool(v, "on").unwrap_or(!s.speed);
+    Ok(json!({"speed": s.speed}))
 }

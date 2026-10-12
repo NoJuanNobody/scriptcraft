@@ -162,6 +162,7 @@ pub fn menu_bar(app: &mut ScriptApp, ui: &mut Ui) {
                 check(app, ui, "Page View", app.view == View::Page, "ui.view.page", json!({}));
                 check(app, ui, "Index Cards", app.view == View::Cards, "ui.view.cards", json!({}));
                 check(app, ui, "Reports", app.view == View::Reports, "ui.view.reports", json!({}));
+                check(app, ui, "Speed View (no page breaks)", app.session.speed, "ui.view.speed", json!({}));
                 ui.separator();
                 check(app, ui, "Navigator", app.navigator, "ui.toggleNavigator", json!({}));
                 check(app, ui, "Scene Numbers", app.session.script.settings.show_scene_numbers, "view.toggleSceneNumbers", json!({}));
@@ -170,6 +171,7 @@ pub fn menu_bar(app: &mut ScriptApp, ui: &mut Ui) {
                 item(app, ui, "Zoom In", "ui.zoomIn", "Mod+=");
                 item(app, ui, "Zoom Out", "ui.zoomOut", "Mod+-");
                 item(app, ui, "Actual Size", "ui.zoomReset", "Mod+0");
+                item(app, ui, "Fit Page Width", "ui.zoomFit", "Mod+9");
             });
             ui.menu_button("Format", |ui| {
                 let cur = app.session.element();

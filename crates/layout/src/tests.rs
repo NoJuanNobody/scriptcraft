@@ -246,3 +246,19 @@ fn element_settings_move_text() {
     assert!(g.left >= 0.0 && g.right > g.left);
     let _ = layout(&sc);
 }
+
+#[test]
+fn speed_view_has_no_breaks() {
+    let paras: Vec<Para> = (0..120).map(|i| p(Element::Action, &format!("Line {i}."))).collect();
+    let mut sc = s(paras);
+    sc.title.title = "T".into();
+    let paged = layout(&sc);
+    assert!(paged.pages.len() > 3);
+    let l = layout_with(&sc, Mode::Speed);
+    assert_eq!(l.pages.len(), 1);
+    assert!(l.pages[0].lines.iter().all(|x| x.kind == LineKind::Body));
+    assert_eq!(body(&l.pages[0]).len(), 120);
+    assert!(l.page_height(0) > 2000.0);
+    let c = l.caret(Pos::new(119, 3)).unwrap();
+    assert_eq!(l.hit(0, c.x + 0.1, c.y + 6.0), Some(Pos::new(119, 3)));
+}

@@ -170,3 +170,28 @@ fn new_script_with_unsaved_changes_asks_first() {
     quiet.execute("file.new", json!({})).unwrap();
     assert_eq!(quiet.session.script.paras.len(), 1);
 }
+
+#[test]
+fn speed_view_and_zoom() {
+    let mut app = ScriptApp::new(Session::sample());
+    app.dialogs = false;
+    app.canvas.blink = false;
+    let mut h = harness(app);
+    step(&mut h, 3);
+    h.state_mut().execute("ui.view.speed", json!({})).unwrap();
+    step(&mut h, 2);
+    assert!(h.state().session.speed);
+    assert_eq!(h.state().canvas.page_rects.len(), 1, "one continuous page");
+    // Reports and the status bar keep real pages.
+    assert_eq!(h.state_mut().session.layout().script_pages(), 4);
+    h.state_mut().execute("caret.docEnd", json!({})).unwrap();
+    h.state_mut().execute("caret.up", json!({})).unwrap();
+    h.state_mut().execute("ui.zoomFit", json!({})).unwrap();
+    step(&mut h, 2);
+    let z = h.state().canvas.zoom;
+    assert!((0.4..=3.0).contains(&z) && z > 1.0, "{z}");
+    h.state_mut().execute("ui.view.page", json!({})).unwrap();
+    step(&mut h, 2);
+    assert!(!h.state().session.speed);
+    assert!(h.state().canvas.page_rects.len() > 1);
+}

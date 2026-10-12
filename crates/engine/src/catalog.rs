@@ -143,8 +143,8 @@ pub const FEATURES: &[Feature] = &[
     // View
     f("View", "Page view with page breaks", Done, &["ui.view.page"], ""),
     f("View", "Dark mode", Done, &["ui.theme.toggle"], ""),
-    f("View", "Zoom", Done, &["ui.zoomIn", "ui.zoomOut"], ""),
-    f("View", "Speed / normal view", Missing, &[], ""),
+    f("View", "Zoom (menus, Ctrl/Cmd+wheel, pinch, fit page width)", Done, &["ui.zoomIn", "ui.zoomOut", "ui.zoomFit"], ""),
+    f("View", "Speed view (no page breaks)", Done, &["view.speed", "ui.view.speed"], ""),
     f("View", "Focus / typewriter mode", Missing, &[], ""),
     // Automation (beyond Final Draft)
     f("Automation", "Command-line conversion", Done, &["file.open", "file.exportPdf"], "scriptcraft-cli convert"),

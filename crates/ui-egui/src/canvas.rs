@@ -3,7 +3,7 @@
 use egui::{Align2, Color32, CornerRadius, FontFamily, FontId, Id, Key, Modifiers, Pos2, Rect, Sense, Stroke, StrokeKind, Ui, pos2, vec2};
 use scriptcraft_doc::{Element, Pos, word_left, word_right};
 use scriptcraft_engine::smarttype::{Suggest, suggest};
-use scriptcraft_geom::{CHAR_W, FONT_SIZE, LINE_H, PAGE_H, PAGE_W};
+use scriptcraft_geom::{CHAR_W, FONT_SIZE, LINE_H, PAGE_W};
 use scriptcraft_layout::{Layout, Line, LineKind};
 use serde_json::json;
 
@@ -25,6 +25,10 @@ pub struct CanvasState {
     pub caret_screen: Option<Rect>,
     /// Misspellings for a layout (by pointer) and dictionary size: (para, start, end).
     spell_cache: Option<(usize, usize, std::sync::Arc<Vec<(usize, usize, usize)>>)>,
+    /// When the user last typed, clicked or moved the caret (the caret shows solid, then blinks).
+    pub last_activity: f64,
+    /// Blink the caret (off for screenshots and tests).
+    pub blink: bool,
     /// The element list opened by Enter in an empty paragraph: the highlighted row.
     pub picker: Option<usize>,
     /// The misspelled word a context menu was opened on, with its suggestions.
@@ -45,6 +49,8 @@ impl Default for CanvasState {
             spell_cache: None,
             spell_target: None,
             picker: None,
+            last_activity: 0.0,
+            blink: true,
         }
     }
 }
@@ -355,7 +361,7 @@ fn paint_page(ui: &Ui, app: &ScriptApp, l: &Layout, i: usize, pr: Rect, bad: &[(
             p.text(pr.min + vec2(x * z, line.y * z + 0.5 * z), Align2::LEFT_TOP, &line.suffix, font.clone(), t.ink_soft);
         }
     }
-    if page.title_page {
+    if page.title_page && !app.session.speed {
         p.text(pr.left_bottom() + vec2(10.0, -8.0), Align2::LEFT_BOTTOM, "Title page", FontId::proportional(10.0), t.ink_soft.gamma_multiply(0.7));
     }
 }
@@ -380,17 +386,39 @@ pub fn show(app: &mut ScriptApp, ui: &mut Ui) {
     if ui.memory(|m| m.has_focus(id)) {
         handle_keys(app, ui);
     }
-    let layout = app.session.layout();
+    let now = ui.input(|i| i.time);
+    if ui.input(|i| {
+        i.events
+            .iter()
+            .any(|e| matches!(e, egui::Event::Text(_) | egui::Event::Key { pressed: true, .. } | egui::Event::PointerButton { pressed: true, .. }))
+    }) {
+        app.canvas.last_activity = now;
+    }
+    // Ctrl/Cmd + wheel or a pinch zooms the pages.
+    let zd = ui.input(|i| i.zoom_delta());
+    if (zd - 1.0).abs() > 1e-4 && ui.rect_contains_pointer(ui.max_rect()) {
+        app.canvas.zoom = (app.canvas.zoom * zd).clamp(0.4, 3.0);
+    }
+    let layout = app.session.view_layout();
     let z = app.canvas.zoom;
-    let (pw, ph) = (PAGE_W * z, PAGE_H * z);
+    let pw = PAGE_W * z;
     let n = layout.pages.len();
-    let total_h = n as f32 * (ph + GAP) + GAP;
+    let heights: Vec<f32> = (0..n).map(|i| layout.page_height(i) * z).collect();
+    let total_h = heights.iter().map(|h| h + GAP).sum::<f32>() + GAP;
     let scroll_to_caret = std::mem::take(&mut app.canvas.scroll_to_caret);
     egui::ScrollArea::both().id_salt("pages").auto_shrink([false, false]).show(ui, |ui| {
         let avail = ui.available_width().max(pw + 2.0 * GAP);
         let (rect, _) = ui.allocate_exact_size(vec2(avail, total_h), Sense::hover());
         let x0 = rect.left() + ((avail - pw) / 2.0).round();
-        let rects: Vec<Rect> = (0..n).map(|i| Rect::from_min_size(pos2(x0, rect.top() + GAP + i as f32 * (ph + GAP)), vec2(pw, ph))).collect();
+        let mut y = rect.top() + GAP;
+        let rects: Vec<Rect> = heights
+            .iter()
+            .map(|h| {
+                let r = Rect::from_min_size(pos2(x0, y), vec2(pw, *h));
+                y += h + GAP;
+                r
+            })
+            .collect();
         let clip = ui.clip_rect();
         let bad = misspellings(app, &layout);
         for (i, pr) in rects.iter().enumerate() {
@@ -406,7 +434,15 @@ pub fn show(app: &mut ScriptApp, ui: &mut Ui) {
         app.canvas.caret_screen = caret;
         if let Some(cr) = caret {
             let t = app.tokens();
-            ui.painter().rect_filled(Rect::from_min_size(cr.min - vec2(0.5, 0.0), vec2(1.8, cr.height())), 0.0, t.caret);
+            // Solid for a moment after activity, then a 1.06 s blink.
+            let since = now - app.canvas.last_activity;
+            let on = !app.canvas.blink || since < 0.5 || (since - 0.5) % 1.06 < 0.53;
+            if on {
+                ui.painter().rect_filled(Rect::from_min_size(cr.min - vec2(0.5, 0.0), vec2(1.8, cr.height())), 0.0, t.caret);
+            }
+            if app.canvas.blink {
+                ui.ctx().request_repaint_after(std::time::Duration::from_millis(120));
+            }
             if scroll_to_caret {
                 // A jump off screen (scene, find, page) centres the caret; typing scrolls minimally.
                 let far = !clip.expand(40.0).contains_rect(cr);

@@ -51,6 +51,8 @@ pub const UI_COMMANDS: &[(&str, &str, &str, &str)] = &[
     ("ui.zoomIn", "Zoom In", "View", "Mod+="),
     ("ui.zoomOut", "Zoom Out", "View", "Mod+-"),
     ("ui.zoomReset", "Actual Size", "View", "Mod+0"),
+    ("ui.zoomFit", "Fit Page Width", "View", "Mod+9"),
+    ("ui.view.speed", "Speed View", "View", "Mod+Alt+4"),
     ("ui.find", "Find…", "Edit", "Mod+F"),
     ("ui.toggleSpelling", "Check Spelling as You Type", "Tools", ""),
     ("ui.toggleEnterPicker", "Element List on Enter in an Empty Paragraph", "Format", ""),
@@ -291,7 +293,10 @@ impl ScriptApp {
     fn ui_command(&mut self, id: &str, p: &Value) -> Result<Value, CmdError> {
         let path = p.get("path").and_then(Value::as_str).map(str::to_string);
         match id {
-            "ui.view.page" => self.view = View::Page,
+            "ui.view.page" => {
+                self.view = View::Page;
+                self.session.speed = false;
+            }
             "ui.view.cards" => self.view = View::Cards,
             "ui.view.reports" => self.view = View::Reports,
             "ui.toggleNavigator" => self.navigator = !self.navigator,
@@ -303,6 +308,14 @@ impl ScriptApp {
             "ui.zoomIn" => self.canvas.zoom = (self.canvas.zoom * 1.1).min(3.0),
             "ui.zoomOut" => self.canvas.zoom = (self.canvas.zoom / 1.1).max(0.4),
             "ui.zoomReset" => self.canvas.zoom = 1.0,
+            "ui.zoomFit" => {
+                let w = self.canvas.canvas_rect.map_or(900.0, |r| r.width());
+                self.canvas.zoom = ((w - 2.0 * 28.0 - 16.0) / scriptcraft_geom::PAGE_W).clamp(0.4, 3.0);
+            }
+            "ui.view.speed" => {
+                self.view = View::Page;
+                return self.session.run("view.speed", p);
+            }
             "ui.find" => {
                 let mut f = self.find.take().unwrap_or_default();
                 if let Some(t) = p.get("text").and_then(Value::as_str) {
@@ -406,6 +419,8 @@ impl ScriptApp {
     /// Per-frame work before layout: control requests, screenshots, theme, title.
     pub fn logic(&mut self, ctx: &egui::Context) {
         self.install_fonts(ctx);
+        // Cmd/Ctrl + =/- zoom the pages (our shortcuts), not the whole interface.
+        ctx.options_mut(|o| o.zoom_with_keyboard = false);
         ctx.set_visuals(self.tokens().visuals());
         let now = ctx.input(|i| i.time);
         self.autosave(now);

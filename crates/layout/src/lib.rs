@@ -162,6 +162,13 @@ pub struct Layout {
 }
 
 impl Layout {
+    /// Height of page `i` in points: Letter, or as tall as its text in speed view.
+    pub fn page_height(&self, i: usize) -> f32 {
+        let Some(p) = self.pages.get(i) else { return scriptcraft_geom::PAGE_H };
+        let bottom = p.lines.iter().map(|l| l.y + LINE_H).fold(0.0f32, f32::max) + scriptcraft_geom::BOTTOM;
+        bottom.max(scriptcraft_geom::PAGE_H)
+    }
+
     /// Pages of script (not counting the title page).
     pub fn script_pages(&self) -> usize {
         self.pages.iter().filter(|p| !p.title_page).count()
@@ -716,8 +723,26 @@ fn title_page(script: &Script) -> Option<Page> {
 
 /// Paginate a script.
 pub fn layout(script: &Script) -> Layout {
+    layout_with(script, Mode::Pages)
+}
+
+/// How to lay out.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum Mode {
+    /// Industry pages with breaks, numbers and the title page.
+    #[default]
+    Pages,
+    /// Speed view: one continuous page, no breaks, no title page, no page numbers.
+    Speed,
+}
+
+/// Lay out a script in a mode.
+pub fn layout_with(script: &Script, mode: Mode) -> Layout {
     let us = units(script);
-    let mut b = Builder { script, pages: Vec::new(), cur: Vec::new(), row: 0, rows: body_lines() };
+    let speed = mode == Mode::Speed;
+    // Speed view: effectively unlimited rows, so nothing ever breaks.
+    let rows = if speed { usize::MAX / 4 } else { body_lines() };
+    let mut b = Builder { script, pages: Vec::new(), cur: Vec::new(), row: 0, rows };
     for (i, u) in us.iter().enumerate() {
         match u {
             Unit::Single(it) => {
@@ -739,13 +764,13 @@ pub fn layout(script: &Script) -> Layout {
     for (i, p) in pages.iter_mut().enumerate() {
         let n = i + 1;
         p.number = Some(n);
-        if n >= 2 {
+        if n >= 2 && !speed {
             let label = format!("{n}.");
             let x = inch(7.5) - label.chars().count() as f32 * CHAR_W;
             p.lines.push(deco(LineKind::PageNumber, x, inch(0.5), &label));
         }
     }
-    if let Some(tp) = title_page(script) {
+    if !speed && let Some(tp) = title_page(script) {
         pages.insert(0, tp);
     }
     let mut para_page = vec![usize::MAX; script.paras.len()];
