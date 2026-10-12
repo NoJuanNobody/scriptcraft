@@ -14,45 +14,57 @@
 - [x] egui window: menu bar, element picker, page view, status bar, dark mode, zoom
 - [x] CLI, MCP server, keyed control channel, headless `ui_shot`
 
+All open work is tracked as [GitHub issues](https://github.com/NoJuanNobody/scriptcraft/issues) under milestones.
+
 ## Next (v0.2): writing comfort
 
-- [ ] Inline bold / italic / underline (model, FDX `Style`, Fountain emphasis, PDF faces)
-- [ ] Spelling check (offline)
-- [ ] Element settings: per-element indents, spacing, capitals, Enter/Tab targets (FD's Elements dialog)
-- [ ] Clipboard with element types (paste screenplay structure between scripts)
-- [ ] Drag-to-reorder index cards; colours and tags on cards
-- [ ] Autosave and backups; recent files
-- [ ] Mouse wheel zoom, page-width zoom, speed (non-paginated) view
-- [ ] Web build (wasm) of the editor
+- [ ] [#1](https://github.com/NoJuanNobody/scriptcraft/issues/1) Inline bold, italic and underline
+- [ ] [#2](https://github.com/NoJuanNobody/scriptcraft/issues/2) Spelling check (offline)
+- [ ] [#3](https://github.com/NoJuanNobody/scriptcraft/issues/3) Element settings editor (indents, spacing, capitals, Enter/Tab targets)
+- [ ] [#4](https://github.com/NoJuanNobody/scriptcraft/issues/4) Decide: Tab in an empty Action → Character or Transition?
+- [ ] [#5](https://github.com/NoJuanNobody/scriptcraft/issues/5) Element picker on Enter in an empty paragraph
+- [ ] [#6](https://github.com/NoJuanNobody/scriptcraft/issues/6) Copy and paste that keeps element types
+- [ ] [#7](https://github.com/NoJuanNobody/scriptcraft/issues/7) Drag to reorder index cards; card colours and tags
+- [ ] [#8](https://github.com/NoJuanNobody/scriptcraft/issues/8) Autosave, backups and recent files
+- [ ] [#9](https://github.com/NoJuanNobody/scriptcraft/issues/9) Caret blink, wheel/pinch zoom, page-width zoom and a non-paginated speed view
+- [ ] [#10](https://github.com/NoJuanNobody/scriptcraft/issues/10) Verify the unsaved-changes prompt on close in the native window
+- [ ] [#11](https://github.com/NoJuanNobody/scriptcraft/issues/11) Remove the control key file when the app is terminated
+- [ ] [#12](https://github.com/NoJuanNobody/scriptcraft/issues/12) Web build (wasm)
 
 ## v0.3: production
 
-- [ ] Revision mode: revision sets and colours, asterisks in the margin, coloured pages
-- [ ] Locked pages (A/B pages) and omitted scenes; locked scene numbers (12A)
-- [ ] Headers and footers editor; A4
-- [ ] ScriptNotes; alternate dialogue (Alts)
-- [ ] Production tagging and breakdown reports
+- [ ] [#13](https://github.com/NoJuanNobody/scriptcraft/issues/13) Revision mode with coloured revision pages
+- [ ] [#14](https://github.com/NoJuanNobody/scriptcraft/issues/14) Locked pages, A/B pages, omitted scenes and locked scene numbers
+- [ ] [#15](https://github.com/NoJuanNobody/scriptcraft/issues/15) Headers and footers editor; A4 paper
+- [ ] [#16](https://github.com/NoJuanNobody/scriptcraft/issues/16) Script notes
+- [ ] [#17](https://github.com/NoJuanNobody/scriptcraft/issues/17) Alternate dialogue lines
+- [ ] [#18](https://github.com/NoJuanNobody/scriptcraft/issues/18) Production tagging and breakdown reports
+- [ ] [#19](https://github.com/NoJuanNobody/scriptcraft/issues/19) Print dialog
+- [ ] [#20](https://github.com/NoJuanNobody/scriptcraft/issues/20) Split dual dialogue across a page break
 
 ## v0.4: structure and collaboration
 
-- [ ] Outline Editor with structure points; Beat Board
-- [ ] Track changes / compare two drafts
-- [ ] Real-time collaboration
-- [ ] Templates: TV (single and multi-camera), stage play, graphic novel
-- [ ] Read aloud with cast voices; speech-to-script
+- [ ] [#21](https://github.com/NoJuanNobody/scriptcraft/issues/21) Outline view with structure points
+- [ ] [#22](https://github.com/NoJuanNobody/scriptcraft/issues/22) Beat board
+- [ ] [#23](https://github.com/NoJuanNobody/scriptcraft/issues/23) Story map
+- [ ] [#24](https://github.com/NoJuanNobody/scriptcraft/issues/24) Track changes and comparing two drafts
+- [ ] [#25](https://github.com/NoJuanNobody/scriptcraft/issues/25) Real-time collaboration
+- [ ] [#26](https://github.com/NoJuanNobody/scriptcraft/issues/26) Templates: TV single-camera, multi-camera, stage play
+- [ ] [#27](https://github.com/NoJuanNobody/scriptcraft/issues/27) Read aloud with cast voices, and dictation (speech to script)
+- [ ] [#28](https://github.com/NoJuanNobody/scriptcraft/issues/28) Bookmarks and split screen
 
-## Known gaps in v0.1
+## File-format fidelity
 
-- Final Draft was not available to observe; element flow follows documented conventions (see
-  docs/typing-parity.md for the rows that are our own choice).
-- Inline styles are not modelled: FDX `<Text Style>` runs are flattened; Fountain emphasis markers stay as literal text.
-- Fountain has no Shot/General element: those export as Action.
-- FDX title pages are free-form in Final Draft; ScriptCraft maps them onto fixed fields (title,
-  credit, author, source, contact, draft date); copyright and notes export into the contact block.
-- Dual dialogue moves as a whole and is not split across pages.
-- No print dialog: export a PDF and print it. No file dialogs in the web build.
+- [ ] [#29](https://github.com/NoJuanNobody/scriptcraft/issues/29) Keep Shot and General elements in Fountain
+- [ ] [#30](https://github.com/NoJuanNobody/scriptcraft/issues/30) Keep all title page fields in FDX; support free-form title pages
+- [ ] [#31](https://github.com/NoJuanNobody/scriptcraft/issues/31) Import from Word, Celtx and PDF
+
+## Verification
+
+- [ ] [#32](https://github.com/NoJuanNobody/scriptcraft/issues/32) Check the typing flow against real Final Draft 13
 
 ## Progress log
 
 - 2026-10-12 — v0.1: model, Fountain/FDX/PDF, pagination, engine with 73 commands, MCP, CLI,
   egui window with page view, navigator, index cards, reports, dark mode; README screenshots.
+- 2026-10-12 — published at github.com/NoJuanNobody/scriptcraft; 32 issues filed for the known gaps.
