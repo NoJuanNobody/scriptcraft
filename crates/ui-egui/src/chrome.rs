@@ -206,6 +206,7 @@ pub fn menu_bar(app: &mut ScriptApp, ui: &mut Ui) {
                 check(app, ui, "Automatic Character (CONT'D)", st.auto_contd, "settings.set", json!({"autoContd": !st.auto_contd}));
                 check(app, ui, "Print Title Page", st.title_page, "settings.set", json!({"titlePage": !st.title_page}));
             });
+            ui.menu_button("Production", |ui| production_menu(app, ui));
             ui.menu_button("Tools", |ui| {
                 item(app, ui, "Next Misspelling", "spell.next", "Mod+;");
                 check(app, ui, "Check Spelling as You Type", app.spelling, "ui.toggleSpelling", json!({}));
@@ -216,6 +217,30 @@ pub fn menu_bar(app: &mut ScriptApp, ui: &mut Ui) {
             });
         });
     });
+}
+
+/// Production: locked pages, locked scene numbers, omitted scenes.
+fn production_menu(app: &mut ScriptApp, ui: &mut Ui) {
+    let st = app.session.script.settings.clone();
+    check(app, ui, "Lock Pages", st.pages_locked, if st.pages_locked { "page.unlock" } else { "page.lock" }, json!({}));
+    item(app, ui, "Re-lock Pages", "page.relock", "");
+    ui.separator();
+    let locked = st.scene_numbers_locked;
+    check(app, ui, "Lock Scene Numbers", locked, if locked { "scene.unlockNumbers" } else { "scene.lockNumbers" }, json!({}));
+    ui.separator();
+    let focus = app.session.sel.focus.para;
+    let omitted = app
+        .session
+        .script
+        .scene_of(focus)
+        .and_then(|i| app.session.script.scenes().get(i).map(|s| s.para))
+        .and_then(|p| app.session.script.para(p))
+        .is_some_and(|p| p.omitted);
+    if omitted {
+        item(app, ui, "Restore Omitted Scene", "scene.unomit", "");
+    } else {
+        item(app, ui, "Omit Scene", "scene.omit", "");
+    }
 }
 
 fn sep(ui: &mut Ui) {
@@ -408,7 +433,8 @@ pub fn status_bar(app: &mut ScriptApp, ui: &mut Ui, status: Option<String>) {
     let t = app.tokens();
     let l = app.session.layout();
     let focus = app.session.sel.focus;
-    let page = l.caret(focus).and_then(|c| l.pages.get(c.page)).and_then(|p| p.number).unwrap_or(1);
+    // The printed page number (`12A` with locked pages).
+    let page = l.caret(focus).and_then(|c| l.pages.get(c.page)).map_or_else(|| "1".to_string(), |p| p.label.clone());
     let scenes = app.session.script.scenes().len();
     let scene = app.session.script.scene_of(focus.para).map_or("–".to_string(), |s| (s + 1).to_string());
     egui::Panel::bottom("status")
@@ -508,7 +534,7 @@ pub fn navigator(app: &mut ScriptApp, ui: &mut Ui) {
                                 p.text(
                                     r.right_top() + vec2(-8.0, 6.0),
                                     egui::Align2::RIGHT_TOP,
-                                    format!("{}", l.page_number_of(sc.para)),
+                                    l.page_label_of(sc.para),
                                     egui::FontId::proportional(11.0),
                                     t.text_soft,
                                 );

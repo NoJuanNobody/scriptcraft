@@ -24,6 +24,11 @@
 //! in Final Draft's 48-bit `#RRRRGGGGBBBB` form); card tags use a ScriptCraft-only
 //! `ScriptCraftTags` attribute.
 //!
+//! Production locks use ScriptCraft-only names: `<ScriptCraftProduction LockedPages="Yes"
+//! LockedSceneNumbers="Yes" ShowSceneNumbers="Yes"/>` under the root, and on paragraphs `ScriptCraftOmitted="Yes"`
+//! (an omitted scene's heading; its text stays in the file) and `ScriptCraftLockedPages="12,12A"`
+//! (the locked pages that start with that paragraph). Scene numbers use `Number` as usual.
+//!
 //! `<ElementSettings Type="…">` carry each element's indents and spacing (`ParagraphSpec`),
 //! capitals (`FontSpec Style="AllCaps"`) and Enter target (`Behavior ReturnKey`). ScriptCraft's
 //! Tab targets have no FDX equivalent and are not written.
@@ -66,6 +71,8 @@ struct Open {
     summary: String,
     color: Option<scriptcraft_doc::CardColor>,
     tags: Vec<String>,
+    omitted: bool,
+    page_lock: Vec<String>,
     wrapper: bool,
     in_text: bool,
 }
@@ -85,6 +92,8 @@ pub fn parse(src: &str) -> Result<Script, FdxError> {
     let mut root_seen = false;
     let mut formats = ElementFormats::default();
     let mut cur_fmt: Option<(Element, scriptcraft_doc::ElementFormat)> = None;
+    // (locked pages, locked scene numbers, show scene numbers) when the file says.
+    let mut production: Option<(bool, bool, bool)> = None;
     loop {
         let ev = r.read_event().map_err(|e| FdxError::Xml(e.to_string()))?;
         let empty = matches!(ev, Event::Empty(_));
@@ -156,6 +165,8 @@ pub fn parse(src: &str) -> Result<Script, FdxError> {
                             summary: String::new(),
                             color: None,
                             tags: Vec::new(),
+                            omitted: attr("ScriptCraftOmitted").is_some_and(|v| v.trim().eq_ignore_ascii_case("yes")),
+                            page_lock: attr("ScriptCraftLockedPages").map(|v| locked_labels(&v)).unwrap_or_default(),
                             wrapper: false,
                             in_text: false,
                         };
@@ -164,6 +175,10 @@ pub fn parse(src: &str) -> Result<Script, FdxError> {
                         } else {
                             open.push(o);
                         }
+                    }
+                    "ScriptCraftProduction" if !in_title => {
+                        let yes = |k: &str| attr(k).is_some_and(|v| v.trim().eq_ignore_ascii_case("yes"));
+                        production = Some((yes("LockedPages"), yes("LockedSceneNumbers"), yes("ShowSceneNumbers")));
                     }
                     "SceneProperties" => {
                         let color = attr("Color").and_then(|c| parse_color(&c));
@@ -258,8 +273,12 @@ pub fn parse(src: &str) -> Result<Script, FdxError> {
     if !root_seen {
         return Err(FdxError::NotFdx(String::new()));
     }
-    let mut s = Script::from_paras(paras).map_err(|_| FdxError::TooLarge)?;
+    // Settings first: normalizing drops page locks unless pages are locked.
+    let mut s = Script { paras, ..Script::default() };
     s.settings.elements = formats;
+    if let Some((pages, numbers, show)) = production {
+        (s.settings.pages_locked, s.settings.scene_numbers_locked, s.settings.show_scene_numbers) = (pages, numbers, show);
+    }
     s.normalize().map_err(|_| FdxError::TooLarge)?;
     s.title = title_from_lines(&title_lines);
     Ok(s)
@@ -290,6 +309,15 @@ fn parse_color(c: &str) -> Option<scriptcraft_doc::CardColor> {
         return None;
     }
     Some(scriptcraft_doc::CardColor::nearest(rgb))
+}
+
+/// `12,12A,13` → locked page labels (at most 1000, each short).
+fn locked_labels(v: &str) -> Vec<String> {
+    v.split(',')
+        .map(|l| l.trim().chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-').take(12).collect::<String>())
+        .filter(|l| !l.is_empty())
+        .take(1000)
+        .collect()
 }
 
 /// `Bold+Italic+Underline` (any order, other values ignored).
@@ -335,6 +363,8 @@ fn finish(o: Open, open: &mut [Open], paras: &mut Vec<Para>, title_lines: &mut V
                 _ => Element::General,
             });
             let mut p = if o.runs.iter().any(|(_, st)| !st.is_plain()) { Para::styled(element, &o.runs) } else { Para::new(element, o.text) };
+            p.page_lock = o.page_lock;
+            p.omitted = o.omitted && element == Element::SceneHeading;
             if element == Element::SceneHeading {
                 p.scene_number = o.number.filter(|n| !n.trim().is_empty());
                 p.summary = o.summary;
@@ -429,6 +459,12 @@ fn para_xml(out: &mut String, indent: &str, p: &Para) {
     if let Some(n) = p.scene_number.as_deref().filter(|n| !n.trim().is_empty()) {
         out.push_str(&format!(" Number=\"{}\"", esc(n.trim())));
     }
+    if p.omitted {
+        out.push_str(" ScriptCraftOmitted=\"Yes\"");
+    }
+    if !p.page_lock.is_empty() {
+        out.push_str(&format!(" ScriptCraftLockedPages=\"{}\"", esc(&p.page_lock.join(","))));
+    }
     out.push_str(">\n");
     if p.element == Element::SceneHeading && (!p.summary.trim().is_empty() || p.color.is_some() || !p.tags.is_empty()) {
         let mut attrs = String::new();
@@ -487,6 +523,16 @@ pub fn write(s: &Script) -> String {
         i += 1;
     }
     out.push_str("  </Content>\n");
+    let st = &s.settings;
+    if st.pages_locked || st.scene_numbers_locked || st.show_scene_numbers {
+        let yn = |b: bool| if b { "Yes" } else { "No" };
+        out.push_str(&format!(
+            "  <ScriptCraftProduction LockedPages=\"{}\" LockedSceneNumbers=\"{}\" ShowSceneNumbers=\"{}\"/>\n",
+            yn(st.pages_locked),
+            yn(st.scene_numbers_locked),
+            yn(st.show_scene_numbers)
+        ));
+    }
     for e in Element::ALL {
         let f = s.settings.elements.get(e);
         let caps = if f.uppercase { " Style=\"AllCaps\"" } else { "" };
