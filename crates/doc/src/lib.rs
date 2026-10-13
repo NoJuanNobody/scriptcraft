@@ -6,12 +6,17 @@
 //! byte offset (always on a char boundary). Edit primitives never panic: positions are clamped.
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
+mod annot;
 mod element;
 mod format;
 mod production;
 mod style;
 mod text;
 
+pub use annot::{
+    Alternate, MAX_ALTERNATES, MAX_NOTES, MAX_TAGGED, Note, NoteRef, TAG_CATEGORIES, Tagged, alternate_from_runs, category_rgb, clean_author,
+    clean_category, clean_note,
+};
 pub use element::Element;
 pub use format::{Align, ElementFormat, ElementFormats};
 pub use production::{expand_page_label, next_label};
@@ -68,6 +73,15 @@ pub struct Para {
     /// is the page it starts; later ones are pages its content ran onto when locked).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub page_lock: Vec<String>,
+    /// Script notes anchored to ranges of `text`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub notes: Vec<Note>,
+    /// Production tags on ranges of `text` (breakdown items).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tagged: Vec<Tagged>,
+    /// Other versions of this paragraph; `text` is the active one.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub alternates: Vec<Alternate>,
 }
 
 /// Index-card colours.
@@ -160,6 +174,9 @@ impl Para {
             tags: Vec::new(),
             omitted: false,
             page_lock: Vec::new(),
+            notes: Vec::new(),
+            tagged: Vec::new(),
+            alternates: Vec::new(),
         }
     }
 
@@ -436,6 +453,7 @@ impl Script {
             if p.element != Element::Character {
                 p.dual = false;
             }
+            p.fix_marks();
         }
         self.normalize_production();
         Ok(())
@@ -501,6 +519,7 @@ impl Script {
         styles.splice(at..at, std::iter::repeat_n(st, ins.len()));
         p.text.insert_str(pos.off, &ins);
         p.spans = style::compress(&p.text, &styles);
+        p.marks_insert(pos.off, ins.len());
         Ok(Pos::new(pos.para, pos.off + ins.len()))
     }
 
@@ -557,6 +576,7 @@ impl Script {
                 st.drain(a.off..b.off.min(st.len()).max(a.off));
                 p.text.replace_range(a.off..b.off, "");
                 p.spans = style::compress(&p.text, &st);
+                p.marks_delete(a.off, b.off);
             }
             return a;
         }
@@ -565,7 +585,10 @@ impl Script {
             None => (String::new(), Vec::new()),
         };
         let upper = self.para(a.para).is_some_and(|p| self.upper(p.element));
+        let moved = self.paras.get(b.para).map(|q| q.marks_of_tail(b.off, a.off)).unwrap_or_default();
         if let Some(p) = self.paras.get_mut(a.para) {
+            p.marks_delete(a.off, p.text.len());
+            p.marks_append(moved);
             let mut st = p.styles();
             st.truncate(a.off);
             st.extend(tail_st);
@@ -593,8 +616,10 @@ impl Script {
         let tail_st = st.split_off(pos.off.min(st.len()));
         let tail = p.text.split_off(pos.off);
         p.spans = style::compress(&p.text, &st);
+        let moved = p.marks_split(pos.off);
         let mut next = Para::new(element, "");
         next.set_text_styled(&tail, &tail_st, caps);
+        next.marks_append(moved);
         self.paras.insert(pos.para + 1, next);
         Ok(Pos::new(pos.para + 1, 0))
     }

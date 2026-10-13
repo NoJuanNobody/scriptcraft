@@ -330,6 +330,8 @@ fn paint_page(ui: &Ui, app: &ScriptApp, l: &Layout, i: usize, pr: Rect, bad: &[(
         {
             p.rect_filled(cols_rect(pr, z, line, c0, c1), 0.0, t.selection);
         }
+        crate::annotations::paint_behind(app, p, line, pr, z);
+        crate::annotations::paint_margin(app, p, line, pr, z);
         let color = match line.kind {
             LineKind::PageNumber | LineKind::More | LineKind::Contd | LineKind::SceneNumber => t.ink_soft,
             _ => t.ink,
@@ -559,6 +561,7 @@ fn context_menu(app: &mut ScriptApp, ui: &mut Ui) {
         }
         ui.separator();
     }
+    crate::annotations::context_items(app, ui);
     for (label, id) in [("Cut", "edit.cut"), ("Copy", "edit.copy")] {
         if ui.add_enabled(!app.session.sel.is_caret(), egui::Button::new(label)).clicked() {
             if let Ok(v) = app.execute(id, json!({})) {

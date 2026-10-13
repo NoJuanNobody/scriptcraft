@@ -210,6 +210,7 @@ pub fn menu_bar(app: &mut ScriptApp, ui: &mut Ui) {
             ui.menu_button("Tools", |ui| {
                 item(app, ui, "Next Misspelling", "spell.next", "Mod+;");
                 check(app, ui, "Check Spelling as You Type", app.spelling, "ui.toggleSpelling", json!({}));
+                crate::annotations::tools_menu(app, ui);
             });
             ui.menu_button("Help", |ui| {
                 item(app, ui, "About ScriptCraft", "ui.about", "");
@@ -484,7 +485,7 @@ pub fn navigator(app: &mut ScriptApp, ui: &mut Ui) {
             });
             ui.add_space(4.0);
             ui.horizontal(|ui| {
-                for (i, name) in ["Scenes", "Characters"].iter().enumerate() {
+                for (i, name) in ["Scenes", "Characters", "Notes"].iter().enumerate() {
                     if ui.selectable_label(app.nav_tab == i, *name).clicked() {
                         app.nav_tab = i;
                     }
@@ -555,6 +556,8 @@ pub fn navigator(app: &mut ScriptApp, ui: &mut Ui) {
                             app.view = View::Page;
                         }
                     }
+                } else if app.nav_tab == 2 {
+                    crate::annotations::notes_tab(app, ui);
                 } else {
                     let chars = scriptcraft_engine::reports::characters(&app.session.script, &l);
                     for c in chars {

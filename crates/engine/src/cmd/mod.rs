@@ -1,15 +1,18 @@
 //! Command implementations, one module per area. Each module exposes `specs()`.
 
+pub mod alternates;
 pub mod caret;
 pub mod edit;
 pub mod element;
 pub mod file;
 pub mod format;
+pub mod notes;
 pub mod production;
 pub mod report;
 pub mod scene;
 pub mod smart;
 pub mod spell;
+pub mod tags;
 pub mod text;
 pub mod title;
 
@@ -33,6 +36,9 @@ pub fn registry() -> Registry {
     v.extend(title::specs());
     v.extend(report::specs());
     v.extend(file::specs());
+    v.extend(notes::specs());
+    v.extend(alternates::specs());
+    v.extend(tags::specs());
     Registry::new(v)
 }
 

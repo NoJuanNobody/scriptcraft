@@ -80,6 +80,7 @@ pub fn show(app: &mut ScriptApp, ui: &mut Ui) {
                     ui.end_row();
                 }
             });
+            crate::annotations::breakdown_section(app, ui, &mut goto);
         });
     });
     if let Some(i) = goto {
