@@ -36,6 +36,8 @@ parity doc fresh). Use a `CARGO_TARGET_DIR` inside the repo (`.target/`, gitigno
   `~/Library/Application Support/ScriptCraft/control-key.local-7990`). See `docs/control-protocol.md`.
 - Headless screenshots: `cargo run -p scriptcraft-ui-egui --example ui_shot -- script.jsonl`. For UI
   work, look at the PNG.
+- Demo videos that prove a PR works: `.claude/skills/demo-video/SKILL.md` (tour scripts in
+  `docs/demo/*-tour.jsonl`, recorded with `docs/demo/record-tour.sh`; review the frames before sharing).
 - CLI: `scriptcraft-cli convert|commands|run|report|parity|mcp`. MCP: `docs/mcp.md`.
 - Settings use `craft-settings` (storytold/craft-libs). Run the app with `SCRIPTCRAFT_CONFIG_DIR=`
   (empty: isolated) or `SCRIPTCRAFT_CONFIG_DIR=/tmp/x` when testing so a real profile is never

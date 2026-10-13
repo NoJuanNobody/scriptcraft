@@ -10,7 +10,7 @@ fn action_lines(n: usize) -> Script {
 fn body(page: &Page) -> Vec<&Line> {
     page.lines.iter().filter(|l| l.kind == LineKind::Body).collect()
 }
-fn kind<'a>(page: &'a Page, k: LineKind) -> Vec<&'a Line> {
+fn kind(page: &Page, k: LineKind) -> Vec<&Line> {
     page.lines.iter().filter(|l| l.kind == k).collect()
 }
 
