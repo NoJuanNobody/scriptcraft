@@ -3,7 +3,7 @@
 use egui::{Align2, Color32, CornerRadius, FontFamily, FontId, Id, Key, Modifiers, Pos2, Rect, Sense, Stroke, StrokeKind, Ui, pos2, vec2};
 use scriptcraft_doc::{Element, Pos, word_left, word_right};
 use scriptcraft_engine::smarttype::{Suggest, suggest};
-use scriptcraft_geom::{CHAR_W, FONT_SIZE, LINE_H, PAGE_W};
+use scriptcraft_geom::{CHAR_W, FONT_SIZE, LINE_H};
 use scriptcraft_layout::{Layout, Line, LineKind};
 use serde_json::json;
 
@@ -313,13 +313,23 @@ fn selected_cols(l: &Line, a: Pos, b: Pos) -> Option<(usize, usize)> {
     Some((col(from), col(to) + usize::from(eol)))
 }
 
+/// The paper colour of page `i`: tinted with its revision set's colour when coloured revision
+/// pages are on.
+fn page_color(app: &ScriptApp, l: &Layout, i: usize, paper: Color32, dark: bool) -> Color32 {
+    let r = &app.session.script.settings.revision;
+    let Some(set) = l.page_rev.get(i).copied().flatten().filter(|_| r.color_pages).and_then(|lvl| r.set(lvl)) else { return paper };
+    let [cr, cg, cb] = set.color;
+    let c = Color32::from_rgb(cr, cg, cb);
+    if dark { paper.lerp_to_gamma(c, 0.22) } else { c }
+}
+
 fn paint_page(ui: &Ui, app: &ScriptApp, l: &Layout, i: usize, pr: Rect, bad: &[(usize, usize, usize)]) {
     let t = app.tokens();
     let z = app.canvas.zoom;
     let p = ui.painter();
     let shadow = egui::epaint::Shadow { offset: [0, 3], blur: 14, spread: 0, color: Color32::from_black_alpha(if t.dark { 120 } else { 46 }) };
     p.add(shadow.as_shape(pr, CornerRadius::same(2)));
-    p.rect_filled(pr, 2.0, t.paper);
+    p.rect_filled(pr, 2.0, page_color(app, l, i, t.paper, t.dark));
     p.rect_stroke(pr, 2.0, Stroke::new(0.6, t.paper_edge), StrokeKind::Inside);
     let Some(page) = l.pages.get(i) else { return };
     let (a, b) = app.session.sel.ordered();
@@ -333,7 +343,7 @@ fn paint_page(ui: &Ui, app: &ScriptApp, l: &Layout, i: usize, pr: Rect, bad: &[(
         crate::annotations::paint_behind(app, p, line, pr, z);
         crate::annotations::paint_margin(app, p, line, pr, z);
         let color = match line.kind {
-            LineKind::PageNumber | LineKind::More | LineKind::Contd | LineKind::SceneNumber => t.ink_soft,
+            LineKind::Header | LineKind::Footer | LineKind::More | LineKind::Contd | LineKind::SceneNumber => t.ink_soft,
             _ => t.ink,
         };
         for (col, text, st) in line.segments() {
@@ -411,7 +421,7 @@ pub fn show(app: &mut ScriptApp, ui: &mut Ui) {
     }
     let layout = app.session.view_layout();
     let z = app.canvas.zoom;
-    let pw = PAGE_W * z;
+    let pw = layout.page_width() * z;
     let n = layout.pages.len();
     let heights: Vec<f32> = (0..n).map(|i| layout.page_height(i) * z).collect();
     let total_h = heights.iter().map(|h| h + GAP).sum::<f32>() + GAP;

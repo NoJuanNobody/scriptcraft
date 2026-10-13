@@ -48,7 +48,7 @@ fn element_indents() {
     assert_eq!(ys, vec![72.0, 96.0, 120.0, 132.0, 144.0, 168.0]);
     assert_eq!(width_chars(Element::Dialogue), 35);
     assert_eq!(width_chars(Element::Action), 60);
-    assert!(l.pages[0].lines.iter().all(|l| l.kind != LineKind::PageNumber), "no number on page 1");
+    assert!(l.pages[0].lines.iter().all(|l| l.kind != LineKind::Header), "no number on page 1");
 }
 
 #[test]
@@ -59,7 +59,7 @@ fn fifty_four_lines_per_page() {
     assert_eq!(body(&l.pages[0]).len(), 27);
     assert_eq!(body(&l.pages[0]).last().unwrap().y, 72.0 + 52.0 * 12.0);
     assert_eq!(body(&l.pages[1])[0].y, 72.0, "space before is dropped at the top of a page");
-    let num = l.pages[1].lines.iter().find(|l| l.kind == LineKind::PageNumber).unwrap();
+    let num = l.pages[1].lines.iter().find(|l| l.kind == LineKind::Header).unwrap();
     assert_eq!(num.text, "2.");
     assert_eq!(num.y, 36.0);
     assert_eq!(num.x, 540.0 - 2.0 * 7.2);
@@ -313,7 +313,7 @@ fn dual_dialogue_splits_both_columns_at_the_same_row() {
     let mores: Vec<&Line> = p1.lines.iter().filter(|q| q.kind == LineKind::More).collect();
     assert_eq!(mores.len(), 2);
     assert!(mores.iter().all(|m| (m.y - last_y(p1, true) - LINE_H).abs() < 0.01));
-    assert!(p1.lines.iter().all(|q| q.y + LINE_H <= TOP + body_lines() as f32 * LINE_H + 0.01));
+    assert!(p1.lines.iter().all(|q| q.y + LINE_H <= TOP + body_rows(scriptcraft_doc::Paper::Letter) as f32 * LINE_H + 0.01));
     // Both cues come back with (CONT'D) on one row, over their own columns.
     let contd: Vec<&Line> = l.pages[1].lines.iter().filter(|q| q.kind == LineKind::Contd).collect();
     assert_eq!(contd.iter().map(|q| q.text.as_str()).collect::<Vec<_>>(), vec!["ANA (CONT'D)", "BEN (CONT'D)"]);
@@ -345,7 +345,7 @@ fn dual_dialogue_taller_than_a_page_is_never_cut() {
         assert_eq!(lines_of(&l, para), dual_wrapped(&sc, para), "para {para}");
     }
     for pg in &l.pages {
-        assert!(pg.lines.iter().all(|q| q.y + LINE_H <= TOP + body_lines() as f32 * LINE_H + 0.01));
+        assert!(pg.lines.iter().all(|q| q.y + LINE_H <= TOP + body_rows(scriptcraft_doc::Paper::Letter) as f32 * LINE_H + 0.01));
     }
     // Without (MORE)/(CONT'D) it still splits and keeps every line.
     let mut off = sc.clone();

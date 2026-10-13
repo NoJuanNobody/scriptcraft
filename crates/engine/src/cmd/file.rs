@@ -17,7 +17,7 @@ pub fn specs() -> Vec<CommandSpec> {
         CommandSpec::new("file.open", "Open", "File", open).params(r#"{"path": ".fountain|.fdx file"}"#).pure(),
         CommandSpec::new("file.save", "Save", "File", save).key("Mod+S").params(r#"{"path": string (optional once saved)}"#).pure(),
         CommandSpec::new("file.saveAs", "Save As", "File", save_as).key("Mod+Shift+S").params(r#"{"path": ".fountain|.fdx"}"#).pure(),
-        CommandSpec::new("file.exportPdf", "Export PDF", "File › Export", export_pdf).key("Mod+P").params(r#"{"path": ".pdf"}"#).pure(),
+        CommandSpec::new("file.exportPdf", "Export PDF", "File › Export", export_pdf).params(r#"{"path": ".pdf"}"#).pure(),
         CommandSpec::new("file.exportFdx", "Export Final Draft (FDX)", "File › Export", export_fdx).params(r#"{"path": ".fdx"}"#).pure(),
         CommandSpec::new("file.exportFountain", "Export Fountain", "File › Export", export_fountain).params(r#"{"path": ".fountain"}"#).pure(),
         CommandSpec::new("file.load", "Open from Data", "File", load)

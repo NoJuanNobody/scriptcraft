@@ -39,6 +39,9 @@
 //! Tab targets have no FDX equivalent and are not written.
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
+mod page;
+mod revision;
+
 use quick_xml::Reader;
 use quick_xml::events::Event;
 use scriptcraft_doc::{
@@ -65,6 +68,8 @@ enum Kind {
     Body,
     Summary,
     Title,
+    /// A header (`false`) or footer (`true`) paragraph.
+    HeaderFooter(bool),
     /// The text of a script note.
     Note,
 }
@@ -100,6 +105,10 @@ struct Open {
     /// The alternate being read (its text runs), and those read.
     alt: Option<Vec<(String, Style)>>,
     alts: Vec<Alternate>,
+    /// The current `<Text>`'s `RevisionID`.
+    rev: Option<u32>,
+    /// Revised byte ranges (levels are raw revision IDs until remapped).
+    revs: Vec<scriptcraft_doc::RevMark>,
 }
 
 /// Parse an FDX document.
@@ -119,6 +128,8 @@ pub fn parse(src: &str) -> Result<Script, FdxError> {
     let mut cur_fmt: Option<(Element, scriptcraft_doc::ElementFormat)> = None;
     // (locked pages, locked scene numbers, show scene numbers) when the file says.
     let mut production: Option<(bool, bool, bool)> = None;
+    let mut page_read = page::Read::default();
+    let mut rev_read = revision::Read::default();
     loop {
         let ev = r.read_event().map_err(|e| FdxError::Xml(e.to_string()))?;
         let empty = matches!(ev, Event::Empty(_));
@@ -174,6 +185,8 @@ pub fn parse(src: &str) -> Result<Script, FdxError> {
                     "Paragraph" => {
                         let kind = if stack.iter().any(|n| n == "ScriptNote") {
                             Kind::Note
+                        } else if stack.iter().any(|n| n == "HeaderAndFooter") {
+                            Kind::HeaderFooter(stack.iter().any(|n| n == "Footer"))
                         } else if stack.iter().any(|n| n == "Summary") {
                             Kind::Summary
                         } else if stack.iter().any(|n| n == "TitlePage") {
@@ -201,9 +214,15 @@ pub fn parse(src: &str) -> Result<Script, FdxError> {
                             tagged: Vec::new(),
                             alt: None,
                             alts: Vec::new(),
+                            rev: None,
+                            revs: Vec::new(),
                         };
                         if empty {
-                            finish(o, &mut open, &mut paras, &mut title_lines, &mut dual_chars);
+                            if let Kind::HeaderFooter(footer) = o.kind {
+                                page_read.add(footer, &o.align, &o.text);
+                            } else {
+                                finish(o, &mut open, &mut paras, &mut title_lines, &mut dual_chars);
+                            }
                         } else {
                             open.push(o);
                         }
@@ -211,6 +230,32 @@ pub fn parse(src: &str) -> Result<Script, FdxError> {
                     "ScriptCraftProduction" if !in_title => {
                         let yes = |k: &str| attr(k).is_some_and(|v| v.trim().eq_ignore_ascii_case("yes"));
                         production = Some((yes("LockedPages"), yes("LockedSceneNumbers"), yes("ShowSceneNumbers")));
+                    }
+                    "PageLayout" => page_read.paper = attr("ScriptCraftPaper").and_then(|p| scriptcraft_doc::Paper::parse(&p)),
+                    "HeaderAndFooter" => {
+                        page_read.seen = true;
+                        page_read.header_visible = page::yes(attr("HeaderVisible"));
+                        page_read.footer_visible = page::yes(attr("FooterVisible"));
+                        page_read.header_first = page::yes(attr("HeaderFirstPage"));
+                        page_read.footer_first = page::yes(attr("FooterFirstPage"));
+                        page_read.title_page = page::yes(attr("ScriptCraftTitlePage"));
+                    }
+                    "DynamicLabel" => {
+                        if let Some(o) = open.last_mut().filter(|o| matches!(o.kind, Kind::HeaderFooter(_)))
+                            && let Some(f) = attr("Type").and_then(|t| page::dynamic_label(&t))
+                        {
+                            push_text(o, &f);
+                        }
+                    }
+                    "Revisions" if !in_title => {
+                        rev_read.seen = true;
+                        rev_read.active_id = attr("ActiveSet").and_then(|v| v.trim().parse().ok());
+                        rev_read.tracking = attr("RevisionMode").map(|v| v.trim().starts_with("On"));
+                        rev_read.show_marks = page::yes(attr("ScriptCraftShowMarks"));
+                        rev_read.color_pages = page::yes(attr("ScriptCraftColorPages"));
+                    }
+                    "Revision" if stack.iter().any(|n| n == "Revisions") => {
+                        rev_read.add(attr("ID"), attr("Name"), attr("Color"), attr("Mark"), attr("ScriptCraftDate"));
                     }
                     "SceneProperties" => {
                         let color = attr("Color").and_then(|c| parse_color(&c));
@@ -247,9 +292,11 @@ pub fn parse(src: &str) -> Result<Script, FdxError> {
                     }
                     "Text" => {
                         let st = attr("Style").map(|v| parse_style(&v)).unwrap_or_default();
+                        let rev = attr("RevisionID").and_then(|v| v.trim().parse::<u32>().ok());
                         if let Some(o) = open.last_mut() {
                             o.in_text = !empty;
                             o.style = st;
+                            o.rev = rev;
                         }
                     }
                     "DualDialogue" => {
@@ -300,7 +347,11 @@ pub fn parse(src: &str) -> Result<Script, FdxError> {
                     }
                     "Paragraph" => {
                         if let Some(o) = open.pop() {
-                            finish(o, &mut open, &mut paras, &mut title_lines, &mut dual_chars);
+                            if let Kind::HeaderFooter(footer) = o.kind {
+                                page_read.add(footer, &o.align, &o.text);
+                            } else {
+                                finish(o, &mut open, &mut paras, &mut title_lines, &mut dual_chars);
+                            }
                         }
                     }
                     _ => {}
@@ -344,12 +395,16 @@ pub fn parse(src: &str) -> Result<Script, FdxError> {
     if !root_seen {
         return Err(FdxError::NotFdx(String::new()));
     }
-    // Settings first: normalizing drops page locks unless pages are locked.
+    rev_read.remap(&mut paras);
+    // Settings first: normalizing drops page locks unless pages are locked, and clamps revision
+    // marks to the sets read.
     let mut s = Script { paras, ..Script::default() };
     s.settings.elements = formats;
     if let Some((pages, numbers, show)) = production {
         (s.settings.pages_locked, s.settings.scene_numbers_locked, s.settings.show_scene_numbers) = (pages, numbers, show);
     }
+    page_read.apply(&mut s.settings.page);
+    rev_read.apply(&mut s);
     s.normalize().map_err(|_| FdxError::TooLarge)?;
     s.title = title_from_lines(&title_lines);
     Ok(s)
@@ -368,7 +423,9 @@ fn push_text(o: &mut Open, s: &str) {
     if o.text.len() + s.len() > MAX_PARA_BYTES {
         return;
     }
+    let at = o.text.len();
     o.text.push_str(s);
+    revision::push_run(&mut o.revs, at, o.text.len(), o.rev);
     match o.runs.last_mut() {
         Some((t, st)) if *st == o.style => t.push_str(s),
         _ => o.runs.push((s.to_string(), o.style)),
@@ -454,6 +511,7 @@ fn finish(o: Open, open: &mut [Open], paras: &mut Vec<Para>, title_lines: &mut V
                 n.text.push_str(o.text.trim());
             }
         }
+        Kind::HeaderFooter(_) => {}
         Kind::Body => {
             if o.wrapper && o.text.trim().is_empty() {
                 return;
@@ -465,6 +523,7 @@ fn finish(o: Open, open: &mut [Open], paras: &mut Vec<Para>, title_lines: &mut V
             let mut p = if o.runs.iter().any(|(_, st)| !st.is_plain()) { Para::styled(element, &o.runs) } else { Para::new(element, o.text) };
             p.page_lock = o.page_lock;
             p.omitted = o.omitted && element == Element::SceneHeading;
+            p.revs = o.revs;
             if element == Element::SceneHeading {
                 p.scene_number = o.number.filter(|n| !n.trim().is_empty());
                 p.summary = o.summary;
@@ -593,8 +652,9 @@ fn para_xml(out: &mut String, indent: &str, p: &Para) {
         }
         out.push_str(&format!("{indent}  </SceneProperties>\n"));
     }
-    for (t, st) in p.runs() {
-        out.push_str(&format!("{indent}  <Text{}>{}</Text>\n", style_attr(st), esc(t)));
+    for (t, st, rev) in revision::runs(p) {
+        let rev = rev.map(|r| format!(" RevisionID=\"{r}\"")).unwrap_or_default();
+        out.push_str(&format!("{indent}  <Text{rev}{}>{}</Text>\n", style_attr(st), esc(t)));
     }
     let chars = |b: usize| p.text.get(..b).map_or(0, |t| t.chars().count());
     for n in &p.notes {
@@ -686,6 +746,8 @@ pub fn write(s: &Script) -> String {
             k = e.index() + 1,
         ));
     }
+    page::write(&mut out, &s.settings.page);
+    revision::write(&mut out, s);
     let t = &s.title;
     if !t.is_empty() {
         out.push_str("  <TitlePage>\n    <Content>\n");

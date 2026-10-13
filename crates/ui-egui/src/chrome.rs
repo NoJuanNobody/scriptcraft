@@ -133,7 +133,8 @@ pub fn menu_bar(app: &mut ScriptApp, ui: &mut Ui) {
                 item(app, ui, "Save", "ui.save", "Mod+S");
                 item(app, ui, "Save As…", "ui.saveAs", "Mod+Shift+S");
                 ui.separator();
-                item(app, ui, "Export PDF…", "ui.exportPdf", "Mod+P");
+                item(app, ui, "Print…", "ui.print", "Mod+P");
+                item(app, ui, "Export PDF…", "ui.exportPdf", "");
                 item(app, ui, "Export Final Draft (FDX)…", "ui.exportFdx", "");
                 item(app, ui, "Export Fountain…", "ui.exportFountain", "");
                 ui.separator();
@@ -197,6 +198,11 @@ pub fn menu_bar(app: &mut ScriptApp, ui: &mut Ui) {
             });
             ui.menu_button("Document", |ui| {
                 item(app, ui, "Title Page…", "ui.titlePage", "");
+                item(app, ui, "Page Setup…", "ui.pageSetup", "");
+                ui.separator();
+                let tracking = app.session.script.settings.revision.tracking;
+                check(app, ui, "Revision Mode", tracking, "revision.mode", json!({"on": !tracking}));
+                item(app, ui, "Revisions…", "ui.revisions", "");
                 ui.separator();
                 item(app, ui, "Number Scenes", "scene.numberAll", "");
                 item(app, ui, "Remove Scene Numbers", "scene.clearNumbers", "");
@@ -580,6 +586,7 @@ pub fn elide(s: &str, n: usize) -> String {
 }
 
 pub fn dialogs(app: &mut ScriptApp, ctx: &egui::Context) {
+    crate::production::dialogs(app, ctx);
     if app.title_dialog {
         let mut open = true;
         let mut tp: TitlePage = app.session.script.title.clone();

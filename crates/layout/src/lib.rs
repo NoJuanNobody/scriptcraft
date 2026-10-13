@@ -26,8 +26,11 @@
 //! same scene, and scene numbers print in both margins.
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
-use scriptcraft_doc::{Element, Pos, Script, Span, character_name};
-use scriptcraft_geom::{BASELINE, CHAR_W, LINE_H, PAGE_W, TOP, body_lines, chars_between, inch};
+use scriptcraft_doc::{Element, Paper, Pos, Script, Span, character_name};
+use scriptcraft_geom::{BASELINE, CHAR_W, LINE_H, TOP, chars_between, inch};
+
+mod decorate;
+pub use decorate::{body_rows, slots};
 use serde::Serialize;
 
 pub use scriptcraft_doc::Align;
@@ -77,7 +80,12 @@ pub enum LineKind {
     More,
     /// The repeated cue `NAME (CONT'D)` at the top of the next page.
     Contd,
-    PageNumber,
+    /// Header text (the page number by default).
+    Header,
+    /// Footer text.
+    Footer,
+    /// The revision mark (`*`) in the right margin of a line with revised text.
+    RevisionMark,
     SceneNumber,
     /// A title-page line.
     Title,
@@ -170,14 +178,24 @@ pub struct Layout {
     pub pages: Vec<Page>,
     /// For each paragraph, the index (into `pages`) of the page its first line is on.
     pub para_page: Vec<usize>,
+    /// The paper the pages are laid out on.
+    pub paper: Paper,
+    /// For each page, the highest revision set with marks on it (`None`: unrevised).
+    pub page_rev: Vec<Option<u8>>,
 }
 
 impl Layout {
-    /// Height of page `i` in points: Letter, or as tall as its text in speed view.
+    /// Height of page `i` in points: the paper's, or as tall as its text in speed view.
     pub fn page_height(&self, i: usize) -> f32 {
-        let Some(p) = self.pages.get(i) else { return scriptcraft_geom::PAGE_H };
-        let bottom = p.lines.iter().map(|l| l.y + LINE_H).fold(0.0f32, f32::max) + scriptcraft_geom::BOTTOM;
-        bottom.max(scriptcraft_geom::PAGE_H)
+        let h = self.paper.height_pt();
+        let Some(p) = self.pages.get(i) else { return h };
+        let bottom = p.lines.iter().filter(|l| l.kind != LineKind::Footer).map(|l| l.y + LINE_H).fold(0.0f32, f32::max) + scriptcraft_geom::BOTTOM;
+        bottom.max(h)
+    }
+
+    /// Width of every page in points.
+    pub fn page_width(&self) -> f32 {
+        self.paper.width_pt()
     }
 
     /// Pages of script (not counting the title page).
@@ -522,7 +540,7 @@ impl Builder<'_> {
         {
             let w = num.chars().count() as f32 * CHAR_W;
             self.cur.push(deco(LineKind::SceneNumber, inch(1.0) - w, y, &num));
-            self.cur.push(deco(LineKind::SceneNumber, inch(7.75), y, &num));
+            self.cur.push(deco(LineKind::SceneNumber, self.script.settings.page.paper.width_pt() - inch(0.75), y, &num));
         }
         self.cur.push(Line { kind: LineKind::Body, element: Some(it.el), x, y, text, suffix: sfx, spans, para: Some(it.para), start, end });
         self.row += 1;
@@ -690,11 +708,13 @@ fn deco(kind: LineKind, x: f32, y: f32, text: &str) -> Line {
 
 fn title_page(script: &Script) -> Option<Page> {
     let t = &script.title;
+    let paper = script.settings.page.paper;
+    let page_w = paper.width_pt();
     if !script.settings.title_page || t.is_empty() {
         return None;
     }
     let mut lines = Vec::new();
-    let center = |s: &str| ((PAGE_W - s.chars().count() as f32 * CHAR_W) / 2.0).max(inch(1.0));
+    let center = |s: &str| ((page_w - s.chars().count() as f32 * CHAR_W) / 2.0).max(inch(1.0));
     let mut row = 18usize;
     let put_center = |lines: &mut Vec<Line>, v: &str, row: &mut usize| {
         for l in v.lines() {
@@ -716,7 +736,7 @@ fn title_page(script: &Script) -> Option<Page> {
     }
     // Contact (and copyright, notes) bottom-left; draft date bottom-right.
     let block: Vec<&str> = [&t.notes, &t.copyright, &t.contact].iter().flat_map(|v| v.lines()).map(str::trim).filter(|l| !l.is_empty()).collect();
-    let rows = body_lines();
+    let rows = body_rows(paper);
     let first = rows.saturating_sub(block.len()).max(row + 2);
     for (i, l) in block.iter().enumerate() {
         lines.push(deco(LineKind::Title, inch(1.5), TOP + (first + i) as f32 * LINE_H, l));
@@ -724,7 +744,7 @@ fn title_page(script: &Script) -> Option<Page> {
     let dates: Vec<&str> = t.draft_date.lines().map(str::trim).filter(|l| !l.is_empty()).collect();
     let first = rows.saturating_sub(dates.len()).max(row + 2);
     for (i, l) in dates.iter().enumerate() {
-        let x = (inch(7.5) - l.chars().count() as f32 * CHAR_W).max(inch(1.0));
+        let x = (page_w - inch(1.0) - l.chars().count() as f32 * CHAR_W).max(inch(1.0));
         lines.push(deco(LineKind::Title, x, TOP + (first + i) as f32 * LINE_H, l));
     }
     Some(Page { number: None, label: String::new(), title_page: true, lines })
@@ -750,7 +770,8 @@ pub fn layout_with(script: &Script, mode: Mode) -> Layout {
     let us = units(script);
     let speed = mode == Mode::Speed;
     // Speed view: effectively unlimited rows, so nothing ever breaks.
-    let rows = if speed { usize::MAX / 4 } else { body_lines() };
+    let paper = script.settings.page.paper;
+    let rows = if speed { usize::MAX / 4 } else { body_rows(paper) };
     let mut b = Builder { script, pages: Vec::new(), cur: Vec::new(), row: 0, rows };
     // Locked pages: each anchored unit starts a page; (first page index, its locked labels).
     let locked = !speed && script.settings.pages_locked;
@@ -781,18 +802,18 @@ pub fn layout_with(script: &Script, mode: Mode) -> Layout {
         b.new_page();
     }
     let mut pages = b.pages;
+    // Printed labels (12A, 12-13 when locked); the header puts them on the page.
     let labels = if locked { locked::assign(pages.len(), &segments) } else { (1..=pages.len()).map(|n| n.to_string()).collect() };
     for (i, (p, label)) in pages.iter_mut().zip(labels).enumerate() {
         p.number = Some(i + 1);
-        if i >= 1 && !speed && label != "1" {
-            let text = format!("{label}.");
-            let x = inch(7.5) - text.chars().count() as f32 * CHAR_W;
-            p.lines.push(deco(LineKind::PageNumber, x, inch(0.5), &text));
-        }
         p.label = label;
     }
     if !speed && let Some(tp) = title_page(script) {
         pages.insert(0, tp);
+    }
+    let page_rev = decorate::revisions(script, &mut pages, paper);
+    if !speed {
+        decorate::headers(script, &mut pages, &page_rev, paper);
     }
     let mut para_page = vec![usize::MAX; script.paras.len()];
     for (pi, p) in pages.iter().enumerate() {
@@ -812,7 +833,7 @@ pub fn layout_with(script: &Script, mode: Mode) -> Layout {
         }
         last = *s;
     }
-    Layout { pages, para_page }
+    Layout { pages, para_page, paper, page_rev }
 }
 
 /// Which paragraphs start a unit that can begin a locked page (the first paragraph of a scene
@@ -831,3 +852,5 @@ mod dual;
 pub mod locked;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_page;

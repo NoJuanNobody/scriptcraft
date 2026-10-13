@@ -9,7 +9,9 @@
 mod annot;
 mod element;
 mod format;
+pub mod page_setup;
 mod production;
+pub mod revision;
 mod style;
 mod text;
 
@@ -19,7 +21,9 @@ pub use annot::{
 };
 pub use element::Element;
 pub use format::{Align, ElementFormat, ElementFormats};
+pub use page_setup::{HeaderFooter, PageSetup, Paper};
 pub use production::{expand_page_label, next_label};
+pub use revision::{RevMark, RevisionSet, Revisions};
 pub use style::{Flag, Span, Style};
 pub use text::{next_boundary, prev_boundary, word_left, word_right};
 
@@ -82,6 +86,9 @@ pub struct Para {
     /// Other versions of this paragraph; `text` is the active one.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub alternates: Vec<Alternate>,
+    /// Revised text (byte ranges of `text` and their revision set).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub revs: Vec<RevMark>,
 }
 
 /// Index-card colours.
@@ -177,6 +184,7 @@ impl Para {
             notes: Vec::new(),
             tagged: Vec::new(),
             alternates: Vec::new(),
+            revs: Vec::new(),
         }
     }
 
@@ -340,6 +348,12 @@ pub struct Settings {
     /// Locked scene numbers: numbers stay; new scenes are numbered after the one before (12A).
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub scene_numbers_locked: bool,
+    /// Paper, header and footer.
+    #[serde(skip_serializing_if = "PageSetup::is_default")]
+    pub page: PageSetup,
+    /// Revision sets, the active one and revision mode.
+    #[serde(skip_serializing_if = "Revisions::is_default")]
+    pub revision: Revisions,
 }
 
 impl Default for Settings {
@@ -352,6 +366,8 @@ impl Default for Settings {
             elements: ElementFormats::default(),
             pages_locked: false,
             scene_numbers_locked: false,
+            page: PageSetup::default(),
+            revision: Revisions::default(),
         }
     }
 }
@@ -428,6 +444,10 @@ impl Script {
             let f = self.settings.elements.get(e);
             self.settings.elements.set(e, f);
         }
+        self.settings.page.header.clean();
+        self.settings.page.footer.clean();
+        self.settings.revision.normalize();
+        let top_level = (self.settings.revision.sets.len().saturating_sub(1)).min(usize::from(u8::MAX)) as u8;
         let caps = Element::ALL.map(|e| self.upper(e));
         for p in &mut self.paras {
             let clean = sanitize(&p.text);
@@ -454,6 +474,12 @@ impl Script {
                 p.dual = false;
             }
             p.fix_marks();
+            if !p.revs.is_empty() {
+                for m in &mut p.revs {
+                    m.level = m.level.min(top_level);
+                }
+                p.revs = revision::fix_marks(&p.text, &p.revs);
+            }
         }
         self.normalize_production();
         Ok(())

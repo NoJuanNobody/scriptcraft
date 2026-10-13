@@ -11,7 +11,7 @@ use krilla::paint::Fill;
 use krilla::text::{Font, TextDirection};
 use scriptcraft_doc::Script;
 use scriptcraft_doc::Style;
-use scriptcraft_geom::{CHAR_W, FONT_SIZE, PAGE_H, PAGE_W};
+use scriptcraft_geom::{CHAR_W, FONT_SIZE};
 use scriptcraft_layout::{Layout, layout};
 
 #[derive(Debug, thiserror::Error, Clone, PartialEq)]
@@ -27,18 +27,76 @@ pub fn export(script: &Script) -> Result<Vec<u8>, PdfError> {
     export_layout(script, &layout(script))
 }
 
+/// Which pages to print or export.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Selection {
+    /// First script page number (inclusive); `None` = from the start.
+    pub from: Option<usize>,
+    /// Last script page number (inclusive); `None` = to the end.
+    pub to: Option<usize>,
+    /// Include the title page (when the script has one).
+    pub title_page: bool,
+    /// Only pages with revision marks (the title page still follows `title_page`).
+    pub revised_only: bool,
+}
+
+impl Default for Selection {
+    fn default() -> Self {
+        Selection { from: None, to: None, title_page: true, revised_only: false }
+    }
+}
+
+impl Selection {
+    /// Whether this selection keeps a page.
+    pub fn keeps(&self, page: &scriptcraft_layout::Page) -> bool {
+        if page.title_page {
+            return self.title_page;
+        }
+        let n = page.number.unwrap_or(0);
+        self.from.is_none_or(|f| n >= f) && self.to.is_none_or(|t| n <= t)
+    }
+
+    /// Indices (into `l.pages`) of the pages kept.
+    pub fn pages(&self, l: &Layout) -> Vec<usize> {
+        let revised = |i: usize| l.page_rev.get(i).copied().flatten().is_some();
+        l.pages.iter().enumerate().filter(|(i, p)| self.keeps(p) && (p.title_page || !self.revised_only || revised(*i))).map(|(i, _)| i).collect()
+    }
+}
+
 /// Export an existing layout of `script`.
 pub fn export_layout(script: &Script, l: &Layout) -> Result<Vec<u8>, PdfError> {
+    export_pages(script, l, &(0..l.pages.len()).collect::<Vec<_>>())
+}
+
+/// Export some pages of a layout (indices into `l.pages`, in order; unknown ones are skipped).
+pub fn export_pages(script: &Script, l: &Layout, which: &[usize]) -> Result<Vec<u8>, PdfError> {
     let load = |b: &'static [u8]| Font::new(b.to_vec().into(), 0).ok_or(PdfError::Font);
     let faces =
         [load(scriptcraft_fonts::REGULAR)?, load(scriptcraft_fonts::BOLD)?, load(scriptcraft_fonts::ITALIC)?, load(scriptcraft_fonts::BOLD_ITALIC)?];
     let face = |st: Style| faces[usize::from(st.bold) + 2 * usize::from(st.italic)].clone();
     let mut doc = Document::new();
-    let settings = || PageSettings::from_wh(PAGE_W, PAGE_H);
-    for page in &l.pages {
+    let settings = || PageSettings::from_wh(l.page_width(), l.paper.height_pt());
+    let rev = &script.settings.revision;
+    for (page, idx) in which.iter().filter_map(|i| l.pages.get(*i).map(|p| (p, *i))) {
         let Some(ps) = settings() else { return Err(PdfError::Write("bad page size".into())) };
         let mut p = doc.start_page_with(ps);
         let mut surface = p.surface();
+        // Coloured revision pages: the page tinted with its revision set's colour.
+        if rev.color_pages
+            && let Some(set) = l.page_rev.get(idx).copied().flatten().and_then(|lvl| rev.set(lvl))
+            && set.color != [0xff, 0xff, 0xff]
+        {
+            let [r, g, b] = set.color;
+            let mut pb = PathBuilder::new();
+            if let Some(rect) = Rect::from_xywh(0.0, 0.0, l.page_width(), l.paper.height_pt()) {
+                pb.push_rect(rect);
+            }
+            if let Some(path) = pb.finish() {
+                surface.set_fill(Some(Fill { paint: krilla::color::rgb::Color::new(r, g, b).into(), ..Fill::default() }));
+                surface.draw_path(&path);
+                surface.set_fill(Some(Fill::default()));
+            }
+        }
         for line in &page.lines {
             for (col, text, st) in line.segments() {
                 let x = line.x + col as f32 * CHAR_W;

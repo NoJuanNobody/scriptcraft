@@ -175,11 +175,18 @@ mod tests {
         let shown = lay.pages[idx2].lines.iter().find_map(|x| x.para).unwrap();
         assert_eq!(s.script.paras[shown].text, first2, "page 2 still starts with the same text");
         // The printed number is the label.
-        assert!(lay.pages[1].lines.iter().any(|x| x.kind == scriptcraft_layout::LineKind::PageNumber && x.text == "1A."));
+        assert!(lay.pages[1].lines.iter().any(|x| x.kind == scriptcraft_layout::LineKind::Header && x.text.contains("1A.")));
         // Go to Page takes printed labels.
         s.run("caret.gotoPage", &json!({"page": "1A."})).unwrap();
         assert_eq!(s.layout().caret(s.sel.focus).map(|c| c.page), Some(1));
         assert!(s.run("caret.gotoPage", &json!({"page": "99Z"})).is_err());
+        // Print takes and reports printed labels too.
+        let v = s.run("print.pages", &json!({"from": "1A", "to": "1A.", "titlePage": false})).unwrap();
+        assert_eq!(v["pages"], json!(["1A"]));
+        let v = s.run("print.pages", &json!({"from": 1, "to": "2", "titlePage": false})).unwrap();
+        assert_eq!(v["pages"].as_array().map(|a| a.first().cloned()), Some(Some(json!("1"))));
+        assert!(v["pages"].as_array().is_some_and(|a| a.contains(&json!("1A")) && a.last() == Some(&json!("2"))));
+        assert!(s.run("print.pages", &json!({"from": "99Z"})).is_err());
         // Re-locking keeps the A pages as locked pages.
         s.run("page.relock", &json!({})).unwrap();
         assert_eq!(labels(&mut s), l);

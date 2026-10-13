@@ -245,6 +245,8 @@ impl Session {
         };
         match &result {
             Ok(_) if self.script != old => {
+                // Revision marks follow the edit; in revision mode the edit is marked.
+                scriptcraft_doc::revision::mark_changes(&old, &mut self.script);
                 let _ = self.script.normalize();
                 self.clamp_selection();
                 if !coalesce {
