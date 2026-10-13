@@ -7,6 +7,7 @@
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 pub mod b64;
+pub mod breakdown;
 pub mod catalog;
 pub mod cmd;
 pub mod io;
@@ -154,5 +155,7 @@ pub mod p {
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_annot;
 #[cfg(test)]
 mod tests_typing;

@@ -79,11 +79,16 @@ pub fn read(path: &Path) -> Result<Script, String> {
 pub fn write(script: &Script, path: &Path) -> Result<Format, String> {
     let format = Format::of(path).ok_or_else(|| format!("unknown file type (use .fountain, .fdx or .pdf): {}", path.display()))?;
     let bytes = encode(script, format)?;
+    write_bytes(path, &bytes)?;
+    Ok(format)
+}
+
+/// Write any file through a temporary file, so a failed write never leaves half of it behind.
+pub fn write_bytes(path: &Path, bytes: &[u8]) -> Result<(), String> {
     let tmp = path.with_extension(format!("{}.tmp", path.extension().and_then(|e| e.to_str()).unwrap_or("x")));
-    std::fs::write(&tmp, &bytes).map_err(|e| format!("cannot write {}: {e}", path.display()))?;
+    std::fs::write(&tmp, bytes).map_err(|e| format!("cannot write {}: {e}", path.display()))?;
     std::fs::rename(&tmp, path).map_err(|e| {
         let _ = std::fs::remove_file(&tmp);
         format!("cannot write {}: {e}", path.display())
-    })?;
-    Ok(format)
+    })
 }

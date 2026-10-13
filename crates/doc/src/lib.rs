@@ -6,13 +6,24 @@
 //! byte offset (always on a char boundary). Edit primitives never panic: positions are clamped.
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
+mod annot;
 mod element;
 mod format;
+pub mod page_setup;
+mod production;
+pub mod revision;
 mod style;
 mod text;
 
+pub use annot::{
+    Alternate, MAX_ALTERNATES, MAX_NOTES, MAX_TAGGED, Note, NoteRef, TAG_CATEGORIES, Tagged, alternate_from_runs, category_rgb, clean_author,
+    clean_category, clean_note,
+};
 pub use element::Element;
 pub use format::{Align, ElementFormat, ElementFormats};
+pub use page_setup::{HeaderFooter, PageSetup, Paper};
+pub use production::{expand_page_label, next_label};
+pub use revision::{RevMark, RevisionSet, Revisions};
 pub use style::{Flag, Span, Style};
 pub use text::{next_boundary, prev_boundary, word_left, word_right};
 
@@ -58,6 +69,26 @@ pub struct Para {
     /// Index-card tags (scene headings only).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tags: Vec<String>,
+    /// The scene is omitted: it prints as its heading's number and `OMITTED`, its text kept
+    /// (scene headings only).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub omitted: bool,
+    /// Locked pages: the labels of the locked pages that start with this paragraph (the first
+    /// is the page it starts; later ones are pages its content ran onto when locked).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub page_lock: Vec<String>,
+    /// Script notes anchored to ranges of `text`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub notes: Vec<Note>,
+    /// Production tags on ranges of `text` (breakdown items).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tagged: Vec<Tagged>,
+    /// Other versions of this paragraph; `text` is the active one.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub alternates: Vec<Alternate>,
+    /// Revised text (byte ranges of `text` and their revision set).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub revs: Vec<RevMark>,
 }
 
 /// Index-card colours.
@@ -139,7 +170,22 @@ impl Para {
             text = text.to_uppercase();
         }
         text = sanitize(&text);
-        Para { element, text, scene_number: None, dual: false, summary: String::new(), spans: Vec::new(), color: None, tags: Vec::new() }
+        Para {
+            element,
+            text,
+            scene_number: None,
+            dual: false,
+            summary: String::new(),
+            spans: Vec::new(),
+            color: None,
+            tags: Vec::new(),
+            omitted: false,
+            page_lock: Vec::new(),
+            notes: Vec::new(),
+            tagged: Vec::new(),
+            alternates: Vec::new(),
+            revs: Vec::new(),
+        }
     }
 
     /// A paragraph from styled text runs (FDX `<Text Style>` runs, Fountain emphasis).
@@ -296,11 +342,33 @@ pub struct Settings {
     /// Element indents, spacing, capitals and Enter/Tab flow.
     #[serde(skip_serializing_if = "ElementFormats::is_default")]
     pub elements: ElementFormats,
+    /// Locked pages: page breaks stay where they were locked; new text makes A/B pages.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub pages_locked: bool,
+    /// Locked scene numbers: numbers stay; new scenes are numbered after the one before (12A).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub scene_numbers_locked: bool,
+    /// Paper, header and footer.
+    #[serde(skip_serializing_if = "PageSetup::is_default")]
+    pub page: PageSetup,
+    /// Revision sets, the active one and revision mode.
+    #[serde(skip_serializing_if = "Revisions::is_default")]
+    pub revision: Revisions,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Settings { show_scene_numbers: false, more_contd: true, auto_contd: true, title_page: true, elements: ElementFormats::default() }
+        Settings {
+            show_scene_numbers: false,
+            more_contd: true,
+            auto_contd: true,
+            title_page: true,
+            elements: ElementFormats::default(),
+            pages_locked: false,
+            scene_numbers_locked: false,
+            page: PageSetup::default(),
+            revision: Revisions::default(),
+        }
     }
 }
 
@@ -376,6 +444,10 @@ impl Script {
             let f = self.settings.elements.get(e);
             self.settings.elements.set(e, f);
         }
+        self.settings.page.header.clean();
+        self.settings.page.footer.clean();
+        self.settings.revision.normalize();
+        let top_level = (self.settings.revision.sets.len().saturating_sub(1)).min(usize::from(u8::MAX)) as u8;
         let caps = Element::ALL.map(|e| self.upper(e));
         for p in &mut self.paras {
             let clean = sanitize(&p.text);
@@ -393,6 +465,7 @@ impl Script {
                 p.scene_number = None;
                 p.color = None;
                 p.tags.clear();
+                p.omitted = false;
             } else {
                 let t = std::mem::take(&mut p.tags);
                 p.tags = clean_tags(t.iter().map(String::as_str));
@@ -400,7 +473,15 @@ impl Script {
             if p.element != Element::Character {
                 p.dual = false;
             }
+            p.fix_marks();
+            if !p.revs.is_empty() {
+                for m in &mut p.revs {
+                    m.level = m.level.min(top_level);
+                }
+                p.revs = revision::fix_marks(&p.text, &p.revs);
+            }
         }
+        self.normalize_production();
         Ok(())
     }
 
@@ -464,6 +545,7 @@ impl Script {
         styles.splice(at..at, std::iter::repeat_n(st, ins.len()));
         p.text.insert_str(pos.off, &ins);
         p.spans = style::compress(&p.text, &styles);
+        p.marks_insert(pos.off, ins.len());
         Ok(Pos::new(pos.para, pos.off + ins.len()))
     }
 
@@ -520,6 +602,7 @@ impl Script {
                 st.drain(a.off..b.off.min(st.len()).max(a.off));
                 p.text.replace_range(a.off..b.off, "");
                 p.spans = style::compress(&p.text, &st);
+                p.marks_delete(a.off, b.off);
             }
             return a;
         }
@@ -528,7 +611,10 @@ impl Script {
             None => (String::new(), Vec::new()),
         };
         let upper = self.para(a.para).is_some_and(|p| self.upper(p.element));
+        let moved = self.paras.get(b.para).map(|q| q.marks_of_tail(b.off, a.off)).unwrap_or_default();
         if let Some(p) = self.paras.get_mut(a.para) {
+            p.marks_delete(a.off, p.text.len());
+            p.marks_append(moved);
             let mut st = p.styles();
             st.truncate(a.off);
             st.extend(tail_st);
@@ -556,8 +642,10 @@ impl Script {
         let tail_st = st.split_off(pos.off.min(st.len()));
         let tail = p.text.split_off(pos.off);
         p.spans = style::compress(&p.text, &st);
+        let moved = p.marks_split(pos.off);
         let mut next = Para::new(element, "");
         next.set_text_styled(&tail, &tail_st, caps);
+        next.marks_append(moved);
         self.paras.insert(pos.para + 1, next);
         Ok(Pos::new(pos.para + 1, 0))
     }

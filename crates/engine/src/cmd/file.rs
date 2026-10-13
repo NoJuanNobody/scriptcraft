@@ -17,14 +17,14 @@ pub fn specs() -> Vec<CommandSpec> {
         CommandSpec::new("file.open", "Open", "File", open).params(r#"{"path": ".fountain|.fdx file"}"#).pure(),
         CommandSpec::new("file.save", "Save", "File", save).key("Mod+S").params(r#"{"path": string (optional once saved)}"#).pure(),
         CommandSpec::new("file.saveAs", "Save As", "File", save_as).key("Mod+Shift+S").params(r#"{"path": ".fountain|.fdx"}"#).pure(),
-        CommandSpec::new("file.exportPdf", "Export PDF", "File › Export", export_pdf).key("Mod+P").params(r#"{"path": ".pdf"}"#).pure(),
+        CommandSpec::new("file.exportPdf", "Export PDF", "File › Export", export_pdf).params(r#"{"path": ".pdf"}"#).pure(),
         CommandSpec::new("file.exportFdx", "Export Final Draft (FDX)", "File › Export", export_fdx).params(r#"{"path": ".fdx"}"#).pure(),
         CommandSpec::new("file.exportFountain", "Export Fountain", "File › Export", export_fountain).params(r#"{"path": ".fountain"}"#).pure(),
         CommandSpec::new("file.load", "Open from Data", "File", load)
             .params(r#"{"name": "draft.fdx|draft.fountain", "text": string} or {"name", "data": base64} (no file system: the browser, agents)"#)
             .pure(),
         CommandSpec::new("document.export", "Export as Data", "File › Export", export_data)
-            .params(r#"{"format": "pdf"|"fdx"|"fountain"} → {"name", "data": base64}"#)
+            .params(r#"{"format": "pdf"|"fdx"|"fountain"|"csv" (the breakdown)} → {"name", "data": base64}"#)
             .pure(),
     ]
 }
@@ -118,16 +118,27 @@ fn load(s: &mut Session, v: &Value) -> CmdResult {
 
 fn export_data(s: &mut Session, v: &Value) -> CmdResult {
     let f = p::req_str(v, "format")?.to_ascii_lowercase();
+    if f == "csv" {
+        let l = s.layout();
+        let bytes = crate::breakdown::csv(&s.script, &l).into_bytes();
+        let stem = export_stem(s);
+        return Ok(json!({"name": format!("{stem} Breakdown.csv"), "data": crate::b64::encode(&bytes), "bytes": bytes.len()}));
+    }
     let (format, ext) = match f.as_str() {
         "pdf" => (Format::Pdf, "pdf"),
         "fdx" => (Format::Fdx, "fdx"),
         "fountain" => (Format::Fountain, "fountain"),
-        other => return Err(CmdError::Params(format!("unknown format `{other}` (pdf, fdx or fountain)"))),
+        other => return Err(CmdError::Params(format!("unknown format `{other}` (pdf, fdx, fountain or csv)"))),
     };
     let bytes = io::encode(&s.script, format).map_err(CmdError::Failed)?;
-    let stem = s.path.as_ref().and_then(|p| p.file_stem()).and_then(|x| x.to_str()).map(str::to_string).unwrap_or_else(|| {
+    let stem = export_stem(s);
+    Ok(json!({"name": format!("{stem}.{ext}"), "data": crate::b64::encode(&bytes), "bytes": bytes.len()}))
+}
+
+/// The file name stem for exports: the script's file, else its title, else Untitled.
+fn export_stem(s: &Session) -> String {
+    s.path.as_ref().and_then(|p| p.file_stem()).and_then(|x| x.to_str()).map(str::to_string).unwrap_or_else(|| {
         let t = s.script.title.title.trim();
         if t.is_empty() { "Untitled".to_string() } else { t.to_string() }
-    });
-    Ok(json!({"name": format!("{stem}.{ext}"), "data": crate::b64::encode(&bytes), "bytes": bytes.len()}))
+    })
 }

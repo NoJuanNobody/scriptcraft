@@ -5,9 +5,14 @@
 //! and forced `.`), scene numbers (`#12A#`), action (forced `!`), characters (forced `@`, with
 //! extensions), dual dialogue (`^`), parentheticals, dialogue, transitions (natural `… TO:` and
 //! forced `>`), centered text (`>…<`, imported as Action), synopses (`=`, which become the scene's
-//! index-card summary), sections (`#`, skipped), notes (`[[…]]`, removed, except ScriptCraft's
-//! `[[color: …]]` and `[[tags: …]]` card notes under a heading), boneyard (`/* … */`,
-//! removed), page breaks (`===`, ignored) and lyrics (`~`, imported as Action).
+//! index-card summary), sections (`#`, skipped), notes (`[[…]]`, which become script notes: one
+//! inside a line is anchored where it stood, one on its own line to the start of the next
+//! paragraph; ScriptCraft's `[[color: …]]` and `[[tags: …]]` card notes under a heading set the
+//! index card instead), boneyard (`/* … */`, removed), page breaks (`===`, ignored) and lyrics
+//! (`~`, imported as Action).
+//!
+//! Script notes are written back as `[[…]]` lines before their paragraph. Production tags and
+//! alternate lines have no Fountain form: only the active line is written.
 //!
 //! Emphasis (`*italic*`, `**bold**`, `***bold italic***`, `_underline_`) becomes styled text, and
 //! styled text is written back with markers (literal `*` and `_` are escaped).
@@ -15,7 +20,13 @@
 
 mod emphasis;
 
-use scriptcraft_doc::{Element, MAX_PARAS, Para, Script, TitlePage};
+use scriptcraft_doc::{Element, MAX_PARAS, Note, Para, Script, TitlePage};
+
+/// Marks where an inline note stood (private-use characters; removed from input first).
+const NOTE_OPEN: char = '\u{E000}';
+const NOTE_CLOSE: char = '\u{E001}';
+/// Starts a line that held only a note.
+const NOTE_LINE: char = '\u{2}';
 
 /// Largest input we parse, in bytes (longer input is cut at a char boundary).
 pub const MAX_INPUT: usize = 64 << 20;
@@ -26,7 +37,7 @@ pub fn parse(src: &str) -> Script {
     while cut > 0 && !src.is_char_boundary(cut) {
         cut -= 1;
     }
-    let src = src.get(..cut).unwrap_or("").replace("\r\n", "\n").replace('\r', "\n");
+    let src = src.get(..cut).unwrap_or("").replace("\r\n", "\n").replace('\r', "\n").replace([NOTE_OPEN, NOTE_CLOSE, NOTE_LINE], "");
     // Index-card colour and tags travel as notes on their own line: `[[color: blue]]`,
     // `[[tags: chase, night]]`. They are kept (marked) before other notes are removed.
     let src = strip_between(&src, "/*", "*/")
@@ -42,7 +53,17 @@ pub fn parse(src: &str) -> Script {
         })
         .collect::<Vec<_>>()
         .join("\n");
-    let src = strip_between(&src, "[[", "]]");
+    let (src, note_texts) = mark_notes(&src);
+    let src = src
+        .split('\n')
+        .map(|l| match marker_only(l) {
+            Some(k) => format!("{NOTE_LINE}{k}"),
+            None => l.to_string(),
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    // Notes on their own line: (note, the paragraph count when it was read).
+    let mut line_notes: Vec<(usize, usize)> = Vec::new();
     let lines: Vec<&str> = src.split('\n').collect();
     let mut i = 0;
     let mut title = TitlePage::default();
@@ -57,8 +78,12 @@ pub fn parse(src: &str) -> Script {
             break;
         }
         let line = raw.trim();
-        let next_blank = lines.get(i + 1).is_none_or(|l| l.trim().is_empty() || l.starts_with('\u{1}'));
+        let next_blank = lines.iter().skip(i + 1).find(|l| !l.starts_with(NOTE_LINE)).is_none_or(|l| l.trim().is_empty() || l.starts_with('\u{1}'));
         i += 1;
+        if let Some(k) = line.strip_prefix(NOTE_LINE).and_then(|k| k.parse::<usize>().ok()) {
+            line_notes.push((k, paras.len()));
+            continue;
+        }
         if let Some(meta) = line.strip_prefix('\u{1}') {
             if let Some(h) = paras.iter_mut().rev().find(|p| p.element == Element::SceneHeading) {
                 if let Some(c) = meta.strip_prefix("color:") {
@@ -148,10 +173,109 @@ pub fn parse(src: &str) -> Script {
     }
     for p in &mut paras {
         emphasis::apply(p);
+        take_inline_notes(p, &note_texts);
+    }
+    // A note on its own line belongs to the start of the paragraph after it (the last one when
+    // nothing follows), which is where the writer puts it back.
+    for (k, at) in line_notes {
+        let Some(text) = note_texts.get(k) else { continue };
+        let target = at.min(paras.len().saturating_sub(1));
+        if let Some(p) = paras.get_mut(target) {
+            p.notes.push(Note::new(0, 0, text, None, ""));
+        }
     }
     let mut s = Script::from_paras(paras).unwrap_or_default();
     s.title = title;
     s
+}
+
+/// Replace each note (`[[…]]`) with a marker holding its number; returns the text and the notes.
+/// An unclosed `[[` runs to the end, like an unclosed boneyard.
+fn mark_notes(s: &str) -> (String, Vec<String>) {
+    let mut out = String::with_capacity(s.len());
+    let mut notes = Vec::new();
+    let mut rest = s;
+    while let Some(a) = rest.find("[[") {
+        out.push_str(rest.get(..a).unwrap_or(""));
+        let after = rest.get(a + 2..).unwrap_or("");
+        let Some(b) = after.find("]]") else {
+            rest = "";
+            break;
+        };
+        let text = scriptcraft_doc::clean_note(&after.get(..b).unwrap_or("").split_whitespace().collect::<Vec<_>>().join(" "));
+        if !text.is_empty() {
+            out.push(NOTE_OPEN);
+            out.push_str(&notes.len().to_string());
+            out.push(NOTE_CLOSE);
+            notes.push(text);
+        }
+        rest = after.get(b + 2..).unwrap_or("");
+    }
+    out.push_str(rest);
+    (out, notes)
+}
+
+/// The note number when a line holds only a note marker.
+fn marker_only(l: &str) -> Option<usize> {
+    l.trim().strip_prefix(NOTE_OPEN)?.strip_suffix(NOTE_CLOSE)?.parse().ok()
+}
+
+/// Move inline note markers out of a paragraph's text into notes at their places (a space left
+/// doubled by the removal goes too).
+fn take_inline_notes(p: &mut Para, texts: &[String]) {
+    if !p.text.contains(NOTE_OPEN) {
+        return;
+    }
+    let mut text = p.text.clone();
+    let mut st = p.styles();
+    let mut found: Vec<(usize, Option<String>)> = Vec::new();
+    while let Some(a) = text.find(NOTE_OPEN) {
+        let body = text.get(a + NOTE_OPEN.len_utf8()..).unwrap_or("");
+        let (len, k) = match body.find(NOTE_CLOSE) {
+            Some(b) => (NOTE_OPEN.len_utf8() + b + NOTE_CLOSE.len_utf8(), body.get(..b).and_then(|k| k.parse::<usize>().ok())),
+            None => (NOTE_OPEN.len_utf8(), None),
+        };
+        let mut from = a;
+        let mut to = a + len;
+        let before_space = text.get(..from).is_some_and(|t| t.is_empty() || t.ends_with(' '));
+        let after_space = text.get(to..).is_some_and(|t| t.is_empty() || t.starts_with(' '));
+        if before_space && after_space {
+            if text.get(to..).is_some_and(|t| t.starts_with(' ')) {
+                to += 1;
+            } else {
+                from = from.saturating_sub(1);
+            }
+        }
+        if to > text.len() || !text.is_char_boundary(from) || !text.is_char_boundary(to) {
+            break;
+        }
+        text.replace_range(from..to, "");
+        if to <= st.len() {
+            st.drain(from..to);
+        }
+        for f in &mut found {
+            if f.0 > from {
+                f.0 = f.0.saturating_sub(to - from).max(from);
+            }
+        }
+        found.push((from, k.and_then(|k| texts.get(k).cloned())));
+    }
+    p.set_text_styled(&text, &st, false);
+    for (off, t) in found {
+        if let Some(t) = t {
+            p.notes.push(Note::new(off, off, &t, None, ""));
+        }
+    }
+}
+
+/// Script notes as `[[…]]` lines (written before their paragraph).
+fn note_lines(out: &mut String, p: &Para) {
+    for n in &p.notes {
+        let t = n.text.split_whitespace().collect::<Vec<_>>().join(" ").replace("[[", "[ [").replace("]]", "] ]");
+        if !t.is_empty() {
+            out.push_str(&format!("[[{t}]]\n"));
+        }
+    }
 }
 
 /// Remove everything between `open` and `close` (inclusive); an unclosed `open` runs to the end.
@@ -325,6 +449,7 @@ pub fn write(s: &Script) -> String {
                 if text.is_empty() {
                     continue;
                 }
+                note_lines(&mut out, p);
                 let line = if p.element == Element::Parenthetical && !(text.starts_with('(') && text.ends_with(')')) {
                     format!("({text})")
                 } else if p.element == Element::Dialogue && text.starts_with('(') && text.ends_with(')') {
@@ -341,6 +466,7 @@ pub fn write(s: &Script) -> String {
             }
             Element::SceneHeading => {
                 blank(&mut out);
+                note_lines(&mut out, p);
                 if !is_heading(text) {
                     out.push('.');
                 }
@@ -362,6 +488,7 @@ pub fn write(s: &Script) -> String {
             }
             Element::Character => {
                 blank(&mut out);
+                note_lines(&mut out, p);
                 if !is_character(text) || text.starts_with('!') {
                     out.push('@');
                 }
@@ -373,6 +500,7 @@ pub fn write(s: &Script) -> String {
             }
             Element::Transition => {
                 blank(&mut out);
+                note_lines(&mut out, p);
                 if !is_transition(text) {
                     out.push('>');
                 }
@@ -384,6 +512,7 @@ pub fn write(s: &Script) -> String {
                     continue;
                 }
                 blank(&mut out);
+                note_lines(&mut out, p);
                 if needs_force(text) {
                     out.push('!');
                 }
@@ -414,3 +543,7 @@ fn blank(out: &mut String) {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+#[path = "annot_tests.rs"]
+mod annot_tests;

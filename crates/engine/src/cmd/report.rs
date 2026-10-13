@@ -48,6 +48,18 @@ fn inspect(s: &mut Session, v: &Value) -> CmdResult {
                 if !p.summary.is_empty() {
                     m.insert("summary".into(), json!(p.summary));
                 }
+                if !p.notes.is_empty() {
+                    m.insert("notes".into(), json!(p.notes.len()));
+                }
+                if !p.tagged.is_empty() {
+                    m.insert(
+                        "tags".into(),
+                        json!(p.tagged.iter().map(|t| json!({"category": t.category, "item": p.slice(t.start, t.end)})).collect::<Vec<_>>()),
+                    );
+                }
+                if !p.alternates.is_empty() {
+                    m.insert("alternates".into(), json!(p.alternates.len()));
+                }
             }
             o
         })

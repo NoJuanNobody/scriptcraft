@@ -20,7 +20,9 @@ pub fn specs() -> Vec<CommandSpec> {
         CommandSpec::new("caret.docStart", "Start of Script", "Navigate", doc_start).key("Mod+ArrowUp").params(EXT).pure(),
         CommandSpec::new("caret.docEnd", "End of Script", "Navigate", doc_end).key("Mod+ArrowDown").params(EXT).pure(),
         CommandSpec::new("caret.set", "Place Caret", "Navigate", set).params(r#"{"para": n, "off": byteOffset, "extend": bool}"#).pure(),
-        CommandSpec::new("caret.gotoPage", "Go to Page", "Navigate", goto_page).params(r#"{"page": n (printed page number)}"#).pure(),
+        CommandSpec::new("caret.gotoPage", "Go to Page", "Navigate", goto_page)
+            .params(r#"{"page": n (page count from 1) or "12A" (printed label)}"#)
+            .pure(),
         CommandSpec::new("select.all", "Select All", "Edit", all).key("Mod+A").pure(),
         CommandSpec::new("select.range", "Select Range", "Edit", range).params(r#"{"anchor": {"para", "off"}, "focus": {"para", "off"}}"#).pure(),
         CommandSpec::new("select.para", "Select Paragraph", "Edit", para).params(r#"{"para": n}"#).pure(),
@@ -146,9 +148,17 @@ fn set(s: &mut Session, v: &Value) -> CmdResult {
 }
 
 fn goto_page(s: &mut Session, v: &Value) -> CmdResult {
-    let page = p::req_usize(v, "page")?;
     let l = s.layout();
-    let idx = l.pages.iter().position(|pg| pg.number == Some(page)).ok_or_else(|| CmdError::Params(format!("no page {page}")))?;
+    let idx = if let Some(label) = p::str(v, "page") {
+        let label = label.trim().trim_end_matches('.');
+        l.pages
+            .iter()
+            .position(|pg| !pg.title_page && pg.label.eq_ignore_ascii_case(label))
+            .ok_or_else(|| CmdError::Params(format!("no page {label}")))?
+    } else {
+        let page = p::req_usize(v, "page")?;
+        l.pages.iter().position(|pg| pg.number == Some(page)).ok_or_else(|| CmdError::Params(format!("no page {page}")))?
+    };
     let para = l.para_page.iter().position(|&pi| pi >= idx).unwrap_or(0);
     go(s, &Value::Null, Pos::new(para, 0))
 }

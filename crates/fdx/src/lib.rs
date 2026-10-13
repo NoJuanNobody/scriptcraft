@@ -24,14 +24,29 @@
 //! in Final Draft's 48-bit `#RRRRGGGGBBBB` form); card tags use a ScriptCraft-only
 //! `ScriptCraftTags` attribute.
 //!
+//! Production locks use ScriptCraft-only names: `<ScriptCraftProduction LockedPages="Yes"
+//! LockedSceneNumbers="Yes" ShowSceneNumbers="Yes"/>` under the root, and on paragraphs `ScriptCraftOmitted="Yes"`
+//! (an omitted scene's heading; its text stays in the file) and `ScriptCraftLockedPages="12,12A"`
+//! (the locked pages that start with that paragraph). Scene numbers use `Number` as usual.
+//! Script notes are `<ScriptNote Range="start,length" Color="…" Author="…">` inside the paragraph
+//! they annotate, holding the note's text as paragraphs (ranges count characters). Production tags
+//! and alternate lines have no FDX form we know of and use ScriptCraft-only elements:
+//! `<ScriptCraftTag Range="start,length" Category="Props"/>` and
+//! `<ScriptCraftAlternate><Text>…</Text></ScriptCraftAlternate>`.
+//!
 //! `<ElementSettings Type="…">` carry each element's indents and spacing (`ParagraphSpec`),
 //! capitals (`FontSpec Style="AllCaps"`) and Enter target (`Behavior ReturnKey`). ScriptCraft's
 //! Tab targets have no FDX equivalent and are not written.
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
+mod page;
+mod revision;
+
 use quick_xml::Reader;
 use quick_xml::events::Event;
-use scriptcraft_doc::{Align, Element, ElementFormats, MAX_PARA_BYTES, MAX_PARAS, Para, Script, Style, TitlePage};
+use scriptcraft_doc::{
+    Align, Alternate, CardColor, Element, ElementFormats, MAX_PARA_BYTES, MAX_PARAS, Note, Para, Script, Style, Tagged, TitlePage,
+};
 
 /// Largest input we parse, bytes.
 pub const MAX_INPUT: usize = 128 << 20;
@@ -53,6 +68,19 @@ enum Kind {
     Body,
     Summary,
     Title,
+    /// A header (`false`) or footer (`true`) paragraph.
+    HeaderFooter(bool),
+    /// The text of a script note.
+    Note,
+}
+
+/// A note read so far: character range, colour, author, text.
+struct NoteIn {
+    start: usize,
+    len: usize,
+    color: Option<CardColor>,
+    author: String,
+    text: String,
 }
 
 struct Open {
@@ -66,8 +94,21 @@ struct Open {
     summary: String,
     color: Option<scriptcraft_doc::CardColor>,
     tags: Vec<String>,
+    omitted: bool,
+    page_lock: Vec<String>,
     wrapper: bool,
     in_text: bool,
+    notes: Vec<NoteIn>,
+    note: Option<NoteIn>,
+    /// Production tags: character range and category.
+    tagged: Vec<(usize, usize, String)>,
+    /// The alternate being read (its text runs), and those read.
+    alt: Option<Vec<(String, Style)>>,
+    alts: Vec<Alternate>,
+    /// The current `<Text>`'s `RevisionID`.
+    rev: Option<u32>,
+    /// Revised byte ranges (levels are raw revision IDs until remapped).
+    revs: Vec<scriptcraft_doc::RevMark>,
 }
 
 /// Parse an FDX document.
@@ -85,6 +126,10 @@ pub fn parse(src: &str) -> Result<Script, FdxError> {
     let mut root_seen = false;
     let mut formats = ElementFormats::default();
     let mut cur_fmt: Option<(Element, scriptcraft_doc::ElementFormat)> = None;
+    // (locked pages, locked scene numbers, show scene numbers) when the file says.
+    let mut production: Option<(bool, bool, bool)> = None;
+    let mut page_read = page::Read::default();
+    let mut rev_read = revision::Read::default();
     loop {
         let ev = r.read_event().map_err(|e| FdxError::Xml(e.to_string()))?;
         let empty = matches!(ev, Event::Empty(_));
@@ -138,7 +183,11 @@ pub fn parse(src: &str) -> Result<Script, FdxError> {
                         }
                     }
                     "Paragraph" => {
-                        let kind = if stack.iter().any(|n| n == "Summary") {
+                        let kind = if stack.iter().any(|n| n == "ScriptNote") {
+                            Kind::Note
+                        } else if stack.iter().any(|n| n == "HeaderAndFooter") {
+                            Kind::HeaderFooter(stack.iter().any(|n| n == "Footer"))
+                        } else if stack.iter().any(|n| n == "Summary") {
                             Kind::Summary
                         } else if stack.iter().any(|n| n == "TitlePage") {
                             Kind::Title
@@ -156,14 +205,57 @@ pub fn parse(src: &str) -> Result<Script, FdxError> {
                             summary: String::new(),
                             color: None,
                             tags: Vec::new(),
+                            omitted: attr("ScriptCraftOmitted").is_some_and(|v| v.trim().eq_ignore_ascii_case("yes")),
+                            page_lock: attr("ScriptCraftLockedPages").map(|v| locked_labels(&v)).unwrap_or_default(),
                             wrapper: false,
                             in_text: false,
+                            notes: Vec::new(),
+                            note: None,
+                            tagged: Vec::new(),
+                            alt: None,
+                            alts: Vec::new(),
+                            rev: None,
+                            revs: Vec::new(),
                         };
                         if empty {
-                            finish(o, &mut open, &mut paras, &mut title_lines, &mut dual_chars);
+                            if let Kind::HeaderFooter(footer) = o.kind {
+                                page_read.add(footer, &o.align, &o.text);
+                            } else {
+                                finish(o, &mut open, &mut paras, &mut title_lines, &mut dual_chars);
+                            }
                         } else {
                             open.push(o);
                         }
+                    }
+                    "ScriptCraftProduction" if !in_title => {
+                        let yes = |k: &str| attr(k).is_some_and(|v| v.trim().eq_ignore_ascii_case("yes"));
+                        production = Some((yes("LockedPages"), yes("LockedSceneNumbers"), yes("ShowSceneNumbers")));
+                    }
+                    "PageLayout" => page_read.paper = attr("ScriptCraftPaper").and_then(|p| scriptcraft_doc::Paper::parse(&p)),
+                    "HeaderAndFooter" => {
+                        page_read.seen = true;
+                        page_read.header_visible = page::yes(attr("HeaderVisible"));
+                        page_read.footer_visible = page::yes(attr("FooterVisible"));
+                        page_read.header_first = page::yes(attr("HeaderFirstPage"));
+                        page_read.footer_first = page::yes(attr("FooterFirstPage"));
+                        page_read.title_page = page::yes(attr("ScriptCraftTitlePage"));
+                    }
+                    "DynamicLabel" => {
+                        if let Some(o) = open.last_mut().filter(|o| matches!(o.kind, Kind::HeaderFooter(_)))
+                            && let Some(f) = attr("Type").and_then(|t| page::dynamic_label(&t))
+                        {
+                            push_text(o, &f);
+                        }
+                    }
+                    "Revisions" if !in_title => {
+                        rev_read.seen = true;
+                        rev_read.active_id = attr("ActiveSet").and_then(|v| v.trim().parse().ok());
+                        rev_read.tracking = attr("RevisionMode").map(|v| v.trim().starts_with("On"));
+                        rev_read.show_marks = page::yes(attr("ScriptCraftShowMarks"));
+                        rev_read.color_pages = page::yes(attr("ScriptCraftColorPages"));
+                    }
+                    "Revision" if stack.iter().any(|n| n == "Revisions") => {
+                        rev_read.add(attr("ID"), attr("Name"), attr("Color"), attr("Mark"), attr("ScriptCraftDate"));
                     }
                     "SceneProperties" => {
                         let color = attr("Color").and_then(|c| parse_color(&c));
@@ -173,11 +265,38 @@ pub fn parse(src: &str) -> Result<Script, FdxError> {
                             o.tags = tags;
                         }
                     }
+                    "ScriptNote" => {
+                        let (start, len) = attr("Range").and_then(|r| parse_range(&r)).unwrap_or((0, 0));
+                        let color = attr("Color").or_else(|| attr("MarkerColor")).and_then(|c| parse_color(&c));
+                        let author = attr("Author").or_else(|| attr("Writer")).unwrap_or_default();
+                        if let Some(o) = open.last_mut().filter(|o| o.kind == Kind::Body) {
+                            let n = NoteIn { start, len, color, author, text: String::new() };
+                            if empty {
+                                o.notes.push(n);
+                            } else {
+                                o.note = Some(n);
+                            }
+                        }
+                    }
+                    "ScriptCraftTag" => {
+                        if let (Some((start, len)), Some(cat)) = (attr("Range").and_then(|r| parse_range(&r)), attr("Category"))
+                            && let Some(o) = open.last_mut().filter(|o| o.kind == Kind::Body)
+                        {
+                            o.tagged.push((start, len, cat));
+                        }
+                    }
+                    "ScriptCraftAlternate" if !empty => {
+                        if let Some(o) = open.last_mut().filter(|o| o.kind == Kind::Body) {
+                            o.alt = Some(Vec::new());
+                        }
+                    }
                     "Text" => {
                         let st = attr("Style").map(|v| parse_style(&v)).unwrap_or_default();
+                        let rev = attr("RevisionID").and_then(|v| v.trim().parse::<u32>().ok());
                         if let Some(o) = open.last_mut() {
                             o.in_text = !empty;
                             o.style = st;
+                            o.rev = rev;
                         }
                     }
                     "DualDialogue" => {
@@ -207,6 +326,20 @@ pub fn parse(src: &str) -> Result<Script, FdxError> {
                         }
                     }
                     "DualDialogue" => dual_chars = None,
+                    "ScriptNote" => {
+                        if let Some(o) = open.last_mut().filter(|o| o.kind == Kind::Body)
+                            && let Some(n) = o.note.take()
+                        {
+                            o.notes.push(n);
+                        }
+                    }
+                    "ScriptCraftAlternate" => {
+                        if let Some(o) = open.last_mut().filter(|o| o.kind == Kind::Body)
+                            && let Some(runs) = o.alt.take()
+                        {
+                            o.alts.push(scriptcraft_doc::alternate_from_runs(&runs));
+                        }
+                    }
                     "ElementSettings" => {
                         if let Some((e, f)) = cur_fmt.take() {
                             formats.set(e, f);
@@ -214,7 +347,11 @@ pub fn parse(src: &str) -> Result<Script, FdxError> {
                     }
                     "Paragraph" => {
                         if let Some(o) = open.pop() {
-                            finish(o, &mut open, &mut paras, &mut title_lines, &mut dual_chars);
+                            if let Kind::HeaderFooter(footer) = o.kind {
+                                page_read.add(footer, &o.align, &o.text);
+                            } else {
+                                finish(o, &mut open, &mut paras, &mut title_lines, &mut dual_chars);
+                            }
                         }
                     }
                     _ => {}
@@ -258,18 +395,37 @@ pub fn parse(src: &str) -> Result<Script, FdxError> {
     if !root_seen {
         return Err(FdxError::NotFdx(String::new()));
     }
-    let mut s = Script::from_paras(paras).map_err(|_| FdxError::TooLarge)?;
+    rev_read.remap(&mut paras);
+    // Settings first: normalizing drops page locks unless pages are locked, and clamps revision
+    // marks to the sets read.
+    let mut s = Script { paras, ..Script::default() };
     s.settings.elements = formats;
+    if let Some((pages, numbers, show)) = production {
+        (s.settings.pages_locked, s.settings.scene_numbers_locked, s.settings.show_scene_numbers) = (pages, numbers, show);
+    }
+    page_read.apply(&mut s.settings.page);
+    rev_read.apply(&mut s);
     s.normalize().map_err(|_| FdxError::TooLarge)?;
     s.title = title_from_lines(&title_lines);
     Ok(s)
 }
 
 fn push_text(o: &mut Open, s: &str) {
+    if let Some(runs) = o.alt.as_mut() {
+        if runs.iter().map(|(t, _)| t.len()).sum::<usize>() + s.len() <= MAX_PARA_BYTES {
+            match runs.last_mut() {
+                Some((t, st)) if *st == o.style => t.push_str(s),
+                _ => runs.push((s.to_string(), o.style)),
+            }
+        }
+        return;
+    }
     if o.text.len() + s.len() > MAX_PARA_BYTES {
         return;
     }
+    let at = o.text.len();
     o.text.push_str(s);
+    revision::push_run(&mut o.revs, at, o.text.len(), o.rev);
     match o.runs.last_mut() {
         Some((t, st)) if *st == o.style => t.push_str(s),
         _ => o.runs.push((s.to_string(), o.style)),
@@ -290,6 +446,27 @@ fn parse_color(c: &str) -> Option<scriptcraft_doc::CardColor> {
         return None;
     }
     Some(scriptcraft_doc::CardColor::nearest(rgb))
+}
+
+/// `12,12A,13` → locked page labels (at most 1000, each short).
+fn locked_labels(v: &str) -> Vec<String> {
+    v.split(',')
+        .map(|l| l.trim().chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-').take(12).collect::<String>())
+        .filter(|l| !l.is_empty())
+        .take(1000)
+        .collect()
+}
+
+/// `"start,length"` (characters).
+fn parse_range(r: &str) -> Option<(usize, usize)> {
+    let (a, b) = r.split_once(',')?;
+    Some((a.trim().parse().ok()?, b.trim().parse().ok()?))
+}
+
+/// A 48-bit colour attribute.
+fn color_attr(c: CardColor) -> String {
+    let [r, g, b] = c.rgb();
+    format!("#{r:02X}{r:02X}{g:02X}{g:02X}{b:02X}{b:02X}")
 }
 
 /// `Bold+Italic+Underline` (any order, other values ignored).
@@ -326,6 +503,15 @@ fn finish(o: Open, open: &mut [Open], paras: &mut Vec<Para>, title_lines: &mut V
             }
         }
         Kind::Title => title_lines.push((o.align, o.text)),
+        Kind::Note => {
+            if let Some(n) = open.iter_mut().rev().find(|p| p.kind == Kind::Body).and_then(|p| p.note.as_mut()) {
+                if !n.text.is_empty() {
+                    n.text.push('\n');
+                }
+                n.text.push_str(o.text.trim());
+            }
+        }
+        Kind::HeaderFooter(_) => {}
         Kind::Body => {
             if o.wrapper && o.text.trim().is_empty() {
                 return;
@@ -335,12 +521,25 @@ fn finish(o: Open, open: &mut [Open], paras: &mut Vec<Para>, title_lines: &mut V
                 _ => Element::General,
             });
             let mut p = if o.runs.iter().any(|(_, st)| !st.is_plain()) { Para::styled(element, &o.runs) } else { Para::new(element, o.text) };
+            p.page_lock = o.page_lock;
+            p.omitted = o.omitted && element == Element::SceneHeading;
+            p.revs = o.revs;
             if element == Element::SceneHeading {
                 p.scene_number = o.number.filter(|n| !n.trim().is_empty());
                 p.summary = o.summary;
                 p.color = o.color;
                 p.tags = o.tags;
             }
+            let at = |chars: usize| p.text.char_indices().nth(chars).map_or(p.text.len(), |(b, _)| b);
+            p.notes = o
+                .notes
+                .iter()
+                .filter(|n| !n.text.trim().is_empty())
+                .map(|n| Note::new(at(n.start), at(n.start.saturating_add(n.len)), &n.text, n.color, &n.author))
+                .collect();
+            p.tagged = o.tagged.iter().map(|(s, l, c)| Tagged { start: at(*s), end: at(s.saturating_add(*l)), category: c.clone() }).collect();
+            p.alternates = o.alts;
+            p.fix_marks();
             if element == Element::Character
                 && let Some(n) = dual_chars.as_mut()
             {
@@ -429,12 +628,17 @@ fn para_xml(out: &mut String, indent: &str, p: &Para) {
     if let Some(n) = p.scene_number.as_deref().filter(|n| !n.trim().is_empty()) {
         out.push_str(&format!(" Number=\"{}\"", esc(n.trim())));
     }
+    if p.omitted {
+        out.push_str(" ScriptCraftOmitted=\"Yes\"");
+    }
+    if !p.page_lock.is_empty() {
+        out.push_str(&format!(" ScriptCraftLockedPages=\"{}\"", esc(&p.page_lock.join(","))));
+    }
     out.push_str(">\n");
     if p.element == Element::SceneHeading && (!p.summary.trim().is_empty() || p.color.is_some() || !p.tags.is_empty()) {
         let mut attrs = String::new();
         if let Some(c) = p.color {
-            let [r, g, b] = c.rgb();
-            attrs.push_str(&format!(" Color=\"#{r:02X}{r:02X}{g:02X}{g:02X}{b:02X}{b:02X}\""));
+            attrs.push_str(&format!(" Color=\"{}\"", color_attr(c)));
         }
         if !p.tags.is_empty() {
             attrs.push_str(&format!(" ScriptCraftTags=\"{}\"", esc(&p.tags.join(", "))));
@@ -448,8 +652,39 @@ fn para_xml(out: &mut String, indent: &str, p: &Para) {
         }
         out.push_str(&format!("{indent}  </SceneProperties>\n"));
     }
-    for (t, st) in p.runs() {
-        out.push_str(&format!("{indent}  <Text{}>{}</Text>\n", style_attr(st), esc(t)));
+    for (t, st, rev) in revision::runs(p) {
+        let rev = rev.map(|r| format!(" RevisionID=\"{r}\"")).unwrap_or_default();
+        out.push_str(&format!("{indent}  <Text{rev}{}>{}</Text>\n", style_attr(st), esc(t)));
+    }
+    let chars = |b: usize| p.text.get(..b).map_or(0, |t| t.chars().count());
+    for n in &p.notes {
+        out.push_str(&format!(
+            "{indent}  <ScriptNote Range=\"{},{}\" Color=\"{}\" Author=\"{}\">\n",
+            chars(n.start),
+            chars(n.end).saturating_sub(chars(n.start)),
+            color_attr(n.color),
+            esc(&n.author)
+        ));
+        for line in n.text.lines() {
+            out.push_str(&format!("{indent}    <Paragraph>\n{indent}      <Text>{}</Text>\n{indent}    </Paragraph>\n", esc(line)));
+        }
+        out.push_str(&format!("{indent}  </ScriptNote>\n"));
+    }
+    for t in &p.tagged {
+        out.push_str(&format!(
+            "{indent}  <ScriptCraftTag Range=\"{},{}\" Category=\"{}\"/>\n",
+            chars(t.start),
+            chars(t.end).saturating_sub(chars(t.start)),
+            esc(&t.category)
+        ));
+    }
+    for a in &p.alternates {
+        out.push_str(&format!("{indent}  <ScriptCraftAlternate>\n"));
+        let alt = Para { text: a.text.clone(), spans: a.spans.clone(), ..Para::new(p.element, "") };
+        for (t, st) in alt.runs() {
+            out.push_str(&format!("{indent}    <Text{}>{}</Text>\n", style_attr(st), esc(t)));
+        }
+        out.push_str(&format!("{indent}  </ScriptCraftAlternate>\n"));
     }
     out.push_str(&format!("{indent}</Paragraph>\n"));
 }
@@ -487,6 +722,16 @@ pub fn write(s: &Script) -> String {
         i += 1;
     }
     out.push_str("  </Content>\n");
+    let st = &s.settings;
+    if st.pages_locked || st.scene_numbers_locked || st.show_scene_numbers {
+        let yn = |b: bool| if b { "Yes" } else { "No" };
+        out.push_str(&format!(
+            "  <ScriptCraftProduction LockedPages=\"{}\" LockedSceneNumbers=\"{}\" ShowSceneNumbers=\"{}\"/>\n",
+            yn(st.pages_locked),
+            yn(st.scene_numbers_locked),
+            yn(st.show_scene_numbers)
+        ));
+    }
     for e in Element::ALL {
         let f = s.settings.elements.get(e);
         let caps = if f.uppercase { " Style=\"AllCaps\"" } else { "" };
@@ -501,6 +746,8 @@ pub fn write(s: &Script) -> String {
             k = e.index() + 1,
         ));
     }
+    page::write(&mut out, &s.settings.page);
+    revision::write(&mut out, s);
     let t = &s.title;
     if !t.is_empty() {
         out.push_str("  <TitlePage>\n    <Content>\n");
@@ -541,3 +788,7 @@ pub fn write(s: &Script) -> String {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+#[path = "annot_tests.rs"]
+mod annot_tests;

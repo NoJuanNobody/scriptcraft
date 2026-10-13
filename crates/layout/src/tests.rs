@@ -48,7 +48,7 @@ fn element_indents() {
     assert_eq!(ys, vec![72.0, 96.0, 120.0, 132.0, 144.0, 168.0]);
     assert_eq!(width_chars(Element::Dialogue), 35);
     assert_eq!(width_chars(Element::Action), 60);
-    assert!(l.pages[0].lines.iter().all(|l| l.kind != LineKind::PageNumber), "no number on page 1");
+    assert!(l.pages[0].lines.iter().all(|l| l.kind != LineKind::Header), "no number on page 1");
 }
 
 #[test]
@@ -59,7 +59,7 @@ fn fifty_four_lines_per_page() {
     assert_eq!(body(&l.pages[0]).len(), 27);
     assert_eq!(body(&l.pages[0]).last().unwrap().y, 72.0 + 52.0 * 12.0);
     assert_eq!(body(&l.pages[1])[0].y, 72.0, "space before is dropped at the top of a page");
-    let num = l.pages[1].lines.iter().find(|l| l.kind == LineKind::PageNumber).unwrap();
+    let num = l.pages[1].lines.iter().find(|l| l.kind == LineKind::Header).unwrap();
     assert_eq!(num.text, "2.");
     assert_eq!(num.y, 36.0);
     assert_eq!(num.x, 540.0 - 2.0 * 7.2);
@@ -261,4 +261,111 @@ fn speed_view_has_no_breaks() {
     assert!(l.page_height(0) > 2000.0);
     let c = l.caret(Pos::new(119, 3)).unwrap();
     assert_eq!(l.hit(0, c.x + 0.1, c.y + 6.0), Some(Pos::new(119, 3)));
+}
+
+/// 24 one-line actions: the next block starts on row 48 of 54.
+fn filler() -> Vec<Para> {
+    (0..24).map(|i| p(Element::Action, &format!("Beat {i}."))).collect()
+}
+
+fn speech(n: usize) -> String {
+    (0..n).map(|i| format!("Sentence number {i} is here.")).collect::<Vec<_>>().join(" ")
+}
+
+/// Body lines showing paragraph `para`, on every page.
+fn lines_of(l: &Layout, para: usize) -> usize {
+    l.pages.iter().flat_map(|pg| pg.lines.iter()).filter(|x| x.kind == LineKind::Body && x.para == Some(para)).count()
+}
+
+fn dual_script(left: usize, right: usize, before: Vec<Para>) -> Script {
+    let mut v = before;
+    v.push(p(Element::Character, "ANA"));
+    v.push(p(Element::Dialogue, &speech(left)));
+    let mut b = p(Element::Character, "BEN");
+    b.dual = true;
+    v.push(b);
+    v.push(p(Element::Dialogue, &speech(right)));
+    s(v)
+}
+
+fn dual_wrapped(sc: &Script, para: usize) -> usize {
+    let n = sc.paras.len();
+    dual_item(sc, para, DUAL_COLS[if para < n - 2 { 0 } else { 1 }]).unwrap().lines.len()
+}
+
+#[test]
+fn dual_dialogue_splits_both_columns_at_the_same_row() {
+    let sc = dual_script(12, 12, filler());
+    let n = sc.paras.len();
+    let l = layout(&sc);
+    assert_eq!(l.pages.len(), 2);
+    let p1 = &l.pages[0];
+    let last_y = |pg: &Page, left: bool| {
+        pg.lines
+            .iter()
+            .filter(|q| q.kind == LineKind::Body && q.element == Some(Element::Dialogue) && (q.x < DUAL_COLS[1].0) == left)
+            .map(|q| q.y)
+            .fold(0.0f32, f32::max)
+    };
+    // Same split row on both sides, with (MORE) under each column, inside the page.
+    assert!(last_y(p1, true) > 0.0);
+    assert_eq!(last_y(p1, true), last_y(p1, false));
+    let mores: Vec<&Line> = p1.lines.iter().filter(|q| q.kind == LineKind::More).collect();
+    assert_eq!(mores.len(), 2);
+    assert!(mores.iter().all(|m| (m.y - last_y(p1, true) - LINE_H).abs() < 0.01));
+    assert!(p1.lines.iter().all(|q| q.y + LINE_H <= TOP + body_rows(scriptcraft_doc::Paper::Letter) as f32 * LINE_H + 0.01));
+    // Both cues come back with (CONT'D) on one row, over their own columns.
+    let contd: Vec<&Line> = l.pages[1].lines.iter().filter(|q| q.kind == LineKind::Contd).collect();
+    assert_eq!(contd.iter().map(|q| q.text.as_str()).collect::<Vec<_>>(), vec!["ANA (CONT'D)", "BEN (CONT'D)"]);
+    assert_eq!(contd[0].y, contd[1].y);
+    assert!(contd[0].x < DUAL_COLS[1].0 && contd[1].x > DUAL_COLS[1].0);
+    // Nothing lost.
+    for para in n - 4..n {
+        assert_eq!(lines_of(&l, para), dual_wrapped(&sc, para), "para {para}");
+    }
+}
+
+#[test]
+fn dual_dialogue_short_column_gets_no_more() {
+    let sc = dual_script(14, 1, filler());
+    let l = layout(&sc);
+    let mores = l.pages[0].lines.iter().filter(|q| q.kind == LineKind::More).count();
+    assert_eq!(mores, 1, "only the long column continues");
+    let contd: Vec<String> = l.pages[1].lines.iter().filter(|q| q.kind == LineKind::Contd).map(|q| q.text.clone()).collect();
+    assert_eq!(contd, vec!["ANA (CONT'D)"]);
+}
+
+#[test]
+fn dual_dialogue_taller_than_a_page_is_never_cut() {
+    let sc = dual_script(150, 60, vec![p(Element::SceneHeading, "INT. HALL - DAY")]);
+    let n = sc.paras.len();
+    let l = layout(&sc);
+    assert!(l.pages.len() >= 3);
+    for para in n - 4..n {
+        assert_eq!(lines_of(&l, para), dual_wrapped(&sc, para), "para {para}");
+    }
+    for pg in &l.pages {
+        assert!(pg.lines.iter().all(|q| q.y + LINE_H <= TOP + body_rows(scriptcraft_doc::Paper::Letter) as f32 * LINE_H + 0.01));
+    }
+    // Without (MORE)/(CONT'D) it still splits and keeps every line.
+    let mut off = sc.clone();
+    off.settings.more_contd = false;
+    let l = layout(&off);
+    assert!(l.pages.iter().all(|pg| pg.lines.iter().all(|q| !matches!(q.kind, LineKind::More | LineKind::Contd))));
+    for para in n - 4..n {
+        assert_eq!(lines_of(&l, para), dual_wrapped(&off, para), "para {para}");
+    }
+}
+
+#[test]
+fn short_dual_dialogue_moves_whole() {
+    // One row left: a short block moves to the next page whole.
+    let mut v = filler();
+    v.extend((0..3).map(|i| p(Element::Action, &format!("More {i}."))));
+    let sc = dual_script(1, 1, v);
+    let n = sc.paras.len();
+    let l = layout(&sc);
+    assert!(l.pages.iter().all(|pg| pg.lines.iter().all(|q| q.kind != LineKind::More)));
+    assert_eq!(l.para_page[n - 1], l.para_page[n - 4]);
+    assert_eq!(l.para_page[n - 4], 1);
 }

@@ -70,11 +70,13 @@ pub struct Editing {
     pub spelling: bool,
     /// Enter in an empty paragraph shows the element list.
     pub element_list_on_enter: bool,
+    /// The author name put on new script notes.
+    pub note_author: String,
 }
 
 impl Default for Editing {
     fn default() -> Self {
-        Editing { spelling: true, element_list_on_enter: true }
+        Editing { spelling: true, element_list_on_enter: true, note_author: String::new() }
     }
 }
 
@@ -148,6 +150,7 @@ pub fn parse_legacy_prefs(bytes: &[u8]) -> Result<Prefs, String> {
         editing: Editing {
             spelling: old.spelling.unwrap_or(d.editing.spelling),
             element_list_on_enter: old.enter_picker.unwrap_or(d.editing.element_list_on_enter),
+            note_author: String::new(),
         },
         files: Files {
             recent: old.recent,
