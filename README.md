@@ -13,6 +13,7 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/NoJuanNobody/scriptcraft/actions/workflows/ci.yml"><img alt="CI status" src="https://github.com/NoJuanNobody/scriptcraft/actions/workflows/ci.yml/badge.svg?branch=main"></a>
   <img alt="Written in Rust" src="https://img.shields.io/badge/written%20in-Rust-2b47b5?style=flat-square&logo=rust&logoColor=white">
   <img alt="Runs on macOS, Windows, Linux and the web" src="https://img.shields.io/badge/runs%20on-macOS%20%C2%B7%20Windows%20%C2%B7%20Linux%20%C2%B7%20Web-3b5bdb?style=flat-square">
   <img alt="License: MIT OR Apache-2.0" src="https://img.shields.io/badge/license-MIT%20%2F%20Apache--2.0-2b47b5?style=flat-square">

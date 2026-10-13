@@ -189,7 +189,7 @@ mod tests {
         let data = Some(PathBuf::from("/home/u/.local/share/scriptcraft"));
         // Platform default: config and data in their platform folders, lowercase id.
         let f = folders_with(&Location::Auto, &probe(None, None), data.clone(), None);
-        assert_eq!(f.config, Some(PathBuf::from("/home/u/.config/scriptcraft")));
+        assert_eq!(f.config, Some(PathBuf::from("/home/u/.config").join("scriptcraft")));
         assert_eq!(f.data, data);
         let old = Some(PathBuf::from("/home/u/.config/ScriptCraft-old"));
         assert_eq!(folders_with(&Location::Auto, &probe(None, None), data.clone(), old.clone()).legacy, old);
@@ -197,7 +197,7 @@ mod tests {
         let f = folders_with(&Location::Auto, &probe(Some("/tmp/sc"), None), data.clone(), old.clone());
         assert_eq!(f.legacy, None);
         assert_eq!(f.config, Some(PathBuf::from("/tmp/sc")));
-        assert_eq!(f.data, Some(PathBuf::from("/tmp/sc/data")));
+        assert_eq!(f.data, Some(PathBuf::from("/tmp/sc").join("data")));
         assert!(f.rule.contains("SCRIPTCRAFT_CONFIG_DIR"));
         // Set but empty: isolated, nothing anywhere.
         let f = folders_with(&Location::Auto, &probe(Some(""), None), data.clone(), None);
@@ -205,7 +205,7 @@ mod tests {
         assert!(f.rule.contains("isolated"));
         // --config-dir wins over the variable.
         let f = folders_with(&Location::Dir("/x".into()), &probe(Some("/tmp/sc"), None), data.clone(), None);
-        assert_eq!((f.config, f.data), (Some(PathBuf::from("/x")), Some(PathBuf::from("/x/data"))));
+        assert_eq!((f.config, f.data), (Some(PathBuf::from("/x")), Some(PathBuf::from("/x").join("data"))));
         // Memory: nothing.
         let f = folders_with(&Location::Memory, &probe(None, None), data.clone(), None);
         assert_eq!(f.data, None);
@@ -215,7 +215,7 @@ mod tests {
         std::fs::write(exe.join("portable"), b"").unwrap();
         let f = folders_with(&Location::Auto, &probe(None, Some(exe.clone())), data, None);
         assert_eq!(f.config, Some(exe.join("config")));
-        assert_eq!(f.data, Some(exe.join("config/data")));
+        assert_eq!(f.data, Some(exe.join("config").join("data")));
         let _ = std::fs::remove_dir_all(&exe);
     }
 

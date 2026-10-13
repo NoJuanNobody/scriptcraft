@@ -1,0 +1,8 @@
+# Keep LF everywhere so Windows checkouts match the embedded files and generated docs byte for byte.
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.mp4 binary
+*.ttf binary
+*.otf binary
+*.woff2 binary
