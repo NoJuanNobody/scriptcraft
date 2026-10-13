@@ -1,9 +1,9 @@
 # ScriptCraft roadmap
 
-**Stage:** v0.2 (writing comfort) complete on branch `v0.2-writing-comfort`; v0.1 MVP released.
-**Headline numbers:** 41 of 66 Final Draft 13 catalog features implemented, 1 partial
-([docs/parity-checklist.md](docs/parity-checklist.md)); 91 engine commands + 31 window commands;
-~11.8k lines of Rust; 81 tests; native and browser builds.
+**Stage:** v0.3 (production) complete on branch `v0.3-production`; v0.2 writing comfort merged.
+**Headline numbers:** 52 of 68 Final Draft 13 catalog features implemented
+([docs/parity-checklist.md](docs/parity-checklist.md)); 133 engine commands + 37 window commands;
+~18.5k lines of Rust; 133 tests; native and browser builds; CI on Linux, macOS and Windows.
 
 ## v0.1 (this release)
 
@@ -31,16 +31,16 @@ All open work is tracked as [GitHub issues](https://github.com/NoJuanNobody/scri
 - [x] [#11](https://github.com/NoJuanNobody/scriptcraft/issues/11) Remove the control key file when the app is terminated
 - [x] [#12](https://github.com/NoJuanNobody/scriptcraft/issues/12) Web build (wasm)
 
-## v0.3: production
+## v0.3: production (done)
 
-- [ ] [#13](https://github.com/NoJuanNobody/scriptcraft/issues/13) Revision mode with coloured revision pages
-- [ ] [#14](https://github.com/NoJuanNobody/scriptcraft/issues/14) Locked pages, A/B pages, omitted scenes and locked scene numbers
-- [ ] [#15](https://github.com/NoJuanNobody/scriptcraft/issues/15) Headers and footers editor; A4 paper
-- [ ] [#16](https://github.com/NoJuanNobody/scriptcraft/issues/16) Script notes
-- [ ] [#17](https://github.com/NoJuanNobody/scriptcraft/issues/17) Alternate dialogue lines
-- [ ] [#18](https://github.com/NoJuanNobody/scriptcraft/issues/18) Production tagging and breakdown reports
-- [ ] [#19](https://github.com/NoJuanNobody/scriptcraft/issues/19) Print dialog
-- [ ] [#20](https://github.com/NoJuanNobody/scriptcraft/issues/20) Split dual dialogue across a page break
+- [x] [#13](https://github.com/NoJuanNobody/scriptcraft/issues/13) Revision mode with coloured revision pages
+- [x] [#14](https://github.com/NoJuanNobody/scriptcraft/issues/14) Locked pages, A/B pages, omitted scenes and locked scene numbers
+- [x] [#15](https://github.com/NoJuanNobody/scriptcraft/issues/15) Headers and footers editor; A4 paper
+- [x] [#16](https://github.com/NoJuanNobody/scriptcraft/issues/16) Script notes
+- [x] [#17](https://github.com/NoJuanNobody/scriptcraft/issues/17) Alternate dialogue lines
+- [x] [#18](https://github.com/NoJuanNobody/scriptcraft/issues/18) Production tagging and breakdown reports
+- [x] [#19](https://github.com/NoJuanNobody/scriptcraft/issues/19) Print dialog
+- [x] [#20](https://github.com/NoJuanNobody/scriptcraft/issues/20) Split dual dialogue across a page break
 
 ## v0.4: structure and collaboration
 
@@ -74,3 +74,9 @@ All open work is tracked as [GitHub issues](https://github.com/NoJuanNobody/scri
   list on Enter, structured copy/paste, card colours/tags and drag reorder, autosave/recovery/
   backups/recent files, caret blink, zoom and speed view, verified quit prompt, signal-safe
   control key, browser build.
+- 2026-10-13 — CI on GitHub Actions for Linux, macOS and Windows, plus a weekly run against the
+  newest Rust and dependencies (#34).
+- 2026-10-13 — v0.3 production (#13–#20): revision mode with coloured sets, margin asterisks and
+  revised-page headers; locked pages with A/B pages, omitted scenes and locked scene numbers;
+  header/footer editor and A4 paper; script notes; alternate dialogue lines; production tagging
+  with a breakdown report and CSV; File › Print; dual dialogue split across page breaks.
