@@ -5,6 +5,7 @@
 //! here and everything else through the engine's command registry.
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
+pub mod annotations;
 mod canvas;
 pub mod cards;
 mod chrome;
@@ -80,6 +81,12 @@ pub const UI_COMMANDS: &[(&str, &str, &str, &str)] = &[
     ("ui.quit", "Quit ScriptCraft", "File", "Mod+Q"),
     ("ui.openRecent", "Open Recent", "File", ""),
     ("ui.clearRecent", "Clear Recent Files", "File", ""),
+    ("ui.notes", "Show Script Notes", "Tools", ""),
+    ("ui.addNote", "Add Script Note…", "Tools", ""),
+    ("ui.alternates", "Alternate Lines…", "Tools", ""),
+    ("ui.toggleTags", "Highlight Tagged Items", "Tools", ""),
+    ("ui.breakdown", "Breakdown Report", "Tools", ""),
+    ("ui.exportBreakdown", "Export Breakdown (CSV)…", "Tools", ""),
 ];
 
 /// The application state.
@@ -88,8 +95,16 @@ pub struct ScriptApp {
     pub view: View,
     pub dark: bool,
     pub navigator: bool,
-    /// Which navigator tab: 0 scenes, 1 characters.
+    /// Which navigator tab: 0 scenes, 1 characters, 2 notes.
     pub nav_tab: usize,
+    /// The script note being written or edited.
+    pub note_editor: Option<annotations::NoteEditor>,
+    /// The Alternate Lines window is open.
+    pub alt_window: bool,
+    /// Highlight production-tagged items on the page.
+    pub show_tags: bool,
+    /// The custom category field of the Tag Selection As menu.
+    pub custom_category: String,
     pub canvas: canvas::CanvasState,
     pub find: Option<FindBar>,
     pub title_dialog: bool,
@@ -165,6 +180,10 @@ impl ScriptApp {
             dark: false,
             navigator: true,
             nav_tab: 0,
+            note_editor: None,
+            alt_window: false,
+            show_tags: false,
+            custom_category: String::new(),
             canvas: canvas::CanvasState::default(),
             find: None,
             title_dialog: false,
@@ -498,6 +517,22 @@ impl ScriptApp {
             "ui.clearRecent" => {
                 self.prefs.files.recent.clear();
             }
+            "ui.notes" => {
+                self.navigator = true;
+                self.nav_tab = 2;
+            }
+            "ui.addNote" => annotations::open_new_note(self),
+            "ui.alternates" => self.alt_window = p.get("open").and_then(Value::as_bool).unwrap_or(!self.alt_window),
+            "ui.toggleTags" => self.show_tags = p.get("on").and_then(Value::as_bool).unwrap_or(!self.show_tags),
+            "ui.breakdown" => self.view = View::Reports,
+            "ui.exportBreakdown" if self.host.is_some() && path.is_none() => return self.host_save("csv"),
+            "ui.exportBreakdown" => {
+                let stem = self.session.path.as_ref().and_then(|p| p.file_stem()).and_then(|s| s.to_str()).unwrap_or("Untitled").to_string();
+                let Some(path) = path.or_else(|| self.pick(true, "Export Breakdown", &["csv"], &format!("{stem} Breakdown.csv"))) else {
+                    return Ok(json!({}));
+                };
+                return self.session.run("file.exportBreakdown", &json!({"path": path}));
+            }
             "ui.open" if self.host.is_some() && path.is_none() => {
                 if let Some(h) = &self.host {
                     h.open(self.inbox.clone());
@@ -537,7 +572,9 @@ impl ScriptApp {
             }
             other => return Err(CmdError::Unknown(other.to_string())),
         }
-        Ok(json!({"view": self.view.id(), "dark": self.dark, "zoom": self.canvas.zoom, "navigator": self.navigator}))
+        Ok(
+            json!({"view": self.view.id(), "dark": self.dark, "zoom": self.canvas.zoom, "navigator": self.navigator, "showTags": self.show_tags, "alternates": self.alt_window}),
+        )
     }
 
     /// Save through the host: export the script and hand the bytes over (a browser download).
@@ -730,5 +767,6 @@ impl ScriptApp {
         });
         self.dialog_buttons.clear();
         chrome::dialogs(self, &ctx);
+        annotations::dialogs(self, &ctx);
     }
 }

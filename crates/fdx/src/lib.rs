@@ -24,6 +24,12 @@
 //! in Final Draft's 48-bit `#RRRRGGGGBBBB` form); card tags use a ScriptCraft-only
 //! `ScriptCraftTags` attribute.
 //!
+//! Script notes are `<ScriptNote Range="start,length" Color="…" Author="…">` inside the paragraph
+//! they annotate, holding the note's text as paragraphs (ranges count characters). Production tags
+//! and alternate lines have no FDX form we know of and use ScriptCraft-only elements:
+//! `<ScriptCraftTag Range="start,length" Category="Props"/>` and
+//! `<ScriptCraftAlternate><Text>…</Text></ScriptCraftAlternate>`.
+//!
 //! `<ElementSettings Type="…">` carry each element's indents and spacing (`ParagraphSpec`),
 //! capitals (`FontSpec Style="AllCaps"`) and Enter target (`Behavior ReturnKey`). ScriptCraft's
 //! Tab targets have no FDX equivalent and are not written.
@@ -31,7 +37,9 @@
 
 use quick_xml::Reader;
 use quick_xml::events::Event;
-use scriptcraft_doc::{Align, Element, ElementFormats, MAX_PARA_BYTES, MAX_PARAS, Para, Script, Style, TitlePage};
+use scriptcraft_doc::{
+    Align, Alternate, CardColor, Element, ElementFormats, MAX_PARA_BYTES, MAX_PARAS, Note, Para, Script, Style, Tagged, TitlePage,
+};
 
 /// Largest input we parse, bytes.
 pub const MAX_INPUT: usize = 128 << 20;
@@ -53,6 +61,17 @@ enum Kind {
     Body,
     Summary,
     Title,
+    /// The text of a script note.
+    Note,
+}
+
+/// A note read so far: character range, colour, author, text.
+struct NoteIn {
+    start: usize,
+    len: usize,
+    color: Option<CardColor>,
+    author: String,
+    text: String,
 }
 
 struct Open {
@@ -68,6 +87,13 @@ struct Open {
     tags: Vec<String>,
     wrapper: bool,
     in_text: bool,
+    notes: Vec<NoteIn>,
+    note: Option<NoteIn>,
+    /// Production tags: character range and category.
+    tagged: Vec<(usize, usize, String)>,
+    /// The alternate being read (its text runs), and those read.
+    alt: Option<Vec<(String, Style)>>,
+    alts: Vec<Alternate>,
 }
 
 /// Parse an FDX document.
@@ -138,7 +164,9 @@ pub fn parse(src: &str) -> Result<Script, FdxError> {
                         }
                     }
                     "Paragraph" => {
-                        let kind = if stack.iter().any(|n| n == "Summary") {
+                        let kind = if stack.iter().any(|n| n == "ScriptNote") {
+                            Kind::Note
+                        } else if stack.iter().any(|n| n == "Summary") {
                             Kind::Summary
                         } else if stack.iter().any(|n| n == "TitlePage") {
                             Kind::Title
@@ -158,6 +186,11 @@ pub fn parse(src: &str) -> Result<Script, FdxError> {
                             tags: Vec::new(),
                             wrapper: false,
                             in_text: false,
+                            notes: Vec::new(),
+                            note: None,
+                            tagged: Vec::new(),
+                            alt: None,
+                            alts: Vec::new(),
                         };
                         if empty {
                             finish(o, &mut open, &mut paras, &mut title_lines, &mut dual_chars);
@@ -171,6 +204,31 @@ pub fn parse(src: &str) -> Result<Script, FdxError> {
                         if let Some(o) = open.last_mut().filter(|o| o.kind == Kind::Body) {
                             o.color = color;
                             o.tags = tags;
+                        }
+                    }
+                    "ScriptNote" => {
+                        let (start, len) = attr("Range").and_then(|r| parse_range(&r)).unwrap_or((0, 0));
+                        let color = attr("Color").or_else(|| attr("MarkerColor")).and_then(|c| parse_color(&c));
+                        let author = attr("Author").or_else(|| attr("Writer")).unwrap_or_default();
+                        if let Some(o) = open.last_mut().filter(|o| o.kind == Kind::Body) {
+                            let n = NoteIn { start, len, color, author, text: String::new() };
+                            if empty {
+                                o.notes.push(n);
+                            } else {
+                                o.note = Some(n);
+                            }
+                        }
+                    }
+                    "ScriptCraftTag" => {
+                        if let (Some((start, len)), Some(cat)) = (attr("Range").and_then(|r| parse_range(&r)), attr("Category"))
+                            && let Some(o) = open.last_mut().filter(|o| o.kind == Kind::Body)
+                        {
+                            o.tagged.push((start, len, cat));
+                        }
+                    }
+                    "ScriptCraftAlternate" if !empty => {
+                        if let Some(o) = open.last_mut().filter(|o| o.kind == Kind::Body) {
+                            o.alt = Some(Vec::new());
                         }
                     }
                     "Text" => {
@@ -207,6 +265,20 @@ pub fn parse(src: &str) -> Result<Script, FdxError> {
                         }
                     }
                     "DualDialogue" => dual_chars = None,
+                    "ScriptNote" => {
+                        if let Some(o) = open.last_mut().filter(|o| o.kind == Kind::Body)
+                            && let Some(n) = o.note.take()
+                        {
+                            o.notes.push(n);
+                        }
+                    }
+                    "ScriptCraftAlternate" => {
+                        if let Some(o) = open.last_mut().filter(|o| o.kind == Kind::Body)
+                            && let Some(runs) = o.alt.take()
+                        {
+                            o.alts.push(scriptcraft_doc::alternate_from_runs(&runs));
+                        }
+                    }
                     "ElementSettings" => {
                         if let Some((e, f)) = cur_fmt.take() {
                             formats.set(e, f);
@@ -266,6 +338,15 @@ pub fn parse(src: &str) -> Result<Script, FdxError> {
 }
 
 fn push_text(o: &mut Open, s: &str) {
+    if let Some(runs) = o.alt.as_mut() {
+        if runs.iter().map(|(t, _)| t.len()).sum::<usize>() + s.len() <= MAX_PARA_BYTES {
+            match runs.last_mut() {
+                Some((t, st)) if *st == o.style => t.push_str(s),
+                _ => runs.push((s.to_string(), o.style)),
+            }
+        }
+        return;
+    }
     if o.text.len() + s.len() > MAX_PARA_BYTES {
         return;
     }
@@ -290,6 +371,18 @@ fn parse_color(c: &str) -> Option<scriptcraft_doc::CardColor> {
         return None;
     }
     Some(scriptcraft_doc::CardColor::nearest(rgb))
+}
+
+/// `"start,length"` (characters).
+fn parse_range(r: &str) -> Option<(usize, usize)> {
+    let (a, b) = r.split_once(',')?;
+    Some((a.trim().parse().ok()?, b.trim().parse().ok()?))
+}
+
+/// A 48-bit colour attribute.
+fn color_attr(c: CardColor) -> String {
+    let [r, g, b] = c.rgb();
+    format!("#{r:02X}{r:02X}{g:02X}{g:02X}{b:02X}{b:02X}")
 }
 
 /// `Bold+Italic+Underline` (any order, other values ignored).
@@ -326,6 +419,14 @@ fn finish(o: Open, open: &mut [Open], paras: &mut Vec<Para>, title_lines: &mut V
             }
         }
         Kind::Title => title_lines.push((o.align, o.text)),
+        Kind::Note => {
+            if let Some(n) = open.iter_mut().rev().find(|p| p.kind == Kind::Body).and_then(|p| p.note.as_mut()) {
+                if !n.text.is_empty() {
+                    n.text.push('\n');
+                }
+                n.text.push_str(o.text.trim());
+            }
+        }
         Kind::Body => {
             if o.wrapper && o.text.trim().is_empty() {
                 return;
@@ -341,6 +442,16 @@ fn finish(o: Open, open: &mut [Open], paras: &mut Vec<Para>, title_lines: &mut V
                 p.color = o.color;
                 p.tags = o.tags;
             }
+            let at = |chars: usize| p.text.char_indices().nth(chars).map_or(p.text.len(), |(b, _)| b);
+            p.notes = o
+                .notes
+                .iter()
+                .filter(|n| !n.text.trim().is_empty())
+                .map(|n| Note::new(at(n.start), at(n.start.saturating_add(n.len)), &n.text, n.color, &n.author))
+                .collect();
+            p.tagged = o.tagged.iter().map(|(s, l, c)| Tagged { start: at(*s), end: at(s.saturating_add(*l)), category: c.clone() }).collect();
+            p.alternates = o.alts;
+            p.fix_marks();
             if element == Element::Character
                 && let Some(n) = dual_chars.as_mut()
             {
@@ -433,8 +544,7 @@ fn para_xml(out: &mut String, indent: &str, p: &Para) {
     if p.element == Element::SceneHeading && (!p.summary.trim().is_empty() || p.color.is_some() || !p.tags.is_empty()) {
         let mut attrs = String::new();
         if let Some(c) = p.color {
-            let [r, g, b] = c.rgb();
-            attrs.push_str(&format!(" Color=\"#{r:02X}{r:02X}{g:02X}{g:02X}{b:02X}{b:02X}\""));
+            attrs.push_str(&format!(" Color=\"{}\"", color_attr(c)));
         }
         if !p.tags.is_empty() {
             attrs.push_str(&format!(" ScriptCraftTags=\"{}\"", esc(&p.tags.join(", "))));
@@ -450,6 +560,36 @@ fn para_xml(out: &mut String, indent: &str, p: &Para) {
     }
     for (t, st) in p.runs() {
         out.push_str(&format!("{indent}  <Text{}>{}</Text>\n", style_attr(st), esc(t)));
+    }
+    let chars = |b: usize| p.text.get(..b).map_or(0, |t| t.chars().count());
+    for n in &p.notes {
+        out.push_str(&format!(
+            "{indent}  <ScriptNote Range=\"{},{}\" Color=\"{}\" Author=\"{}\">\n",
+            chars(n.start),
+            chars(n.end).saturating_sub(chars(n.start)),
+            color_attr(n.color),
+            esc(&n.author)
+        ));
+        for line in n.text.lines() {
+            out.push_str(&format!("{indent}    <Paragraph>\n{indent}      <Text>{}</Text>\n{indent}    </Paragraph>\n", esc(line)));
+        }
+        out.push_str(&format!("{indent}  </ScriptNote>\n"));
+    }
+    for t in &p.tagged {
+        out.push_str(&format!(
+            "{indent}  <ScriptCraftTag Range=\"{},{}\" Category=\"{}\"/>\n",
+            chars(t.start),
+            chars(t.end).saturating_sub(chars(t.start)),
+            esc(&t.category)
+        ));
+    }
+    for a in &p.alternates {
+        out.push_str(&format!("{indent}  <ScriptCraftAlternate>\n"));
+        let alt = Para { text: a.text.clone(), spans: a.spans.clone(), ..Para::new(p.element, "") };
+        for (t, st) in alt.runs() {
+            out.push_str(&format!("{indent}    <Text{}>{}</Text>\n", style_attr(st), esc(t)));
+        }
+        out.push_str(&format!("{indent}  </ScriptCraftAlternate>\n"));
     }
     out.push_str(&format!("{indent}</Paragraph>\n"));
 }
@@ -541,3 +681,7 @@ pub fn write(s: &Script) -> String {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+#[path = "annot_tests.rs"]
+mod annot_tests;
