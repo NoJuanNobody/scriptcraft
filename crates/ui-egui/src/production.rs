@@ -1,7 +1,8 @@
-//! Production dialogs: Page Setup (paper, headers and footers).
+//! Production dialogs: Page Setup (paper, headers and footers) and Print, plus printing itself.
 
 use egui::{RichText, vec2};
-use serde_json::json;
+use scriptcraft_engine::CmdError;
+use serde_json::{Value, json};
 
 use crate::ScriptApp;
 
@@ -9,12 +10,163 @@ use crate::ScriptApp;
 #[derive(Default, Clone, Debug)]
 pub struct Dialogs {
     pub page_setup: bool,
+    /// The Print dialog's choices while it is open.
+    pub print: Option<PrintForm>,
+}
+
+/// The Print dialog's choices.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PrintForm {
+    pub all: bool,
+    pub from: usize,
+    pub to: usize,
+    pub title_page: bool,
+}
+
+impl PrintForm {
+    pub fn params(&self) -> Value {
+        if self.all { json!({"titlePage": self.title_page}) } else { json!({"from": self.from, "to": self.to, "titlePage": self.title_page}) }
+    }
 }
 
 pub fn dialogs(app: &mut ScriptApp, ctx: &egui::Context) {
     if app.production.page_setup {
         page_setup(app, ctx);
     }
+    if app.production.print.is_some() {
+        print_dialog(app, ctx);
+    }
+}
+
+/// Open (or close) the Print dialog.
+pub fn toggle_print(app: &mut ScriptApp) {
+    if app.production.print.take().is_some() {
+        return;
+    }
+    let pages = app.session.layout().script_pages().max(1);
+    let title_page = app.session.script.settings.title_page && !app.session.script.title.is_empty();
+    app.production.print = Some(PrintForm { all: true, from: 1, to: pages, title_page });
+}
+
+/// Print: render the chosen pages and hand the PDF to the system. In the browser it is downloaded;
+/// natively it is written to a temporary file and opened in the default viewer, whose Print
+/// command does the rest (not in tests or headless runs, where only the file is written).
+pub fn print_now(app: &mut ScriptApp, p: &Value) -> Result<Value, CmdError> {
+    let r = app.session.run("print.render", p)?;
+    let name = r["name"].as_str().unwrap_or("Untitled.pdf").to_string();
+    let bytes = scriptcraft_engine::b64::decode(r["data"].as_str().unwrap_or("")).map_err(CmdError::Failed)?;
+    let pages = r["pages"].clone();
+    if let Some(h) = &app.host {
+        h.save(&name, bytes);
+        app.set_status(format!("Downloaded {name} to print"));
+        return Ok(json!({"name": name, "pages": pages, "downloaded": true}));
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let dir = std::env::temp_dir().join("scriptcraft-print");
+        std::fs::create_dir_all(&dir).map_err(|e| CmdError::Failed(format!("could not prepare the print file: {e}")))?;
+        let path = dir.join(format!("{}-{}", std::process::id(), name.replace(['/', '\\'], "-")));
+        std::fs::write(&path, &bytes).map_err(|e| CmdError::Failed(format!("could not write the print file: {e}")))?;
+        let opened = app.dialogs && open_in_viewer(&path);
+        app.set_status(if opened {
+            format!("Opened {name} for printing")
+        } else if app.dialogs {
+            format!("Could not open a PDF viewer; the pages are in {}", path.display())
+        } else {
+            format!("Print file written to {}", path.display())
+        });
+        Ok(json!({"name": name, "pages": pages, "path": path.display().to_string(), "opened": opened}))
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        let _ = bytes;
+        Err(CmdError::Disabled("printing needs the page's file host".into()))
+    }
+}
+
+/// Open a file in the system's default viewer without waiting for it.
+#[cfg(not(target_arch = "wasm32"))]
+fn open_in_viewer(path: &std::path::Path) -> bool {
+    use std::process::{Command, Stdio};
+    #[cfg(target_os = "macos")]
+    let mut c = {
+        let mut c = Command::new("open");
+        c.arg(path);
+        c
+    };
+    #[cfg(target_os = "windows")]
+    let mut c = {
+        let mut c = Command::new("cmd");
+        c.args(["/C", "start", ""]).arg(path);
+        c
+    };
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    let mut c = {
+        let mut c = Command::new("xdg-open");
+        c.arg(path);
+        c
+    };
+    match c.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn() {
+        Ok(mut child) => {
+            // Reap it in the background so the UI never waits.
+            std::thread::spawn(move || {
+                let _ = child.wait();
+            });
+            true
+        }
+        Err(_) => false,
+    }
+}
+
+fn print_dialog(app: &mut ScriptApp, ctx: &egui::Context) {
+    let Some(mut form) = app.production.print.clone() else { return };
+    let mut open = true;
+    let mut go = false;
+    let mut cancelled = false;
+    let pages = app.session.layout().script_pages().max(1);
+    let has_title = !app.session.script.title.is_empty();
+    egui::Window::new("Print")
+        .open(&mut open)
+        .resizable(false)
+        .collapsible(false)
+        .pivot(egui::Align2::CENTER_TOP)
+        .default_pos(ctx.content_rect().center_top() + vec2(0.0, 110.0))
+        .show(ctx, |ui| {
+            ui.radio_value(&mut form.all, true, format!("All pages (1–{pages})"));
+            ui.horizontal(|ui| {
+                ui.radio_value(&mut form.all, false, "Pages");
+                let a = ui.add(egui::DragValue::new(&mut form.from).range(1..=pages));
+                ui.label("to");
+                let b = ui.add(egui::DragValue::new(&mut form.to).range(1..=pages));
+                if a.changed() || b.changed() {
+                    form.all = false;
+                    form.to = form.to.max(form.from);
+                }
+            });
+            ui.add_enabled_ui(has_title, |ui| ui.checkbox(&mut form.title_page, "Include the title page"));
+            ui.add_space(4.0);
+            let shown = app.session.run("print.pages", &form.params()).ok().map_or(0, |v| v["count"].as_u64().unwrap_or(0));
+            ui.label(RichText::new(format!("{shown} page(s). The pages open in your PDF viewer; print from there.")).size(11.5).weak());
+            ui.add_space(6.0);
+            ui.horizontal(|ui| {
+                let print = ui.add_enabled(shown > 0, egui::Button::new("Print…"));
+                let cancel = ui.button("Cancel");
+                app.dialog_buttons.push(("Print…".into(), print.rect));
+                app.dialog_buttons.push(("Cancel".into(), cancel.rect));
+                if print.clicked() {
+                    go = true;
+                }
+                if cancel.clicked() {
+                    cancelled = true;
+                }
+            });
+        });
+    if go {
+        app.production.print = None;
+        let _ = app.execute("ui.printNow", form.params());
+        return;
+    }
+    app.production.print = (open && !cancelled).then_some(form);
 }
 
 fn page_setup(app: &mut ScriptApp, ctx: &egui::Context) {

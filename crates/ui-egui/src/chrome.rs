@@ -133,7 +133,8 @@ pub fn menu_bar(app: &mut ScriptApp, ui: &mut Ui) {
                 item(app, ui, "Save", "ui.save", "Mod+S");
                 item(app, ui, "Save As…", "ui.saveAs", "Mod+Shift+S");
                 ui.separator();
-                item(app, ui, "Export PDF…", "ui.exportPdf", "Mod+P");
+                item(app, ui, "Print…", "ui.print", "Mod+P");
+                item(app, ui, "Export PDF…", "ui.exportPdf", "");
                 item(app, ui, "Export Final Draft (FDX)…", "ui.exportFdx", "");
                 item(app, ui, "Export Fountain…", "ui.exportFountain", "");
                 ui.separator();

@@ -27,15 +27,53 @@ pub fn export(script: &Script) -> Result<Vec<u8>, PdfError> {
     export_layout(script, &layout(script))
 }
 
+/// Which pages to print or export.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Selection {
+    /// First script page number (inclusive); `None` = from the start.
+    pub from: Option<usize>,
+    /// Last script page number (inclusive); `None` = to the end.
+    pub to: Option<usize>,
+    /// Include the title page (when the script has one).
+    pub title_page: bool,
+}
+
+impl Default for Selection {
+    fn default() -> Self {
+        Selection { from: None, to: None, title_page: true }
+    }
+}
+
+impl Selection {
+    /// Whether this selection keeps a page.
+    pub fn keeps(&self, page: &scriptcraft_layout::Page) -> bool {
+        if page.title_page {
+            return self.title_page;
+        }
+        let n = page.number.unwrap_or(0);
+        self.from.is_none_or(|f| n >= f) && self.to.is_none_or(|t| n <= t)
+    }
+
+    /// Indices (into `l.pages`) of the pages kept.
+    pub fn pages(&self, l: &Layout) -> Vec<usize> {
+        l.pages.iter().enumerate().filter(|(_, p)| self.keeps(p)).map(|(i, _)| i).collect()
+    }
+}
+
 /// Export an existing layout of `script`.
 pub fn export_layout(script: &Script, l: &Layout) -> Result<Vec<u8>, PdfError> {
+    export_pages(script, l, &(0..l.pages.len()).collect::<Vec<_>>())
+}
+
+/// Export some pages of a layout (indices into `l.pages`, in order; unknown ones are skipped).
+pub fn export_pages(script: &Script, l: &Layout, which: &[usize]) -> Result<Vec<u8>, PdfError> {
     let load = |b: &'static [u8]| Font::new(b.to_vec().into(), 0).ok_or(PdfError::Font);
     let faces =
         [load(scriptcraft_fonts::REGULAR)?, load(scriptcraft_fonts::BOLD)?, load(scriptcraft_fonts::ITALIC)?, load(scriptcraft_fonts::BOLD_ITALIC)?];
     let face = |st: Style| faces[usize::from(st.bold) + 2 * usize::from(st.italic)].clone();
     let mut doc = Document::new();
     let settings = || PageSettings::from_wh(l.page_width(), l.paper.height_pt());
-    for page in &l.pages {
+    for page in which.iter().filter_map(|i| l.pages.get(*i)) {
         let Some(ps) = settings() else { return Err(PdfError::Write("bad page size".into())) };
         let mut p = doc.start_page_with(ps);
         let mut surface = p.surface();

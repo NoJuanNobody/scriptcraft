@@ -6,6 +6,7 @@ pub mod element;
 pub mod file;
 pub mod format;
 pub mod page;
+pub mod print;
 pub mod report;
 pub mod scene;
 pub mod smart;
@@ -33,6 +34,7 @@ pub fn registry() -> Registry {
     v.extend(report::specs());
     v.extend(file::specs());
     v.extend(page::specs());
+    v.extend(print::specs());
     Registry::new(v)
 }
 
