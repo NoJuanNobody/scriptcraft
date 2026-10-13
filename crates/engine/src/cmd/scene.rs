@@ -18,10 +18,15 @@ pub fn specs() -> Vec<CommandSpec> {
             .params(r#"{"index": n, "color": "red"|"orange"|"yellow"|"green"|"teal"|"blue"|"purple"|"pink"|null}"#),
         CommandSpec::new("scene.setTags", "Card Tags", "View › Index Cards", set_tags)
             .params(r#"{"index": n, "tags": [string] or "comma, separated"}"#),
-        CommandSpec::new("scene.numberAll", "Number Scenes", "Production › Scene Numbers", number_all),
-        CommandSpec::new("scene.clearNumbers", "Remove Scene Numbers", "Production › Scene Numbers", clear_numbers),
+        CommandSpec::new("scene.numberAll", "Number Scenes", "Production › Scene Numbers", number_all).when(unlocked),
+        CommandSpec::new("scene.clearNumbers", "Remove Scene Numbers", "Production › Scene Numbers", clear_numbers).when(unlocked),
         CommandSpec::new("scene.setNumber", "Set Scene Number", "Production › Scene Numbers", set_number).params(r#"{"index": n, "number": string}"#),
     ]
+}
+
+/// Renumbering and removing numbers wait until scene numbers are unlocked.
+fn unlocked(s: &Session) -> Option<&'static str> {
+    s.script.settings.scene_numbers_locked.then_some("scene numbers are locked")
 }
 
 fn list(s: &mut Session, _: &Value) -> CmdResult {
@@ -31,7 +36,7 @@ fn list(s: &mut Session, _: &Value) -> CmdResult {
         "current": cur,
         "scenes": s.script.scenes().iter().map(|sc| json!({
             "index": sc.index, "para": sc.para, "heading": sc.heading, "number": sc.number,
-            "summary": sc.summary, "page": l.page_number_of(sc.para),
+            "summary": sc.summary, "page": l.page_number_of(sc.para), "pageLabel": l.page_label_of(sc.para),
             "color": sc.color.map(|c| c.id()), "tags": sc.tags,
         })).collect::<Vec<_>>(),
     }))

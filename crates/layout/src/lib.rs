@@ -13,7 +13,14 @@
 //!   under the first part and the cue repeated with `(CONT'D)` on the next page.
 //! - Action splits only with two or more lines on each side (preferring a sentence end);
 //!   otherwise it moves whole.
-//! - Dual dialogue sits side by side and moves as a unit.
+//! - Dual dialogue sits side by side; when it does not fit, both columns split at the same row
+//!   with `(MORE)` under each column that continues and its cue with `(CONT'D)` on the next page
+//!   ([`dual`]). Nothing is ever cut off.
+//!
+//! Production ([`locked`]): an omitted scene prints as its heading's number and `OMITTED`; with
+//! locked pages, every locked page starts where it was locked and text that no longer fits flows
+//! onto A/B pages (`12A.`, `12B.`), while a page that lost its text takes the numbers of the
+//! pages it replaces (`12-13.`).
 //!
 //! Optionally, a cue gets `(CONT'D)` when the same character speaks again after action in the
 //! same scene, and scene numbers print in both margins.
@@ -137,8 +144,12 @@ impl Line {
 #[derive(Clone, Debug, Default, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Page {
-    /// The printed page number (`None` on the title page).
+    /// The page's position among script pages, from 1 (`None` on the title page).
     pub number: Option<usize>,
+    /// The printed page number: `"3"`, or with locked pages `"12A"` or `"12-13"` (empty on the
+    /// title page).
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub label: String,
     pub title_page: bool,
     pub lines: Vec<Line>,
 }
@@ -174,9 +185,14 @@ impl Layout {
         self.pages.iter().filter(|p| !p.title_page).count()
     }
 
-    /// The printed page number paragraph `para` starts on (1 when unknown).
+    /// The page number paragraph `para` starts on, counting script pages from 1 (1 when unknown).
     pub fn page_number_of(&self, para: usize) -> usize {
         self.para_page.get(para).and_then(|i| self.pages.get(*i)).and_then(|p| p.number).unwrap_or(1)
+    }
+
+    /// The printed page label paragraph `para` starts on (`"12A"` with locked pages).
+    pub fn page_label_of(&self, para: usize) -> String {
+        self.para_page.get(para).and_then(|i| self.pages.get(*i)).map_or_else(|| "1".into(), |p| p.label.clone())
     }
 
     /// Body lines in reading order, with their page index.
@@ -330,6 +346,13 @@ enum Unit {
 }
 
 impl Unit {
+    /// The paragraph the unit starts with.
+    fn first_para(&self) -> Option<usize> {
+        match self {
+            Unit::Single(i) => Some(i.para),
+            Unit::Dialogue(v) | Unit::Dual(v, _) => v.first().map(|i| i.para),
+        }
+    }
     fn first_el(&self) -> Element {
         match self {
             Unit::Single(i) => i.el,
@@ -341,7 +364,7 @@ impl Unit {
         match self {
             Unit::Single(i) => i.lines.len().min(2),
             Unit::Dialogue(v) => v.iter().map(|i| i.lines.len()).sum::<usize>().min(2),
-            Unit::Dual(a, b) => dual_height(a, b),
+            Unit::Dual(a, b) => dual_height(a, b).min(3),
         }
     }
 }
@@ -418,6 +441,15 @@ fn units(script: &Script) -> Vec<Unit> {
                 out.push(Unit::Dialogue((i..end).filter_map(|k| item(script, k)).collect()));
                 i = end;
             }
+            Element::SceneHeading if p.omitted => {
+                // Prints as its number and OMITTED; the scene's text is kept but not shown.
+                last_speaker = None;
+                out.push(Unit::Single(Item { para: i, el: Element::SceneHeading, lines: vec![(0, 0)], suffix: locked::OMITTED.into(), cols: None }));
+                i += 1;
+                while script.paras.get(i).is_some_and(|q| q.element != Element::SceneHeading) {
+                    i += 1;
+                }
+            }
             e => {
                 if e == Element::SceneHeading {
                     last_speaker = None;
@@ -452,7 +484,7 @@ impl Builder<'_> {
 
     fn new_page(&mut self) {
         let lines = std::mem::take(&mut self.cur);
-        self.pages.push(Page { number: None, title_page: false, lines });
+        self.pages.push(Page { number: None, label: String::new(), title_page: false, lines });
         self.row = 0;
     }
 
@@ -650,29 +682,6 @@ impl Builder<'_> {
             .or_else(|| (1..=max).rev().find(|&k| valid(k, 2)))
             .or_else(|| (1..=max).rev().find(|&k| valid(k, 1)))
     }
-
-    fn dual(&mut self, a: &[Item], b: &[Item]) {
-        let before = a.first().map_or(1, |i| spec_in(self.script, i.el).before);
-        let h = dual_height(a, b);
-        if self.row > 0 && self.row + before + h > self.rows {
-            self.new_page();
-        }
-        self.gap(before);
-        let top = self.row;
-        let mut max_row = top;
-        for side in [a, b] {
-            self.row = top;
-            for it in side {
-                for k in 0..it.lines.len() {
-                    if self.row < self.rows {
-                        self.emit(it, k, false);
-                    }
-                }
-            }
-            max_row = max_row.max(self.row);
-        }
-        self.row = max_row;
-    }
 }
 
 fn deco(kind: LineKind, x: f32, y: f32, text: &str) -> Line {
@@ -718,7 +727,7 @@ fn title_page(script: &Script) -> Option<Page> {
         let x = (inch(7.5) - l.chars().count() as f32 * CHAR_W).max(inch(1.0));
         lines.push(deco(LineKind::Title, x, TOP + (first + i) as f32 * LINE_H, l));
     }
-    Some(Page { number: None, title_page: true, lines })
+    Some(Page { number: None, label: String::new(), title_page: true, lines })
 }
 
 /// Paginate a script.
@@ -743,11 +752,22 @@ pub fn layout_with(script: &Script, mode: Mode) -> Layout {
     // Speed view: effectively unlimited rows, so nothing ever breaks.
     let rows = if speed { usize::MAX / 4 } else { body_lines() };
     let mut b = Builder { script, pages: Vec::new(), cur: Vec::new(), row: 0, rows };
+    // Locked pages: each anchored unit starts a page; (first page index, its locked labels).
+    let locked = !speed && script.settings.pages_locked;
+    let anchor = |u: &Unit| if locked { locked::anchor(script, u.first_para()) } else { None };
+    let mut segments: Vec<(usize, Vec<String>)> = Vec::new();
     for (i, u) in us.iter().enumerate() {
+        if let Some(labels) = anchor(u) {
+            if !b.cur.is_empty() {
+                b.new_page();
+            }
+            segments.push((b.pages.len(), labels));
+        }
         match u {
             Unit::Single(it) => {
                 let keep = if matches!(it.el, Element::SceneHeading | Element::Shot) {
-                    us.get(i + 1).map_or(0, |n| spec_in(script, n.first_el()).before + n.min_lines())
+                    // Nothing to keep with when the next unit starts a locked page anyway.
+                    us.get(i + 1).filter(|n| anchor(n).is_none()).map_or(0, |n| spec_in(script, n.first_el()).before + n.min_lines())
                 } else {
                     0
                 };
@@ -761,14 +781,15 @@ pub fn layout_with(script: &Script, mode: Mode) -> Layout {
         b.new_page();
     }
     let mut pages = b.pages;
-    for (i, p) in pages.iter_mut().enumerate() {
-        let n = i + 1;
-        p.number = Some(n);
-        if n >= 2 && !speed {
-            let label = format!("{n}.");
-            let x = inch(7.5) - label.chars().count() as f32 * CHAR_W;
-            p.lines.push(deco(LineKind::PageNumber, x, inch(0.5), &label));
+    let labels = if locked { locked::assign(pages.len(), &segments) } else { (1..=pages.len()).map(|n| n.to_string()).collect() };
+    for (i, (p, label)) in pages.iter_mut().zip(labels).enumerate() {
+        p.number = Some(i + 1);
+        if i >= 1 && !speed && label != "1" {
+            let text = format!("{label}.");
+            let x = inch(7.5) - text.chars().count() as f32 * CHAR_W;
+            p.lines.push(deco(LineKind::PageNumber, x, inch(0.5), &text));
         }
+        p.label = label;
     }
     if !speed && let Some(tp) = title_page(script) {
         pages.insert(0, tp);
@@ -794,5 +815,19 @@ pub fn layout_with(script: &Script, mode: Mode) -> Layout {
     Layout { pages, para_page }
 }
 
+/// Which paragraphs start a unit that can begin a locked page (the first paragraph of a scene
+/// heading, action, dialogue block or dual dialogue), skipping text hidden in omitted scenes.
+pub fn unit_starts(script: &Script) -> Vec<bool> {
+    let mut v = vec![false; script.paras.len()];
+    for u in units(script) {
+        if let Some(slot) = u.first_para().and_then(|p| v.get_mut(p)) {
+            *slot = true;
+        }
+    }
+    v
+}
+
+mod dual;
+pub mod locked;
 #[cfg(test)]
 mod tests;

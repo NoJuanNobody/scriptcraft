@@ -8,11 +8,13 @@
 
 mod element;
 mod format;
+mod production;
 mod style;
 mod text;
 
 pub use element::Element;
 pub use format::{Align, ElementFormat, ElementFormats};
+pub use production::{expand_page_label, next_label};
 pub use style::{Flag, Span, Style};
 pub use text::{next_boundary, prev_boundary, word_left, word_right};
 
@@ -58,6 +60,14 @@ pub struct Para {
     /// Index-card tags (scene headings only).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tags: Vec<String>,
+    /// The scene is omitted: it prints as its heading's number and `OMITTED`, its text kept
+    /// (scene headings only).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub omitted: bool,
+    /// Locked pages: the labels of the locked pages that start with this paragraph (the first
+    /// is the page it starts; later ones are pages its content ran onto when locked).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub page_lock: Vec<String>,
 }
 
 /// Index-card colours.
@@ -139,7 +149,18 @@ impl Para {
             text = text.to_uppercase();
         }
         text = sanitize(&text);
-        Para { element, text, scene_number: None, dual: false, summary: String::new(), spans: Vec::new(), color: None, tags: Vec::new() }
+        Para {
+            element,
+            text,
+            scene_number: None,
+            dual: false,
+            summary: String::new(),
+            spans: Vec::new(),
+            color: None,
+            tags: Vec::new(),
+            omitted: false,
+            page_lock: Vec::new(),
+        }
     }
 
     /// A paragraph from styled text runs (FDX `<Text Style>` runs, Fountain emphasis).
@@ -296,11 +317,25 @@ pub struct Settings {
     /// Element indents, spacing, capitals and Enter/Tab flow.
     #[serde(skip_serializing_if = "ElementFormats::is_default")]
     pub elements: ElementFormats,
+    /// Locked pages: page breaks stay where they were locked; new text makes A/B pages.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub pages_locked: bool,
+    /// Locked scene numbers: numbers stay; new scenes are numbered after the one before (12A).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub scene_numbers_locked: bool,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Settings { show_scene_numbers: false, more_contd: true, auto_contd: true, title_page: true, elements: ElementFormats::default() }
+        Settings {
+            show_scene_numbers: false,
+            more_contd: true,
+            auto_contd: true,
+            title_page: true,
+            elements: ElementFormats::default(),
+            pages_locked: false,
+            scene_numbers_locked: false,
+        }
     }
 }
 
@@ -393,6 +428,7 @@ impl Script {
                 p.scene_number = None;
                 p.color = None;
                 p.tags.clear();
+                p.omitted = false;
             } else {
                 let t = std::mem::take(&mut p.tags);
                 p.tags = clean_tags(t.iter().map(String::as_str));
@@ -401,6 +437,7 @@ impl Script {
                 p.dual = false;
             }
         }
+        self.normalize_production();
         Ok(())
     }
 
