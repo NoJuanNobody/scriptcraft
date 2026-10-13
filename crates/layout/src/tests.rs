@@ -48,7 +48,7 @@ fn element_indents() {
     assert_eq!(ys, vec![72.0, 96.0, 120.0, 132.0, 144.0, 168.0]);
     assert_eq!(width_chars(Element::Dialogue), 35);
     assert_eq!(width_chars(Element::Action), 60);
-    assert!(l.pages[0].lines.iter().all(|l| l.kind != LineKind::PageNumber), "no number on page 1");
+    assert!(l.pages[0].lines.iter().all(|l| l.kind != LineKind::Header), "no number on page 1");
 }
 
 #[test]
@@ -59,7 +59,7 @@ fn fifty_four_lines_per_page() {
     assert_eq!(body(&l.pages[0]).len(), 27);
     assert_eq!(body(&l.pages[0]).last().unwrap().y, 72.0 + 52.0 * 12.0);
     assert_eq!(body(&l.pages[1])[0].y, 72.0, "space before is dropped at the top of a page");
-    let num = l.pages[1].lines.iter().find(|l| l.kind == LineKind::PageNumber).unwrap();
+    let num = l.pages[1].lines.iter().find(|l| l.kind == LineKind::Header).unwrap();
     assert_eq!(num.text, "2.");
     assert_eq!(num.y, 36.0);
     assert_eq!(num.x, 540.0 - 2.0 * 7.2);

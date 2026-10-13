@@ -11,6 +11,7 @@ mod chrome;
 pub mod control;
 pub mod icons;
 pub mod persist;
+pub mod production;
 mod reports;
 pub mod theme;
 
@@ -69,6 +70,7 @@ pub const UI_COMMANDS: &[(&str, &str, &str, &str)] = &[
     ("ui.toggleSpelling", "Check Spelling as You Type", "Tools", ""),
     ("ui.toggleEnterPicker", "Element List on Enter in an Empty Paragraph", "Format", ""),
     ("ui.titlePage", "Title Page…", "Document", ""),
+    ("ui.pageSetup", "Page Setup…", "Document", ""),
     ("ui.elementSettings", "Element Settings…", "Format", ""),
     ("ui.open", "Open…", "File", "Mod+O"),
     ("ui.save", "Save", "File", "Mod+S"),
@@ -94,6 +96,8 @@ pub struct ScriptApp {
     pub find: Option<FindBar>,
     pub title_dialog: bool,
     pub element_dialog: bool,
+    /// Page Setup, Print and Revisions dialogs.
+    pub production: production::Dialogs,
     /// The index card being dragged.
     pub card_drag: Option<usize>,
     /// Screen rectangles of the index cards last drawn (for demos and agents).
@@ -169,6 +173,7 @@ impl ScriptApp {
             find: None,
             title_dialog: false,
             element_dialog: false,
+            production: production::Dialogs::default(),
             card_drag: None,
             card_rects: Vec::new(),
             tag_edit: None,
@@ -473,7 +478,8 @@ impl ScriptApp {
             "ui.zoomReset" => self.canvas.zoom = 1.0,
             "ui.zoomFit" => {
                 let w = self.canvas.canvas_rect.map_or(900.0, |r| r.width());
-                self.canvas.zoom = ((w - 2.0 * 28.0 - 16.0) / scriptcraft_geom::PAGE_W).clamp(0.4, 3.0);
+                let pw = self.session.layout().page_width();
+                self.canvas.zoom = ((w - 2.0 * 28.0 - 16.0) / pw).clamp(0.4, 3.0);
             }
             "ui.view.speed" => {
                 self.view = View::Page;
@@ -489,6 +495,7 @@ impl ScriptApp {
             }
             "ui.titlePage" => self.title_dialog = !self.title_dialog,
             "ui.elementSettings" => self.element_dialog = !self.element_dialog,
+            "ui.pageSetup" => self.production.page_setup = !self.production.page_setup,
             "ui.about" => self.about = true,
             "ui.quit" => self.close_wanted = true,
             "ui.openRecent" => {

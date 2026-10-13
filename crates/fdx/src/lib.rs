@@ -29,6 +29,8 @@
 //! Tab targets have no FDX equivalent and are not written.
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
+mod page;
+
 use quick_xml::Reader;
 use quick_xml::events::Event;
 use scriptcraft_doc::{Align, Element, ElementFormats, MAX_PARA_BYTES, MAX_PARAS, Para, Script, Style, TitlePage};
@@ -53,6 +55,8 @@ enum Kind {
     Body,
     Summary,
     Title,
+    /// A header (`false`) or footer (`true`) paragraph.
+    HeaderFooter(bool),
 }
 
 struct Open {
@@ -85,6 +89,7 @@ pub fn parse(src: &str) -> Result<Script, FdxError> {
     let mut root_seen = false;
     let mut formats = ElementFormats::default();
     let mut cur_fmt: Option<(Element, scriptcraft_doc::ElementFormat)> = None;
+    let mut page_read = page::Read::default();
     loop {
         let ev = r.read_event().map_err(|e| FdxError::Xml(e.to_string()))?;
         let empty = matches!(ev, Event::Empty(_));
@@ -138,7 +143,9 @@ pub fn parse(src: &str) -> Result<Script, FdxError> {
                         }
                     }
                     "Paragraph" => {
-                        let kind = if stack.iter().any(|n| n == "Summary") {
+                        let kind = if stack.iter().any(|n| n == "HeaderAndFooter") {
+                            Kind::HeaderFooter(stack.iter().any(|n| n == "Footer"))
+                        } else if stack.iter().any(|n| n == "Summary") {
                             Kind::Summary
                         } else if stack.iter().any(|n| n == "TitlePage") {
                             Kind::Title
@@ -160,9 +167,29 @@ pub fn parse(src: &str) -> Result<Script, FdxError> {
                             in_text: false,
                         };
                         if empty {
-                            finish(o, &mut open, &mut paras, &mut title_lines, &mut dual_chars);
+                            if let Kind::HeaderFooter(footer) = o.kind {
+                                page_read.add(footer, &o.align, &o.text);
+                            } else {
+                                finish(o, &mut open, &mut paras, &mut title_lines, &mut dual_chars);
+                            }
                         } else {
                             open.push(o);
+                        }
+                    }
+                    "PageLayout" => page_read.paper = attr("ScriptCraftPaper").and_then(|p| scriptcraft_doc::Paper::parse(&p)),
+                    "HeaderAndFooter" => {
+                        page_read.seen = true;
+                        page_read.header_visible = page::yes(attr("HeaderVisible"));
+                        page_read.footer_visible = page::yes(attr("FooterVisible"));
+                        page_read.header_first = page::yes(attr("HeaderFirstPage"));
+                        page_read.footer_first = page::yes(attr("FooterFirstPage"));
+                        page_read.title_page = page::yes(attr("ScriptCraftTitlePage"));
+                    }
+                    "DynamicLabel" => {
+                        if let Some(o) = open.last_mut().filter(|o| matches!(o.kind, Kind::HeaderFooter(_)))
+                            && let Some(f) = attr("Type").and_then(|t| page::dynamic_label(&t))
+                        {
+                            push_text(o, &f);
                         }
                     }
                     "SceneProperties" => {
@@ -214,7 +241,11 @@ pub fn parse(src: &str) -> Result<Script, FdxError> {
                     }
                     "Paragraph" => {
                         if let Some(o) = open.pop() {
-                            finish(o, &mut open, &mut paras, &mut title_lines, &mut dual_chars);
+                            if let Kind::HeaderFooter(footer) = o.kind {
+                                page_read.add(footer, &o.align, &o.text);
+                            } else {
+                                finish(o, &mut open, &mut paras, &mut title_lines, &mut dual_chars);
+                            }
                         }
                     }
                     _ => {}
@@ -260,6 +291,7 @@ pub fn parse(src: &str) -> Result<Script, FdxError> {
     }
     let mut s = Script::from_paras(paras).map_err(|_| FdxError::TooLarge)?;
     s.settings.elements = formats;
+    page_read.apply(&mut s.settings.page);
     s.normalize().map_err(|_| FdxError::TooLarge)?;
     s.title = title_from_lines(&title_lines);
     Ok(s)
@@ -326,6 +358,7 @@ fn finish(o: Open, open: &mut [Open], paras: &mut Vec<Para>, title_lines: &mut V
             }
         }
         Kind::Title => title_lines.push((o.align, o.text)),
+        Kind::HeaderFooter(_) => {}
         Kind::Body => {
             if o.wrapper && o.text.trim().is_empty() {
                 return;
@@ -501,6 +534,7 @@ pub fn write(s: &Script) -> String {
             k = e.index() + 1,
         ));
     }
+    page::write(&mut out, &s.settings.page);
     let t = &s.title;
     if !t.is_empty() {
         out.push_str("  <TitlePage>\n    <Content>\n");

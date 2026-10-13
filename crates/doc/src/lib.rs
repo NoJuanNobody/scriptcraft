@@ -8,11 +8,13 @@
 
 mod element;
 mod format;
+pub mod page_setup;
 mod style;
 mod text;
 
 pub use element::Element;
 pub use format::{Align, ElementFormat, ElementFormats};
+pub use page_setup::{HeaderFooter, PageSetup, Paper};
 pub use style::{Flag, Span, Style};
 pub use text::{next_boundary, prev_boundary, word_left, word_right};
 
@@ -296,11 +298,21 @@ pub struct Settings {
     /// Element indents, spacing, capitals and Enter/Tab flow.
     #[serde(skip_serializing_if = "ElementFormats::is_default")]
     pub elements: ElementFormats,
+    /// Paper, header and footer.
+    #[serde(skip_serializing_if = "PageSetup::is_default")]
+    pub page: PageSetup,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Settings { show_scene_numbers: false, more_contd: true, auto_contd: true, title_page: true, elements: ElementFormats::default() }
+        Settings {
+            show_scene_numbers: false,
+            more_contd: true,
+            auto_contd: true,
+            title_page: true,
+            elements: ElementFormats::default(),
+            page: PageSetup::default(),
+        }
     }
 }
 
@@ -376,6 +388,8 @@ impl Script {
             let f = self.settings.elements.get(e);
             self.settings.elements.set(e, f);
         }
+        self.settings.page.header.clean();
+        self.settings.page.footer.clean();
         let caps = Element::ALL.map(|e| self.upper(e));
         for p in &mut self.paras {
             let clean = sanitize(&p.text);

@@ -3,7 +3,7 @@
 use egui::{Align2, Color32, CornerRadius, FontFamily, FontId, Id, Key, Modifiers, Pos2, Rect, Sense, Stroke, StrokeKind, Ui, pos2, vec2};
 use scriptcraft_doc::{Element, Pos, word_left, word_right};
 use scriptcraft_engine::smarttype::{Suggest, suggest};
-use scriptcraft_geom::{CHAR_W, FONT_SIZE, LINE_H, PAGE_W};
+use scriptcraft_geom::{CHAR_W, FONT_SIZE, LINE_H};
 use scriptcraft_layout::{Layout, Line, LineKind};
 use serde_json::json;
 
@@ -331,7 +331,7 @@ fn paint_page(ui: &Ui, app: &ScriptApp, l: &Layout, i: usize, pr: Rect, bad: &[(
             p.rect_filled(cols_rect(pr, z, line, c0, c1), 0.0, t.selection);
         }
         let color = match line.kind {
-            LineKind::PageNumber | LineKind::More | LineKind::Contd | LineKind::SceneNumber => t.ink_soft,
+            LineKind::Header | LineKind::Footer | LineKind::More | LineKind::Contd | LineKind::SceneNumber => t.ink_soft,
             _ => t.ink,
         };
         for (col, text, st) in line.segments() {
@@ -409,7 +409,7 @@ pub fn show(app: &mut ScriptApp, ui: &mut Ui) {
     }
     let layout = app.session.view_layout();
     let z = app.canvas.zoom;
-    let pw = PAGE_W * z;
+    let pw = layout.page_width() * z;
     let n = layout.pages.len();
     let heights: Vec<f32> = (0..n).map(|i| layout.page_height(i) * z).collect();
     let total_h = heights.iter().map(|h| h + GAP).sum::<f32>() + GAP;

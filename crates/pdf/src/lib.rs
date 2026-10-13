@@ -11,7 +11,7 @@ use krilla::paint::Fill;
 use krilla::text::{Font, TextDirection};
 use scriptcraft_doc::Script;
 use scriptcraft_doc::Style;
-use scriptcraft_geom::{CHAR_W, FONT_SIZE, PAGE_H, PAGE_W};
+use scriptcraft_geom::{CHAR_W, FONT_SIZE};
 use scriptcraft_layout::{Layout, layout};
 
 #[derive(Debug, thiserror::Error, Clone, PartialEq)]
@@ -34,7 +34,7 @@ pub fn export_layout(script: &Script, l: &Layout) -> Result<Vec<u8>, PdfError> {
         [load(scriptcraft_fonts::REGULAR)?, load(scriptcraft_fonts::BOLD)?, load(scriptcraft_fonts::ITALIC)?, load(scriptcraft_fonts::BOLD_ITALIC)?];
     let face = |st: Style| faces[usize::from(st.bold) + 2 * usize::from(st.italic)].clone();
     let mut doc = Document::new();
-    let settings = || PageSettings::from_wh(PAGE_W, PAGE_H);
+    let settings = || PageSettings::from_wh(l.page_width(), l.paper.height_pt());
     for page in &l.pages {
         let Some(ps) = settings() else { return Err(PdfError::Write("bad page size".into())) };
         let mut p = doc.start_page_with(ps);
