@@ -69,3 +69,22 @@ fn script_notes_from_other_writers() {
     // Note paragraphs never become script paragraphs.
     assert_eq!(s.paras.len(), 1);
 }
+
+/// v0.3 features together: locks, an omitted scene, notes, tags and alternates in one file.
+#[test]
+fn production_and_annotations_round_trip_together() {
+    let mut s = annotated();
+    s.paras.push(Para::new(Element::SceneHeading, "EXT. ROOF - DAWN"));
+    s.paras.push(Para::new(Element::Action, "Omitted, but the words stay."));
+    s.settings.pages_locked = true;
+    s.settings.scene_numbers_locked = true;
+    s.paras[0].scene_number = Some("4".into());
+    s.paras[4].scene_number = Some("4A".into());
+    s.paras[4].omitted = true;
+    s.paras[0].page_lock = vec!["2".into()];
+    s.add_note(Pos::new(5, 0), Pos::new(5, 7), "Restore for the director's cut?", Some(CardColor::Pink), "Ana");
+    s.add_tag(Pos::new(4, 0), Pos::new(4, 4), "Location");
+    let back = parse(&write(&s)).unwrap_or_default();
+    assert_eq!(back.paras, s.paras);
+    assert!(back.settings.pages_locked && back.settings.scene_numbers_locked);
+}
