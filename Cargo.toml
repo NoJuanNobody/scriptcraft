@@ -6,7 +6,7 @@ members = ["crates/*", "apps/*", "xtask"]
 version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
-rust-version = "1.90"
+rust-version = "1.95"
 repository = "https://github.com/NoJuanNobody/scriptcraft"
 
 [workspace.dependencies]
@@ -23,6 +23,10 @@ scriptcraft-engine = { path = "crates/engine" }
 scriptcraft-control-key = { path = "crates/control-key" }
 scriptcraft-mcp = { path = "crates/mcp" }
 scriptcraft-ui-egui = { path = "crates/ui-egui" }
+
+# Shared Craft-suite libraries (storytold/craft-libs), pinned to a reviewed revision.
+# craft-settings: config.toml storage with the suite's folder rules (craft-libs#22).
+craft-settings = { git = "https://github.com/storytold/craft-libs", rev = "6006abb757df7030ffdd78c4fc952904a9d36491" }
 
 # foundation
 thiserror = "2"

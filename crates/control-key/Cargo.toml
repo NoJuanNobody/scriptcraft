@@ -3,9 +3,12 @@ name = "scriptcraft-control-key"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Where the ScriptCraft app writes its control-channel key (shared by the app and the MCP bridge)"
+description = "Where ScriptCraft keeps its settings, data and control-channel key: the Craft suite's folder rules (craft-settings), shared by the app and the MCP bridge"
 
 [lints]
 workspace = true
 
 [dependencies]
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+craft-settings = { workspace = true }

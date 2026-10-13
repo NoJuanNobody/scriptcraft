@@ -44,10 +44,13 @@ fn write_key(p: &std::path::Path, key: &str) -> Result<(), String> {
 }
 
 /// Bind `127.0.0.1:port`, write the key file and serve.
-pub fn start(port: u16, ctx: egui::Context) -> Option<(Receiver<ControlRequest>, Option<KeyFile>)> {
+/// Bind `127.0.0.1:port` and write the key into `key_dir` (the data folder). With no data folder
+/// (isolated settings) no key file is written, so requests can only use `SCRIPTCRAFT_CONTROL_KEY`
+/// — which the server never knows — and are refused.
+pub fn start(port: u16, ctx: egui::Context, key_dir: Option<&std::path::Path>) -> Option<(Receiver<ControlRequest>, Option<KeyFile>)> {
     let listener = TcpListener::bind(("127.0.0.1", port)).map_err(|e| eprintln!("control server: cannot bind 127.0.0.1:{port}: {e}")).ok()?;
     let key = random_key().map_err(|e| eprintln!("control server off: {e}")).ok()?;
-    let kf = scriptcraft_control_key::settings_dir().map(|d| scriptcraft_control_key::key_path(&d, port)).and_then(|p| match write_key(&p, &key) {
+    let kf = key_dir.map(|d| scriptcraft_control_key::key_path(d, port)).and_then(|p| match write_key(&p, &key) {
         Ok(()) => {
             eprintln!("control server on 127.0.0.1:{port}, key in {}", p.display());
             Some(KeyFile(p))

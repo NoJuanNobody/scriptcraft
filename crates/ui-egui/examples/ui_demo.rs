@@ -406,10 +406,12 @@ fn main() {
             let file = state_dir.join("Night Signal.fountain");
             let _ = std::fs::write(&file, scriptcraft_engine::sample::FOUNTAIN);
             let app = h.state_mut();
-            let mut fresh = ScriptApp::new(Session::sample()).with_state_dir(state_dir.clone());
-            std::mem::swap(&mut fresh.session, &mut app.session);
-            app.state_dir = fresh.state_dir.take();
-            app.prefs = fresh.prefs.clone();
+            app.use_folders(scriptcraft_control_key::Folders {
+                config: Some(state_dir.clone()),
+                data: Some(state_dir.clone()),
+                rule: "demo".into(),
+                legacy: None,
+            });
             let _ = app.execute("file.open", json!({"path": file.to_str().unwrap_or("")}));
             rec.shot(&mut h);
         } else if l.get("recovery").is_some() {

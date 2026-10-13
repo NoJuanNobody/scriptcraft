@@ -1,10 +1,13 @@
 //! The ScriptCraft desktop app.
 //!
-//! Usage: `scriptcraft [--new | --sample] [--control <port>] [file.fountain|file.fdx]`
+//! Usage: `scriptcraft [--new | --sample] [--config-dir <dir>] [--control <port>] [file.fountain|file.fdx]`
 //!
-//! With no file it opens the sample script (`--new` starts blank). `--control <port>` (or
-//! `SCRIPTCRAFT_CONTROL_PORT`) starts a localhost JSON-lines control server; every request carries
-//! the key the app writes to `<settings>/control-key.local-<port>` (see docs/control-protocol.md).
+//! With no file it opens the sample script (`--new` starts blank). Settings and data follow the
+//! Craft suite's folder rules (craft-settings): `--config-dir`, then `SCRIPTCRAFT_CONFIG_DIR`
+//! (empty = isolated, nothing read or written), then a `portable` marker, then the platform
+//! folder. `--control <port>` (or `SCRIPTCRAFT_CONTROL_PORT`) starts a localhost JSON-lines
+//! control server; every request carries the key the app writes to
+//! `<data>/control-key.local-<port>` (see docs/control-protocol.md).
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 mod control_server;
@@ -112,14 +115,16 @@ fn main() -> eframe::Result<()> {
     let mut control_port: Option<u16> = std::env::var("SCRIPTCRAFT_CONTROL_PORT").ok().and_then(|p| p.parse().ok());
     let mut file: Option<String> = None;
     let mut blank = false;
+    let mut config_dir: Option<std::path::PathBuf> = None;
     let mut args = std::env::args().skip(1);
     while let Some(a) = args.next() {
         match a.as_str() {
             "--control" => control_port = args.next().and_then(|p| p.parse().ok()),
+            "--config-dir" => config_dir = args.next().map(std::path::PathBuf::from),
             "--new" => blank = true,
             "--sample" => blank = false,
             "--help" | "-h" => {
-                println!("scriptcraft [--new | --sample] [--control <port>] [file.fountain|file.fdx]");
+                println!("scriptcraft [--new | --sample] [--config-dir <dir>] [--control <port>] [file.fountain|file.fdx]");
                 return Ok(());
             }
             other => file = Some(other.to_string()),
@@ -159,12 +164,12 @@ fn main() -> eframe::Result<()> {
             }
             let mut app = ScriptApp::new(session);
             app.dark = cc.egui_ctx.system_theme() == Some(egui::Theme::Dark);
-            if let Some(dir) = scriptcraft_control_key::settings_dir() {
-                app = app.with_state_dir(dir);
-            }
+            let folders = scriptcraft_control_key::folders(config_dir);
+            let data = folders.data.clone();
+            app = app.with_folders(folders);
             let mut key_file = None;
             if let Some(port) = control_port
-                && let Some((rx, kf)) = control_server::start(port, cc.egui_ctx.clone())
+                && let Some((rx, kf)) = control_server::start(port, cc.egui_ctx.clone(), data.as_deref())
             {
                 app = app.with_control(rx);
                 if let Ok(mut g) = key_slot.lock() {

@@ -37,6 +37,9 @@ parity doc fresh). Use a `CARGO_TARGET_DIR` inside the repo (`.target/`, gitigno
 - Headless screenshots: `cargo run -p scriptcraft-ui-egui --example ui_shot -- script.jsonl`. For UI
   work, look at the PNG.
 - CLI: `scriptcraft-cli convert|commands|run|report|parity|mcp`. MCP: `docs/mcp.md`.
+- Settings use `craft-settings` (storytold/craft-libs). Run the app with `SCRIPTCRAFT_CONFIG_DIR=`
+  (empty: isolated) or `SCRIPTCRAFT_CONFIG_DIR=/tmp/x` when testing so a real profile is never
+  touched; `scriptcraft_control_key::folders` is the one place folder rules are decided.
 - Browser build: `cargo xtask wasm` (compile check, part of `ci` when the wasm32 target is
   installed) and `cargo xtask web` (needs `wasm-bindgen-cli` at the version in Cargo.lock) →
   `apps/scriptcraft-web/dist/`; serve it with any static server. Keep everything below the web

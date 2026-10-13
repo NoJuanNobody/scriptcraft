@@ -9,12 +9,18 @@ scriptcraft --control 7990            # or SCRIPTCRAFT_CONTROL_PORT=7990
 
 ## Keys
 
-On start the app writes a random 256-bit key to `<settings>/control-key.local-<port>` (mode 0600),
+On start the app writes a random 256-bit key to `<data>/control-key.local-<port>` (mode 0600),
 followed on a second line by the app's process id. The file is removed when the app exits,
 including on SIGTERM, SIGINT or SIGHUP (unsaved changes are kept as a recovery copy first).
-Clients read the first line; a file whose process is no longer running is reported as stale. Settings: macOS `~/Library/Application Support/ScriptCraft`, Windows
-`%APPDATA%\ScriptCraft`, else `$XDG_CONFIG_HOME/scriptcraft`. Every request must carry it as
-`key`; requests with a missing or wrong key are refused. The server binds 127.0.0.1 only.
+Clients read the first line; a file whose process is no longer running is reported as stale.
+Every request must carry the key as `key`; requests with a missing or wrong key are refused.
+
+`<data>` is ScriptCraft's data folder (Craft-suite folder rules, see README › Settings and data):
+the platform data folder by default (macOS `~/Library/Application Support/scriptcraft`, Linux
+`~/.local/share/scriptcraft`, Windows `%LOCALAPPDATA%\scriptcraft`), or `<config>/data` when
+`--config-dir` or `SCRIPTCRAFT_CONFIG_DIR` redirects the app. Run the MCP bridge with the same
+`SCRIPTCRAFT_CONFIG_DIR` (or pass `SCRIPTCRAFT_CONTROL_KEY`) so it finds the key. With
+`SCRIPTCRAFT_CONFIG_DIR` set but empty (isolated) no key file is written. The server binds 127.0.0.1 only.
 
 ## Requests
 

@@ -114,7 +114,7 @@ pub fn menu_bar(app: &mut ScriptApp, ui: &mut Ui) {
                 item(app, ui, "New Script", "file.new", "Mod+N");
                 item(app, ui, "Open…", "ui.open", "Mod+O");
                 ui.menu_button("Open Recent", |ui| {
-                    let recent = app.prefs.recent.clone();
+                    let recent = app.prefs.files.recent.clone();
                     if recent.is_empty() {
                         ui.label(RichText::new("No recent files").italics());
                     }
@@ -662,6 +662,16 @@ pub fn dialogs(app: &mut ScriptApp, ctx: &egui::Context) {
             ui.label(format!("Version {}", env!("CARGO_PKG_VERSION")));
             ui.label("Open-source screenwriting in pure Rust, by the ArtCraft community.");
             ui.label("MIT OR Apache-2.0. Typeface: Courier Prime (SIL Open Font License 1.1).");
+            ui.separator();
+            let loc = app.settings_location();
+            let settings = loc["file"].as_str().map_or_else(|| "not stored (this run keeps settings in memory)".to_string(), str::to_string);
+            ui.label(RichText::new(format!("Settings: {settings}")).size(11.5));
+            if let Some(rule) = loc["rule"].as_str() {
+                ui.label(RichText::new(format!("Chosen by: {rule}")).size(11.5));
+            }
+            if let Some(d) = loc["data"].as_str() {
+                ui.label(RichText::new(format!("Recovery, backups, dictionary: {d}")).size(11.5));
+            }
             ui.hyperlink_to("getartcraft.com/apps", "https://getartcraft.com/apps");
         });
         app.about = open;
@@ -702,9 +712,7 @@ pub fn dialogs(app: &mut ScriptApp, ctx: &egui::Context) {
             }
             Some(false) => {
                 app.recovery_offer = None;
-                if let Some(dir) = &app.state_dir {
-                    crate::persist::clear_recovery(dir);
-                }
+                app.clear_recovery();
             }
             None => {}
         }

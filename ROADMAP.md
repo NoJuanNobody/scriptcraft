@@ -68,6 +68,8 @@ All open work is tracked as [GitHub issues](https://github.com/NoJuanNobody/scri
 - 2026-10-12 — v0.1: model, Fountain/FDX/PDF, pagination, engine with 73 commands, MCP, CLI,
   egui window with page view, navigator, index cards, reports, dark mode; README screenshots.
 - 2026-10-12 — published at github.com/NoJuanNobody/scriptcraft; 32 issues filed for the known gaps.
+- 2026-10-12 — settings through craft-settings (storytold/craft-libs#22), the Craft suite's
+  shared config.toml store and folder rules; recovery, backups and dictionary in the data folder (#35).
 - 2026-10-12 — v0.2 writing comfort (#1–#12): inline styles, spelling, element settings, element
   list on Enter, structured copy/paste, card colours/tags and drag reorder, autosave/recovery/
   backups/recent files, caret blink, zoom and speed view, verified quit prompt, signal-safe
