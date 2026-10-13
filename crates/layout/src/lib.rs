@@ -77,6 +77,8 @@ pub enum LineKind {
     Header,
     /// Footer text.
     Footer,
+    /// The revision mark (`*`) in the right margin of a line with revised text.
+    RevisionMark,
     SceneNumber,
     /// A title-page line.
     Title,
@@ -167,6 +169,8 @@ pub struct Layout {
     pub para_page: Vec<usize>,
     /// The paper the pages are laid out on.
     pub paper: Paper,
+    /// For each page, the highest revision set with marks on it (`None`: unrevised).
+    pub page_rev: Vec<Option<u8>>,
 }
 
 impl Layout {
@@ -784,8 +788,9 @@ pub fn layout_with(script: &Script, mode: Mode) -> Layout {
     if !speed && let Some(tp) = title_page(script) {
         pages.insert(0, tp);
     }
+    let page_rev = decorate::revisions(script, &mut pages, paper);
     if !speed {
-        decorate::headers(script, &mut pages, &[], paper);
+        decorate::headers(script, &mut pages, &page_rev, paper);
     }
     let mut para_page = vec![usize::MAX; script.paras.len()];
     for (pi, p) in pages.iter().enumerate() {
@@ -805,7 +810,7 @@ pub fn layout_with(script: &Script, mode: Mode) -> Layout {
         }
         last = *s;
     }
-    Layout { pages, para_page, paper }
+    Layout { pages, para_page, paper, page_rev }
 }
 
 #[cfg(test)]

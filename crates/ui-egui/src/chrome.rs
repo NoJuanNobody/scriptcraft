@@ -200,6 +200,10 @@ pub fn menu_bar(app: &mut ScriptApp, ui: &mut Ui) {
                 item(app, ui, "Title Page…", "ui.titlePage", "");
                 item(app, ui, "Page Setup…", "ui.pageSetup", "");
                 ui.separator();
+                let tracking = app.session.script.settings.revision.tracking;
+                check(app, ui, "Revision Mode", tracking, "revision.mode", json!({"on": !tracking}));
+                item(app, ui, "Revisions…", "ui.revisions", "");
+                ui.separator();
                 item(app, ui, "Number Scenes", "scene.numberAll", "");
                 item(app, ui, "Remove Scene Numbers", "scene.clearNumbers", "");
                 ui.separator();

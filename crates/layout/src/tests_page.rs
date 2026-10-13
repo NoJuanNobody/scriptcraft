@@ -68,6 +68,31 @@ fn headers_and_footers_fill_their_fields() {
 }
 
 #[test]
+fn revision_marks_and_page_labels() {
+    let mut s = action_lines(60);
+    s.settings.revision.sets[1].date = "10/12/26".into();
+    // A Blue change on page 2 (paragraph 30) and a Pink one on page 3 (paragraph 58).
+    scriptcraft_doc::revision::add_mark(&mut s.paras[30], 0, 4, 1);
+    scriptcraft_doc::revision::add_mark(&mut s.paras[58], 5, 7, 2);
+    let l = layout(&s);
+    assert_eq!(l.page_rev, vec![None, Some(1), Some(2)]);
+    let marks = kind(&l.pages[1], LineKind::RevisionMark);
+    assert_eq!(marks.len(), 1);
+    assert_eq!(marks[0].text, "*");
+    assert_eq!(marks[0].x, 612.0 - 28.8);
+    let line = body(&l.pages[1]).into_iter().find(|x| x.para == Some(30)).unwrap();
+    assert_eq!(marks[0].y, line.y);
+    assert_eq!(kind(&l.pages[1], LineKind::Header)[0].text, "Blue Rev. 10/12/26  2.");
+    assert_eq!(kind(&l.pages[2], LineKind::Header)[0].text, "Pink Rev.  3.");
+    assert!(kind(&l.pages[0], LineKind::RevisionMark).is_empty());
+    // Marks hidden: pages still know their revision.
+    s.settings.revision.show_marks = false;
+    let l = layout(&s);
+    assert!(l.pages.iter().all(|p| kind(p, LineKind::RevisionMark).is_empty()));
+    assert_eq!(l.page_rev[2], Some(2));
+}
+
+#[test]
 fn first_page_and_title_page_options() {
     let mut s = action_lines(60);
     s.title.title = "T".into();

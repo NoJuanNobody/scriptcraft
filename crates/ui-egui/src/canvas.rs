@@ -313,13 +313,23 @@ fn selected_cols(l: &Line, a: Pos, b: Pos) -> Option<(usize, usize)> {
     Some((col(from), col(to) + usize::from(eol)))
 }
 
+/// The paper colour of page `i`: tinted with its revision set's colour when coloured revision
+/// pages are on.
+fn page_color(app: &ScriptApp, l: &Layout, i: usize, paper: Color32, dark: bool) -> Color32 {
+    let r = &app.session.script.settings.revision;
+    let Some(set) = l.page_rev.get(i).copied().flatten().filter(|_| r.color_pages).and_then(|lvl| r.set(lvl)) else { return paper };
+    let [cr, cg, cb] = set.color;
+    let c = Color32::from_rgb(cr, cg, cb);
+    if dark { paper.lerp_to_gamma(c, 0.22) } else { c }
+}
+
 fn paint_page(ui: &Ui, app: &ScriptApp, l: &Layout, i: usize, pr: Rect, bad: &[(usize, usize, usize)]) {
     let t = app.tokens();
     let z = app.canvas.zoom;
     let p = ui.painter();
     let shadow = egui::epaint::Shadow { offset: [0, 3], blur: 14, spread: 0, color: Color32::from_black_alpha(if t.dark { 120 } else { 46 }) };
     p.add(shadow.as_shape(pr, CornerRadius::same(2)));
-    p.rect_filled(pr, 2.0, t.paper);
+    p.rect_filled(pr, 2.0, page_color(app, l, i, t.paper, t.dark));
     p.rect_stroke(pr, 2.0, Stroke::new(0.6, t.paper_edge), StrokeKind::Inside);
     let Some(page) = l.pages.get(i) else { return };
     let (a, b) = app.session.sel.ordered();

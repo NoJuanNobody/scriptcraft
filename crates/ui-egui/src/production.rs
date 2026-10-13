@@ -12,6 +12,7 @@ pub struct Dialogs {
     pub page_setup: bool,
     /// The Print dialog's choices while it is open.
     pub print: Option<PrintForm>,
+    pub revisions: bool,
 }
 
 /// The Print dialog's choices.
@@ -21,11 +22,19 @@ pub struct PrintForm {
     pub from: usize,
     pub to: usize,
     pub title_page: bool,
+    pub revised_only: bool,
 }
 
 impl PrintForm {
     pub fn params(&self) -> Value {
-        if self.all { json!({"titlePage": self.title_page}) } else { json!({"from": self.from, "to": self.to, "titlePage": self.title_page}) }
+        let mut v = json!({"titlePage": self.title_page, "revisedOnly": self.revised_only});
+        if !self.all
+            && let Some(o) = v.as_object_mut()
+        {
+            o.insert("from".into(), json!(self.from));
+            o.insert("to".into(), json!(self.to));
+        }
+        v
     }
 }
 
@@ -36,6 +45,84 @@ pub fn dialogs(app: &mut ScriptApp, ctx: &egui::Context) {
     if app.production.print.is_some() {
         print_dialog(app, ctx);
     }
+    if app.production.revisions {
+        revisions(app, ctx);
+    }
+}
+
+fn rgb(c: [u8; 3]) -> egui::Color32 {
+    egui::Color32::from_rgb(c[0], c[1], c[2])
+}
+
+fn revisions(app: &mut ScriptApp, ctx: &egui::Context) {
+    let mut open = true;
+    let r = app.session.script.settings.revision.clone();
+    let marks: usize = app.session.script.paras.iter().map(|p| p.revs.len()).sum();
+    let pages = app.session.layout().page_rev.iter().filter(|x| x.is_some()).count();
+    let mut runs: Vec<(&str, serde_json::Value)> = Vec::new();
+    egui::Window::new("Revisions")
+        .open(&mut open)
+        .resizable(false)
+        .collapsible(false)
+        .pivot(egui::Align2::CENTER_TOP)
+        .default_pos(ctx.content_rect().center_top() + vec2(0.0, 110.0))
+        .show(ctx, |ui| {
+            let mut tracking = r.tracking;
+            if ui.checkbox(&mut tracking, RichText::new("Revision mode: mark changes").strong()).changed() {
+                runs.push(("revision.mode", json!({"on": tracking})));
+            }
+            ui.label(RichText::new("New and changed text is marked with the active set; pages with changes show its label.").size(11.5).weak());
+            ui.add_space(6.0);
+            egui::Grid::new("revsets").num_columns(5).spacing([10.0, 4.0]).striped(true).show(ui, |ui| {
+                for h in ["Active", "Colour", "Set", "Date", "Mark"] {
+                    ui.label(RichText::new(h).strong());
+                }
+                ui.end_row();
+                for (i, st) in r.sets.iter().enumerate() {
+                    if ui.radio(r.active == i, "").clicked() && r.active != i {
+                        runs.push(("revision.set", json!({"active": i})));
+                    }
+                    let (rect, _) = ui.allocate_exact_size(vec2(26.0, 16.0), egui::Sense::hover());
+                    ui.painter().rect_filled(rect, 3.0, rgb(st.color));
+                    ui.painter().rect_stroke(rect, 3.0, egui::Stroke::new(0.6, ui.visuals().weak_text_color()), egui::StrokeKind::Inside);
+                    let mut name = st.name.clone();
+                    if ui.add_sized([110.0, 20.0], egui::TextEdit::singleline(&mut name)).changed() {
+                        runs.push(("revision.editSet", json!({"set": i, "name": name})));
+                    }
+                    let mut date = st.date.clone();
+                    if ui.add_sized([90.0, 20.0], egui::TextEdit::singleline(&mut date).hint_text("date")).changed() {
+                        runs.push(("revision.editSet", json!({"set": i, "date": date})));
+                    }
+                    let mut mark = st.mark.clone();
+                    if ui.add_sized([30.0, 20.0], egui::TextEdit::singleline(&mut mark)).changed() && !mark.trim().is_empty() {
+                        runs.push(("revision.editSet", json!({"set": i, "mark": mark})));
+                    }
+                    ui.end_row();
+                }
+            });
+            ui.add_space(6.0);
+            let (mut show, mut color) = (r.show_marks, r.color_pages);
+            if ui.checkbox(&mut show, "Show revision marks in the margin").changed() {
+                runs.push(("revision.set", json!({"showMarks": show})));
+            }
+            if ui.checkbox(&mut color, "Colour revised pages").changed() {
+                runs.push(("revision.set", json!({"colorPages": color})));
+            }
+            ui.add_space(6.0);
+            ui.label(RichText::new(format!("{marks} mark(s) on {pages} page(s).")).size(11.5).weak());
+            ui.horizontal(|ui| {
+                if ui.add_enabled(marks > 0, egui::Button::new("Clear Marks in Selection")).clicked() {
+                    runs.push(("revision.clearMarks", json!({"selection": true})));
+                }
+                if ui.add_enabled(marks > 0, egui::Button::new("Clear All Marks")).clicked() {
+                    runs.push(("revision.clearMarks", json!({})));
+                }
+            });
+        });
+    for (id, p) in runs {
+        app.run(id, p);
+    }
+    app.production.revisions = open;
 }
 
 /// Open (or close) the Print dialog.
@@ -45,7 +132,7 @@ pub fn toggle_print(app: &mut ScriptApp) {
     }
     let pages = app.session.layout().script_pages().max(1);
     let title_page = app.session.script.settings.title_page && !app.session.script.title.is_empty();
-    app.production.print = Some(PrintForm { all: true, from: 1, to: pages, title_page });
+    app.production.print = Some(PrintForm { all: true, from: 1, to: pages, title_page, revised_only: false });
 }
 
 /// Print: render the chosen pages and hand the PDF to the system. In the browser it is downloaded;
@@ -144,6 +231,8 @@ fn print_dialog(app: &mut ScriptApp, ctx: &egui::Context) {
                 }
             });
             ui.add_enabled_ui(has_title, |ui| ui.checkbox(&mut form.title_page, "Include the title page"));
+            let revised = app.session.layout().page_rev.iter().any(Option::is_some);
+            ui.add_enabled_ui(revised || form.revised_only, |ui| ui.checkbox(&mut form.revised_only, "Only revised pages"));
             ui.add_space(4.0);
             let shown = app.session.run("print.pages", &form.params()).ok().map_or(0, |v| v["count"].as_u64().unwrap_or(0));
             ui.label(RichText::new(format!("{shown} page(s). The pages open in your PDF viewer; print from there.")).size(11.5).weak());

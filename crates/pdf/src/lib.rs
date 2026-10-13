@@ -36,11 +36,13 @@ pub struct Selection {
     pub to: Option<usize>,
     /// Include the title page (when the script has one).
     pub title_page: bool,
+    /// Only pages with revision marks (the title page still follows `title_page`).
+    pub revised_only: bool,
 }
 
 impl Default for Selection {
     fn default() -> Self {
-        Selection { from: None, to: None, title_page: true }
+        Selection { from: None, to: None, title_page: true, revised_only: false }
     }
 }
 
@@ -56,7 +58,8 @@ impl Selection {
 
     /// Indices (into `l.pages`) of the pages kept.
     pub fn pages(&self, l: &Layout) -> Vec<usize> {
-        l.pages.iter().enumerate().filter(|(_, p)| self.keeps(p)).map(|(i, _)| i).collect()
+        let revised = |i: usize| l.page_rev.get(i).copied().flatten().is_some();
+        l.pages.iter().enumerate().filter(|(i, p)| self.keeps(p) && (p.title_page || !self.revised_only || revised(*i))).map(|(i, _)| i).collect()
     }
 }
 
@@ -73,10 +76,27 @@ pub fn export_pages(script: &Script, l: &Layout, which: &[usize]) -> Result<Vec<
     let face = |st: Style| faces[usize::from(st.bold) + 2 * usize::from(st.italic)].clone();
     let mut doc = Document::new();
     let settings = || PageSettings::from_wh(l.page_width(), l.paper.height_pt());
-    for page in which.iter().filter_map(|i| l.pages.get(*i)) {
+    let rev = &script.settings.revision;
+    for (page, idx) in which.iter().filter_map(|i| l.pages.get(*i).map(|p| (p, *i))) {
         let Some(ps) = settings() else { return Err(PdfError::Write("bad page size".into())) };
         let mut p = doc.start_page_with(ps);
         let mut surface = p.surface();
+        // Coloured revision pages: the page tinted with its revision set's colour.
+        if rev.color_pages
+            && let Some(set) = l.page_rev.get(idx).copied().flatten().and_then(|lvl| rev.set(lvl))
+            && set.color != [0xff, 0xff, 0xff]
+        {
+            let [r, g, b] = set.color;
+            let mut pb = PathBuilder::new();
+            if let Some(rect) = Rect::from_xywh(0.0, 0.0, l.page_width(), l.paper.height_pt()) {
+                pb.push_rect(rect);
+            }
+            if let Some(path) = pb.finish() {
+                surface.set_fill(Some(Fill { paint: krilla::color::rgb::Color::new(r, g, b).into(), ..Fill::default() }));
+                surface.draw_path(&path);
+                surface.set_fill(Some(Fill::default()));
+            }
+        }
         for line in &page.lines {
             for (col, text, st) in line.segments() {
                 let x = line.x + col as f32 * CHAR_W;

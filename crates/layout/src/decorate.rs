@@ -23,8 +23,37 @@ pub fn slots(hf: &HeaderFooter, f: &Fields) -> [String; 3] {
 }
 
 /// The revision label of a page (`Blue Rev. 10/12/26`), name and date: empty when unrevised.
-pub(crate) fn revision_fields(_script: &Script, _level: Option<u8>) -> (String, String, String) {
-    (String::new(), String::new(), String::new())
+pub(crate) fn revision_fields(script: &Script, level: Option<u8>) -> (String, String, String) {
+    let Some(set) = level.and_then(|l| script.settings.revision.set(l)) else {
+        return (String::new(), String::new(), String::new());
+    };
+    (set.label(), set.name.clone(), set.date.clone())
+}
+
+/// The highest revision on each page; with marks shown, the set's mark goes in the right
+/// margin of every line with revised text.
+pub(crate) fn revisions(script: &Script, pages: &mut [Page], paper: Paper) -> Vec<Option<u8>> {
+    let r = &script.settings.revision;
+    let x = paper.width_pt() - inch(0.4);
+    let mut out = Vec::with_capacity(pages.len());
+    for page in pages.iter_mut() {
+        let mut top: Option<u8> = None;
+        let mut marks = Vec::new();
+        for l in page.lines.iter().filter(|l| l.kind == LineKind::Body) {
+            let Some(p) = l.para.and_then(|i| script.paras.get(i)) else { continue };
+            let lvl = p.revs.iter().filter(|m| m.start < l.end.max(l.start + 1) && m.end > l.start).map(|m| m.level).max();
+            if let Some(lvl) = lvl {
+                top = top.max(Some(lvl));
+                if r.show_marks {
+                    let mark = r.set(lvl).map_or("*", |s| s.mark.as_str());
+                    marks.push(deco(LineKind::RevisionMark, x, l.y, mark));
+                }
+            }
+        }
+        page.lines.extend(marks);
+        out.push(top);
+    }
+    out
 }
 
 /// Add the header and footer lines to every page. `page_rev[i]` is the highest revision on page

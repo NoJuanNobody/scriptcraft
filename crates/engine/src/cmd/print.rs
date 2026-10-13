@@ -9,10 +9,10 @@ use crate::{CmdError, CmdResult, CommandSpec, Session, p};
 pub fn specs() -> Vec<CommandSpec> {
     vec![
         CommandSpec::new("print.pages", "Pages to Print", "File › Print", pages)
-            .params(r#"{"from": page, "to": page, "titlePage": bool (default true)} → {"pages": ["title", "1", "2", …]}"#)
+            .params(r#"{"from": page, "to": page, "titlePage": bool (default true), "revisedOnly": bool} → {"pages": ["title", "1", "2", …]}"#)
             .pure(),
         CommandSpec::new("print.render", "Print", "File › Print", render)
-            .params(r#"{"from": page, "to": page, "titlePage": bool (default true)} → {"name", "data": base64 PDF, "pages", "bytes"}"#)
+            .params(r#"{"from": page, "to": page, "titlePage": bool (default true), "revisedOnly": bool} → {"name", "data": base64 PDF, "pages", "bytes"}"#)
             .pure(),
     ]
 }
@@ -31,7 +31,7 @@ pub(crate) fn selection(v: &Value) -> Result<Selection, CmdError> {
     {
         return Err(CmdError::Params(format!("page range {f}–{t} is backwards")));
     }
-    Ok(Selection { from, to, title_page: p::bool(v, "titlePage").unwrap_or(true) })
+    Ok(Selection { from, to, title_page: p::bool(v, "titlePage").unwrap_or(true), revised_only: p::bool(v, "revisedOnly").unwrap_or(false) })
 }
 
 /// Indices of the selected pages; an error when none.

@@ -30,6 +30,7 @@
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 mod page;
+mod revision;
 
 use quick_xml::Reader;
 use quick_xml::events::Event;
@@ -72,6 +73,10 @@ struct Open {
     tags: Vec<String>,
     wrapper: bool,
     in_text: bool,
+    /// The current `<Text>`'s `RevisionID`.
+    rev: Option<u32>,
+    /// Revised byte ranges (levels are raw revision IDs until remapped).
+    revs: Vec<scriptcraft_doc::RevMark>,
 }
 
 /// Parse an FDX document.
@@ -90,6 +95,7 @@ pub fn parse(src: &str) -> Result<Script, FdxError> {
     let mut formats = ElementFormats::default();
     let mut cur_fmt: Option<(Element, scriptcraft_doc::ElementFormat)> = None;
     let mut page_read = page::Read::default();
+    let mut rev_read = revision::Read::default();
     loop {
         let ev = r.read_event().map_err(|e| FdxError::Xml(e.to_string()))?;
         let empty = matches!(ev, Event::Empty(_));
@@ -165,6 +171,8 @@ pub fn parse(src: &str) -> Result<Script, FdxError> {
                             tags: Vec::new(),
                             wrapper: false,
                             in_text: false,
+                            rev: None,
+                            revs: Vec::new(),
                         };
                         if empty {
                             if let Kind::HeaderFooter(footer) = o.kind {
@@ -192,6 +200,16 @@ pub fn parse(src: &str) -> Result<Script, FdxError> {
                             push_text(o, &f);
                         }
                     }
+                    "Revisions" if !in_title => {
+                        rev_read.seen = true;
+                        rev_read.active_id = attr("ActiveSet").and_then(|v| v.trim().parse().ok());
+                        rev_read.tracking = attr("RevisionMode").map(|v| v.trim().starts_with("On"));
+                        rev_read.show_marks = page::yes(attr("ScriptCraftShowMarks"));
+                        rev_read.color_pages = page::yes(attr("ScriptCraftColorPages"));
+                    }
+                    "Revision" if stack.iter().any(|n| n == "Revisions") => {
+                        rev_read.add(attr("ID"), attr("Name"), attr("Color"), attr("Mark"), attr("ScriptCraftDate"));
+                    }
                     "SceneProperties" => {
                         let color = attr("Color").and_then(|c| parse_color(&c));
                         let tags = attr("ScriptCraftTags").map(|t| scriptcraft_doc::clean_tags(t.split(','))).unwrap_or_default();
@@ -202,9 +220,11 @@ pub fn parse(src: &str) -> Result<Script, FdxError> {
                     }
                     "Text" => {
                         let st = attr("Style").map(|v| parse_style(&v)).unwrap_or_default();
+                        let rev = attr("RevisionID").and_then(|v| v.trim().parse::<u32>().ok());
                         if let Some(o) = open.last_mut() {
                             o.in_text = !empty;
                             o.style = st;
+                            o.rev = rev;
                         }
                     }
                     "DualDialogue" => {
@@ -289,9 +309,11 @@ pub fn parse(src: &str) -> Result<Script, FdxError> {
     if !root_seen {
         return Err(FdxError::NotFdx(String::new()));
     }
+    rev_read.remap(&mut paras);
     let mut s = Script::from_paras(paras).map_err(|_| FdxError::TooLarge)?;
     s.settings.elements = formats;
     page_read.apply(&mut s.settings.page);
+    rev_read.apply(&mut s);
     s.normalize().map_err(|_| FdxError::TooLarge)?;
     s.title = title_from_lines(&title_lines);
     Ok(s)
@@ -301,7 +323,9 @@ fn push_text(o: &mut Open, s: &str) {
     if o.text.len() + s.len() > MAX_PARA_BYTES {
         return;
     }
+    let at = o.text.len();
     o.text.push_str(s);
+    revision::push_run(&mut o.revs, at, o.text.len(), o.rev);
     match o.runs.last_mut() {
         Some((t, st)) if *st == o.style => t.push_str(s),
         _ => o.runs.push((s.to_string(), o.style)),
@@ -368,6 +392,7 @@ fn finish(o: Open, open: &mut [Open], paras: &mut Vec<Para>, title_lines: &mut V
                 _ => Element::General,
             });
             let mut p = if o.runs.iter().any(|(_, st)| !st.is_plain()) { Para::styled(element, &o.runs) } else { Para::new(element, o.text) };
+            p.revs = o.revs;
             if element == Element::SceneHeading {
                 p.scene_number = o.number.filter(|n| !n.trim().is_empty());
                 p.summary = o.summary;
@@ -481,8 +506,9 @@ fn para_xml(out: &mut String, indent: &str, p: &Para) {
         }
         out.push_str(&format!("{indent}  </SceneProperties>\n"));
     }
-    for (t, st) in p.runs() {
-        out.push_str(&format!("{indent}  <Text{}>{}</Text>\n", style_attr(st), esc(t)));
+    for (t, st, rev) in revision::runs(p) {
+        let rev = rev.map(|r| format!(" RevisionID=\"{r}\"")).unwrap_or_default();
+        out.push_str(&format!("{indent}  <Text{rev}{}>{}</Text>\n", style_attr(st), esc(t)));
     }
     out.push_str(&format!("{indent}</Paragraph>\n"));
 }
@@ -535,6 +561,7 @@ pub fn write(s: &Script) -> String {
         ));
     }
     page::write(&mut out, &s.settings.page);
+    revision::write(&mut out, s);
     let t = &s.title;
     if !t.is_empty() {
         out.push_str("  <TitlePage>\n    <Content>\n");

@@ -9,12 +9,14 @@
 mod element;
 mod format;
 pub mod page_setup;
+pub mod revision;
 mod style;
 mod text;
 
 pub use element::Element;
 pub use format::{Align, ElementFormat, ElementFormats};
 pub use page_setup::{HeaderFooter, PageSetup, Paper};
+pub use revision::{RevMark, RevisionSet, Revisions};
 pub use style::{Flag, Span, Style};
 pub use text::{next_boundary, prev_boundary, word_left, word_right};
 
@@ -60,6 +62,9 @@ pub struct Para {
     /// Index-card tags (scene headings only).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tags: Vec<String>,
+    /// Revised text (byte ranges of `text` and their revision set).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub revs: Vec<RevMark>,
 }
 
 /// Index-card colours.
@@ -141,7 +146,17 @@ impl Para {
             text = text.to_uppercase();
         }
         text = sanitize(&text);
-        Para { element, text, scene_number: None, dual: false, summary: String::new(), spans: Vec::new(), color: None, tags: Vec::new() }
+        Para {
+            element,
+            text,
+            scene_number: None,
+            dual: false,
+            summary: String::new(),
+            spans: Vec::new(),
+            color: None,
+            tags: Vec::new(),
+            revs: Vec::new(),
+        }
     }
 
     /// A paragraph from styled text runs (FDX `<Text Style>` runs, Fountain emphasis).
@@ -301,6 +316,9 @@ pub struct Settings {
     /// Paper, header and footer.
     #[serde(skip_serializing_if = "PageSetup::is_default")]
     pub page: PageSetup,
+    /// Revision sets, the active one and revision mode.
+    #[serde(skip_serializing_if = "Revisions::is_default")]
+    pub revision: Revisions,
 }
 
 impl Default for Settings {
@@ -312,6 +330,7 @@ impl Default for Settings {
             title_page: true,
             elements: ElementFormats::default(),
             page: PageSetup::default(),
+            revision: Revisions::default(),
         }
     }
 }
@@ -390,6 +409,8 @@ impl Script {
         }
         self.settings.page.header.clean();
         self.settings.page.footer.clean();
+        self.settings.revision.normalize();
+        let top_level = (self.settings.revision.sets.len().saturating_sub(1)).min(usize::from(u8::MAX)) as u8;
         let caps = Element::ALL.map(|e| self.upper(e));
         for p in &mut self.paras {
             let clean = sanitize(&p.text);
@@ -413,6 +434,12 @@ impl Script {
             }
             if p.element != Element::Character {
                 p.dual = false;
+            }
+            if !p.revs.is_empty() {
+                for m in &mut p.revs {
+                    m.level = m.level.min(top_level);
+                }
+                p.revs = revision::fix_marks(&p.text, &p.revs);
             }
         }
         Ok(())

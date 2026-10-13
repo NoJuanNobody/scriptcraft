@@ -8,6 +8,7 @@ pub mod format;
 pub mod page;
 pub mod print;
 pub mod report;
+pub mod revision;
 pub mod scene;
 pub mod smart;
 pub mod spell;
@@ -35,6 +36,7 @@ pub fn registry() -> Registry {
     v.extend(file::specs());
     v.extend(page::specs());
     v.extend(print::specs());
+    v.extend(revision::specs());
     Registry::new(v)
 }
 
