@@ -1,0 +1,165 @@
+{"badge": "ScriptCraft v0.3 · PR #40"}
+{"title": "ScriptCraft v0.3: production features (PR #40)", "sub": "Every frame is the real app, driven through its own menus, keys and clicks"}
+{"hold": 2.5}
+// #15 Page setup: A4, header and footer
+{"title": "#15  Page Setup: A4 paper, headers and footers", "sub": "Fields like {page}, {title}, {date} and {revision}; first-page and title-page options"}
+{"point": {"label": "Document"}, "secs": 0.7}
+{"click": "left"}
+{"point": {"label": "Page Setup…"}, "secs": 0.6}
+{"hold": 0.5}
+{"click": "left"}
+{"hold": 1.2}
+{"cmd": "page.set", "params": {"paper": "a4", "footer": {"left": "{title}", "right": "{date}"}}}
+{"hold": 1.6}
+{"cmd": "ui.pageSetup"}
+{"cmd": "scene.goto", "params": {"index": 1}}
+{"point": {"text": "Nell scrawls"}, "secs": 0.8}
+{"hold": 1.6}
+// #13 Revision mode
+{"title": "#13  Revision mode", "sub": "Pick a revision set (Blue); every change is starred in the right margin"}
+{"cmd": "ui.revisions"}
+{"hold": 1.2}
+{"cmd": "revision.mode", "params": {"on": true, "set": "Blue"}}
+{"cmd": "revision.set", "params": {"colorPages": true}}
+{"hold": 1.4}
+{"cmd": "ui.revisions"}
+{"cmd": "caret.docStart"}
+{"point": {"text": "Above the roof"}, "secs": 0.8}
+{"click": "left"}
+{"key": "Home"}
+{"type": "Lightning splits the sky. "}
+{"hold": 1.0}
+{"point": {"text": "Don't you dare"}, "secs": 0.7}
+{"cmd": "select.text", "params": {"text": "Don't you dare."}}
+{"hold": 0.4}
+{"type": "Not tonight."}
+{"hold": 1.8}
+// #14 Locked pages and A pages
+{"title": "#14  Lock pages: new text makes A pages", "sub": "Production > Lock Pages. Page 2 stays page 2; what doesn't fit goes on 1A"}
+{"point": {"label": "Production"}, "secs": 0.7}
+{"click": "left"}
+{"point": {"label": "Lock Pages"}, "secs": 0.6}
+{"hold": 0.5}
+{"click": "left"}
+{"hold": 0.6}
+{"point": {"text": "She taps the glass"}, "secs": 0.7}
+{"click": "left"}
+{"key": "End"}
+{"key": "Enter"}
+{"cmd": "text.insert", "params": {"text": "The radio hisses. Nell turns the gain all the way up and leans in until her ear is almost on the speaker grille.\nOutside, a gust tears a shutter loose. It bangs, bangs, bangs against the wall like someone knocking to be let in.\nShe ignores it. She pulls the ledger back onto the desk, smooths the wet page flat and writes the time in block capitals.\nThe kettle starts to scream. She takes it off the plate without looking, burns her thumb, and doesn't notice."}}
+{"hold": 1.0}
+{"cmd": "caret.gotoPage", "params": {"page": "1A"}}
+{"hold": 2.4}
+// Locked scene numbers and omitted scenes
+{"title": "#14  Locked scene numbers and omitted scenes", "sub": "Numbers stay put: a new scene between 2 and 3 becomes 2A; an omitted scene keeps its number"}
+{"cmd": "scene.numberAll"}
+{"point": {"label": "Production"}, "secs": 0.7}
+{"click": "left"}
+{"point": {"label": "Lock Scene Numbers"}, "secs": 0.6}
+{"hold": 0.4}
+{"click": "left"}
+{"point": {"text": "...Yeah. Yes."}, "secs": 0.8}
+{"click": "left"}
+{"key": "End"}
+{"key": "Enter"}
+{"cmd": "element.set", "params": {"element": "sceneHeading"}}
+{"type": "EXT. HESPER ROCK - NIGHT"}
+{"key": "Enter"}
+{"type": "The lighthouse is dark."}
+{"hold": 1.8}
+{"cmd": "scene.goto", "params": {"index": 3}}
+{"point": {"label": "Production"}, "secs": 0.7}
+{"click": "left"}
+{"point": {"label": "Omit Scene"}, "secs": 0.6}
+{"hold": 0.4}
+{"click": "left"}
+{"cmd": "scene.goto", "params": {"index": 2}}
+{"hold": 2.4}
+// #20 Dual dialogue across a page break
+{"title": "#20  Dual dialogue splits across a page break", "sub": "Both columns break on the same line, with (MORE) and (CONT'D) on each side"}
+{"cmd": "select.text", "params": {"text": "Go ahead, Gull Point."}}
+{"cmd": "text.insert", "params": {"text": "Go ahead, Gull Point. We have you loud and clear. Cutter Resolute is on station and standing by for your position, over. Say again the bearing and the drift, slowly, and we will plot it on our end too. Do not let that boy off the radio. Keep him talking. Keep him counting the waves for you. Tell him the cutter has a big searchlight and he will see it before he hears the engines. Tell him to put on every life jacket on that boat, and to clip a line to his father. Tell him we have done this a hundred times on nights worse than this one. Stay on this channel. If the radio dies, have him flash any light he has, three short, three long, three short. Our lookout will be watching for it from the bow. If they go into the water, they stay together and they stay with the boat. A hull is easier to find than a head. We will be on scene in thirty minutes, maybe less if the wind backs. Copy that, Gull Point? We are coming."}}
+{"cmd": "select.text", "params": {"text": "Coast Guard, Gull Point."}}
+{"cmd": "text.insert", "params": {"text": "Coast Guard, Gull Point. I've got them on a line now, two miles north-northwest of the rock, drifting south at maybe a knot and a half, and the boy is doing fine, better than fine. He reads that compass like he was born to it. Tell your coxswain the lee side is the only way in tonight. The swell will be on their beam the whole way down. They have no mast, no lights and maybe an hour of battery. I will keep them talking for as long as it takes. If I lose them I will call you on the minute, every minute, until you have them in the beam. And tell the coxswain the boy's name is Teo, and the skipper is his father, and that they are both still fighting. Tell him the boat is ugly, the kid said so himself, and that the ugly ones float the longest. I am not hanging up this handset until somebody on your deck has a hand on that boy's collar."}}
+{"cmd": "ui.zoomOut"}
+{"cmd": "ui.zoomOut"}
+{"cmd": "ui.zoomOut"}
+{"point": {"text": "We are coming"}, "secs": 0.9}
+{"hold": 3.0}
+{"cmd": "ui.zoomReset"}
+// #16 Script notes
+{"title": "#16  Script notes", "sub": "Select words, right-click > Add Script Note. Colour, author, margin marker, Notes tab"}
+{"cmd": "scene.goto", "params": {"index": 0}}
+{"point": {"text": "anemometer"}, "secs": 0.8}
+{"click": "left", "count": 2}
+{"click": "right"}
+{"hold": 0.6}
+{"point": {"label": "Add Script Note…"}, "secs": 0.6}
+{"click": "left"}
+{"type": "Can we hear it whine under the titles?"}
+{"hold": 0.6}
+{"point": {"label": "Add Note"}, "secs": 0.6}
+{"click": "left"}
+{"point": {"label": "Notes"}, "secs": 0.7}
+{"click": "left"}
+{"hold": 2.0}
+{"point": {"label": "Scenes"}, "secs": 0.5}
+{"click": "left"}
+// #17 Alternate lines
+{"title": "#17  Alternate dialogue lines", "sub": "Keep several versions of a line, switch between them; only the chosen one prints"}
+{"point": {"text": "Then we do it the old way"}, "secs": 0.8}
+{"click": "left"}
+{"cmd": "alt.add", "params": {"text": "Then we do this by hand. Is your boy there? Put him on."}}
+{"cmd": "alt.add", "params": {"text": "Okay. Old school, then. Is your boy with you?"}}
+{"cmd": "ui.alternates", "params": {"open": true}}
+{"hold": 1.6}
+{"cmd": "alt.next"}
+{"hold": 1.2}
+{"cmd": "alt.next"}
+{"hold": 1.4}
+{"cmd": "ui.alternates", "params": {"open": false}}
+// #18 Production tagging and breakdown
+{"title": "#18  Production tagging and breakdown", "sub": "Select, right-click > Tag Selection As > Props. The breakdown report lists every scene's items"}
+{"cmd": "scene.goto", "params": {"index": 1}}
+{"point": {"text": "kettle"}, "secs": 0.8}
+{"cmd": "select.text", "params": {"text": "kettle"}}
+{"click": "right"}
+{"hold": 0.4}
+{"point": {"label": "Tag Selection As"}, "secs": 0.6}
+{"hold": 0.8}
+{"cmd": "tag.add", "params": {"category": "Props"}}
+{"key": "Escape"}
+{"key": "Escape"}
+{"cmd": "ui.toggleTags", "params": {"on": true}}
+{"cmd": "select.text", "params": {"text": "NELL ORTIZ"}}
+{"cmd": "tag.add", "params": {"category": "Cast"}}
+{"cmd": "select.text", "params": {"text": "gooseneck lamp"}}
+{"cmd": "tag.add", "params": {"category": "Set Dressing"}}
+{"cmd": "select.text", "params": {"text": "Paper charts"}}
+{"cmd": "tag.add", "params": {"category": "Set Dressing"}}
+{"cmd": "select.text", "params": {"text": "ledger"}}
+{"cmd": "tag.add", "params": {"category": "Props"}}
+{"point": {"text": "kettle"}, "secs": 0.6}
+{"hold": 1.6}
+{"cmd": "ui.breakdown"}
+{"hold": 2.6}
+{"cmd": "ui.view.page"}
+// #19 Print
+{"title": "#19  File > Print", "sub": "Page range, title page, revised pages only; ScriptCraft opens the PDF for printing"}
+{"key": "P", "cmd": true}
+{"hold": 1.2}
+{"point": {"label": "Only revised pages"}, "secs": 0.7}
+{"click": "left"}
+{"hold": 1.6}
+{"point": {"label": "Cancel"}, "secs": 0.7}
+{"click": "left"}
+// The printed result (PDF rendered page by page)
+{"title": "The printed script (the exported PDF, page by page)", "sub": "Blue revised pages with stars, A4, footer, 1A and 2A, OMITTED, the dual split with (MORE)/(CONT'D)"}
+{"cmd": "file.exportPdf", "params": {"path": "@WORK@/v03.pdf"}}
+{"run": ["swift", "@ROOT@/docs/demo/pdf-pages.swift", "@WORK@/v03.pdf", "@WORK@/pdf_frames"]}
+{"point": {"xy": [1430, 890]}, "secs": 0.2}
+{"pictures": "@WORK@/pdf_frames", "frames_each": 38, "hold_last": 1.5, "bar": "Preview  ·  Night Signal.pdf  ·  printed by ScriptCraft"}
+{"pictures_off": true}
+{"title": "v0.3 production: #13–#20 in PR #40  ·  CI green on Linux, macOS, Windows", "sub": "github.com/NoJuanNobody/scriptcraft/pull/40"}
+{"cmd": "caret.docStart"}
+{"hold": 3.5}

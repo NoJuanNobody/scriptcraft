@@ -104,3 +104,40 @@ fn hostile_input() {
     let s = parse("<FinalDraft/>").unwrap();
     assert_eq!(s.paras.len(), 1);
 }
+
+#[test]
+fn production_locks_round_trip() {
+    let mut s = Script::from_paras(vec![
+        Para::new(Element::SceneHeading, "INT. A - DAY"),
+        Para::new(Element::Action, "One."),
+        Para::new(Element::SceneHeading, "INT. B - DAY"),
+        Para::new(Element::Action, "Hidden text stays in the file."),
+        Para::new(Element::SceneHeading, "INT. C - DAY"),
+        Para::new(Element::Action, "Two."),
+    ])
+    .unwrap();
+    s.settings.pages_locked = true;
+    s.settings.scene_numbers_locked = true;
+    s.paras[0].scene_number = Some("12".into());
+    s.paras[2].scene_number = Some("12A".into());
+    s.paras[4].scene_number = Some("13".into());
+    s.paras[2].omitted = true;
+    s.paras[0].page_lock = vec!["7".into(), "7A".into()];
+    s.paras[5].page_lock = vec!["8".into()];
+    let xml = write(&s);
+    assert!(xml.contains("ScriptCraftOmitted=\"Yes\"") && xml.contains("ScriptCraftLockedPages=\"7,7A\""));
+    assert!(xml.contains("<ScriptCraftProduction LockedPages=\"Yes\" LockedSceneNumbers=\"Yes\" ShowSceneNumbers=\"No\"/>"));
+    let back = parse(&xml).unwrap();
+    assert_eq!(back.paras, s.paras);
+    assert!(back.settings.pages_locked && back.settings.scene_numbers_locked);
+    // Without the production element, locks are off (and stray page locks are dropped).
+    let plain = xml.replace("<ScriptCraftProduction LockedPages=\"Yes\" LockedSceneNumbers=\"Yes\" ShowSceneNumbers=\"No\"/>", "");
+    let back = parse(&plain).unwrap();
+    assert!(!back.settings.pages_locked && back.paras.iter().all(|p| p.page_lock.is_empty()));
+    assert!(back.paras[2].omitted);
+    // Hostile values are cleaned.
+    let x = "<FinalDraft><Content><Paragraph Type=\"Action\" ScriptCraftLockedPages=\"&lt;x&gt;,,1-2,  \" ScriptCraftOmitted=\"Yes\"><Text>a</Text></Paragraph></Content><ScriptCraftProduction LockedPages=\"Yes\"/></FinalDraft>";
+    let back = parse(x).unwrap();
+    assert_eq!(back.paras[0].page_lock, vec!["x".to_string(), "1-2".to_string()]);
+    assert!(!back.paras[0].omitted, "only headings are omitted");
+}

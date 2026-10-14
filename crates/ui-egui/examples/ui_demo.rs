@@ -18,9 +18,12 @@
 //! - `{"terminal": "transcript.txt", "line_secs": s}`, `{"terminal_off": true}`: show a terminal
 //!   transcript line by line
 //! - `{"pictures": "dir/", "frames_each": n, "hold_last": s}`, `{"pictures_off": true}`: play
-//!   PNG frames recorded elsewhere (the browser build)
+//!   PNG frames recorded elsewhere (the browser build); `"bar": "…"` sets the title bar text
 //! - `{"state": true}`: use a temporary settings folder (autosave, recent files, backups)
 //! - `{"recovery": true}`: leave an autosaved copy there and offer it, as after a crash
+//! - `{"badge": "ScriptCraft v0.3 · PR #40"}`: the label in the top-right corner
+//! - `{"run": ["program", "arg", …]}`: run a helper program and wait (e.g. render an exported PDF
+//!   to PNGs for a later `pictures` line); its failure is reported, not fatal
 
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -41,6 +44,10 @@ static CLIP: Mutex<String> = Mutex::new(String::new());
 static TERMINAL: Mutex<Option<Vec<String>>> = Mutex::new(None);
 /// A full-screen picture (frames recorded elsewhere, e.g. the browser build).
 static PICTURE: Mutex<Option<egui::TextureHandle>> = Mutex::new(None);
+/// The title bar over a full-screen picture.
+static PICTURE_BAR: Mutex<String> = Mutex::new(String::new());
+/// The label in the top-right corner.
+static BADGE: Mutex<String> = Mutex::new(String::new());
 
 struct Rec {
     dir: PathBuf,
@@ -101,13 +108,8 @@ fn overlay(ctx: &egui::Context) {
         p.image(tex.id(), r, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
         let bar = Rect::from_min_size(screen.min, vec2(screen.width(), 30.0));
         p.rect_filled(bar, 0.0, Color32::from_rgba_unmultiplied(34, 37, 43, 235));
-        p.text(
-            bar.left_center() + vec2(14.0, 0.0),
-            Align2::LEFT_CENTER,
-            "Google Chrome  ·  http://127.0.0.1:8765  ·  ScriptCraft compiled to WebAssembly",
-            FontId::proportional(14.0),
-            Color32::from_rgb(0xc8, 0xcd, 0xe0),
-        );
+        let title = PICTURE_BAR.lock().map(|g| g.clone()).unwrap_or_default();
+        p.text(bar.left_center() + vec2(14.0, 0.0), Align2::LEFT_CENTER, title, FontId::proportional(14.0), Color32::from_rgb(0xc8, 0xcd, 0xe0));
     }
     if let Some(lines) = TERMINAL.lock().ok().and_then(|g| g.clone()) {
         p.rect_filled(screen, 0.0, Color32::from_rgb(0x14, 0x16, 0x1a));
@@ -144,7 +146,8 @@ fn overlay(ctx: &egui::Context) {
     }
     let badge = Rect::from_min_size(pos2(screen.right() - 236.0, screen.top() + 52.0), vec2(220.0, 26.0));
     p.rect_filled(badge, 13.0, Color32::from_rgba_unmultiplied(59, 91, 219, 230));
-    p.text(badge.center(), Align2::CENTER_CENTER, "ScriptCraft v0.2 · PR #33", FontId::proportional(13.5), Color32::WHITE);
+    let label = BADGE.lock().map(|g| g.clone()).unwrap_or_default();
+    p.text(badge.center(), Align2::CENTER_CENTER, if label.is_empty() { "ScriptCraft" } else { &label }, FontId::proportional(13.5), Color32::WHITE);
     let covered = TERMINAL.lock().map(|g| g.is_some()).unwrap_or(false) || PICTURE.lock().map(|g| g.is_some()).unwrap_or(false);
     if let Some(at) = POINTER.lock().ok().and_then(|g| *g).filter(|_| !covered) {
         let pressed = PRESSED.lock().map(|g| *g).unwrap_or(false);
@@ -376,6 +379,13 @@ fn main() {
             rec.shot(&mut h);
         } else if let Some(d) = l.get("pictures").and_then(Value::as_str) {
             let per = l.get("frames_each").and_then(Value::as_u64).unwrap_or(2) as usize;
+            if let Ok(mut g) = PICTURE_BAR.lock() {
+                *g = l
+                    .get("bar")
+                    .and_then(Value::as_str)
+                    .unwrap_or("Google Chrome  ·  http://127.0.0.1:8765  ·  ScriptCraft compiled to WebAssembly")
+                    .to_string();
+            }
             let mut files: Vec<PathBuf> = std::fs::read_dir(d).map(|r| r.flatten().map(|e| e.path()).collect()).unwrap_or_default();
             files.sort();
             let ctx = h.ctx.clone();
@@ -395,6 +405,19 @@ fn main() {
             }
             let hold = l.get("hold_last").and_then(Value::as_f64).unwrap_or(2.0) as f32;
             rec.hold(&mut h, hold);
+        } else if let Some(b) = l.get("badge").and_then(Value::as_str) {
+            if let Ok(mut g) = BADGE.lock() {
+                *g = b.to_string();
+            }
+        } else if let Some(argv) = l.get("run").and_then(Value::as_array) {
+            let argv: Vec<&str> = argv.iter().filter_map(Value::as_str).collect();
+            if let Some((prog, args)) = argv.split_first() {
+                match std::process::Command::new(prog).args(args).status() {
+                    Ok(st) if st.success() => {}
+                    Ok(st) => eprintln!("run {prog}: exited with {st}"),
+                    Err(e) => eprintln!("run {prog}: {e}"),
+                }
+            }
         } else if l.get("pictures_off").is_some() {
             if let Ok(mut g) = PICTURE.lock() {
                 *g = None;
