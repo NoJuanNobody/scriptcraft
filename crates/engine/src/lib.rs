@@ -10,6 +10,7 @@ pub mod b64;
 pub mod breakdown;
 pub mod catalog;
 pub mod cmd;
+pub mod collab;
 pub mod io;
 pub mod reports;
 pub mod sample;
@@ -157,5 +158,7 @@ pub mod p {
 mod tests;
 #[cfg(test)]
 mod tests_annot;
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod tests_collab;
 #[cfg(test)]
 mod tests_typing;

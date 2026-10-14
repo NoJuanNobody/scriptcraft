@@ -138,6 +138,8 @@ pub fn menu_bar(app: &mut ScriptApp, ui: &mut Ui) {
                 item(app, ui, "Export Final Draft (FDX)…", "ui.exportFdx", "");
                 item(app, ui, "Export Fountain…", "ui.exportFountain", "");
                 ui.separator();
+                item(app, ui, "Collaborate…", "ui.collaborate", "");
+                ui.separator();
                 item(app, ui, "Quit", "ui.quit", "Mod+Q");
             });
             ui.menu_button("Edit", |ui| {
@@ -465,6 +467,7 @@ pub fn status_bar(app: &mut ScriptApp, ui: &mut Ui, status: Option<String>) {
                         ""
                     };
                     ui.label(soft(state.into()));
+                    crate::collab_ui::status_badge(app, ui);
                     if let Some(s) = status {
                         ui.label(RichText::new(s).size(12.0).color(t.text));
                     }

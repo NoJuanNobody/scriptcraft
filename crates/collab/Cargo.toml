@@ -1,0 +1,17 @@
+[package]
+name = "scriptcraft-collab"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "ScriptCraft real-time collaboration: three-way merge of scripts, differential sync with a central sequencer, presence, LAN transport (L3)"
+
+[lints]
+workspace = true
+
+[dependencies]
+scriptcraft-doc = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+getrandom = { workspace = true }

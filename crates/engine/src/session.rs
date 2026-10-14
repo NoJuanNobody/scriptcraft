@@ -75,6 +75,8 @@ pub struct Session {
     /// Counts changes to the script (anything that drops the layout cache), for caches keyed
     /// on the script's state.
     revision: u64,
+    /// Real-time collaboration (off unless hosting or joined).
+    pub collab: crate::collab::Collab,
 }
 
 impl Session {
@@ -99,6 +101,7 @@ impl Session {
             speed: false,
             speed_layout: None,
             revision: 0,
+            collab: Default::default(),
         };
         let _ = s.script.normalize();
         s
@@ -179,6 +182,22 @@ impl Session {
     /// The label of the step Undo would revert.
     pub fn undo_label(&self) -> Option<&'static str> {
         self.history.last().map(|s| s.label)
+    }
+
+    /// Rewrite every undo and redo snapshot (collaboration rebases them onto remote changes) and
+    /// keep at most `cap` undo steps.
+    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
+    pub(crate) fn rebase_history(&mut self, cap: usize, f: &mut dyn FnMut(&Script) -> Script) {
+        if self.history.len() > cap {
+            let drop = self.history.len() - cap;
+            self.history.drain(..drop);
+        }
+        for snap in self.history.iter_mut().chain(self.redo.iter_mut()) {
+            snap.script = f(&snap.script);
+            snap.sel.anchor = snap.script.clamp(snap.sel.anchor);
+            snap.sel.focus = snap.script.clamp(snap.sel.focus);
+        }
+        self.typing_open = false;
     }
 
     pub fn undo(&mut self) -> bool {

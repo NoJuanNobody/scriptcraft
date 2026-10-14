@@ -19,6 +19,7 @@ scriptcraft-fdx = { path = "crates/fdx" }
 scriptcraft-layout = { path = "crates/layout" }
 scriptcraft-pdf = { path = "crates/pdf" }
 scriptcraft-spell = { path = "crates/spell" }
+scriptcraft-collab = { path = "crates/collab" }
 scriptcraft-engine = { path = "crates/engine" }
 scriptcraft-control-key = { path = "crates/control-key" }
 scriptcraft-mcp = { path = "crates/mcp" }

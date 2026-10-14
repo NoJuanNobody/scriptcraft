@@ -9,6 +9,7 @@ pub mod annotations;
 mod canvas;
 pub mod cards;
 mod chrome;
+pub mod collab_ui;
 pub mod control;
 pub mod icons;
 pub mod persist;
@@ -92,6 +93,7 @@ pub const UI_COMMANDS: &[(&str, &str, &str, &str)] = &[
     ("ui.toggleTags", "Highlight Tagged Items", "Tools", ""),
     ("ui.breakdown", "Breakdown Report", "Tools", ""),
     ("ui.exportBreakdown", "Export Breakdown (CSV)…", "Tools", ""),
+    ("ui.collaborate", "Collaborate…", "File", ""),
 ];
 
 /// The application state.
@@ -116,6 +118,8 @@ pub struct ScriptApp {
     pub element_dialog: bool,
     /// Page Setup, Print and Revisions dialogs.
     pub production: production::Dialogs,
+    /// The Collaborate window (real-time collaboration).
+    pub collab: collab_ui::CollabDialog,
     /// The index card being dragged.
     pub card_drag: Option<usize>,
     /// Screen rectangles of the index cards last drawn (for demos and agents).
@@ -196,6 +200,7 @@ impl ScriptApp {
             title_dialog: false,
             element_dialog: false,
             production: production::Dialogs::default(),
+            collab: collab_ui::CollabDialog::default(),
             card_drag: None,
             card_rects: Vec::new(),
             tag_edit: None,
@@ -538,6 +543,7 @@ impl ScriptApp {
             "ui.alternates" => self.alt_window = p.get("open").and_then(Value::as_bool).unwrap_or(!self.alt_window),
             "ui.toggleTags" => self.show_tags = p.get("on").and_then(Value::as_bool).unwrap_or(!self.show_tags),
             "ui.breakdown" => self.view = View::Reports,
+            "ui.collaborate" => collab_ui::toggle(self, p),
             "ui.exportBreakdown" if self.host.is_some() && path.is_none() => return self.host_save("csv"),
             "ui.exportBreakdown" => {
                 let stem = self.session.path.as_ref().and_then(|p| p.file_stem()).and_then(|s| s.to_str()).unwrap_or("Untitled").to_string();
@@ -719,6 +725,7 @@ impl ScriptApp {
         if self.control.is_some() || !self.synthetic.is_empty() {
             ctx.request_repaint_after(std::time::Duration::from_millis(50));
         }
+        collab_ui::tick(self, ctx);
         let name = self.session.path.as_ref().and_then(|p| p.file_name()).and_then(|n| n.to_str()).unwrap_or("Untitled").to_string();
         let title = format!("{name}{} — ScriptCraft", if self.session.dirty { " •" } else { "" });
         if title != self.sent_title {
@@ -781,5 +788,6 @@ impl ScriptApp {
         self.dialog_buttons.clear();
         chrome::dialogs(self, &ctx);
         annotations::dialogs(self, &ctx);
+        collab_ui::window(self, &ctx);
     }
 }
