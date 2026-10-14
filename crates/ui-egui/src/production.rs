@@ -55,12 +55,13 @@ fn rgb(c: [u8; 3]) -> egui::Color32 {
 }
 
 fn revisions(app: &mut ScriptApp, ctx: &egui::Context) {
+    let lang = app.prefs.appearance.language;
     let mut open = true;
     let r = app.session.script.settings.revision.clone();
     let marks: usize = app.session.script.paras.iter().map(|p| p.revs.len()).sum();
     let pages = app.session.layout().page_rev.iter().filter(|x| x.is_some()).count();
     let mut runs: Vec<(&str, serde_json::Value)> = Vec::new();
-    egui::Window::new("Revisions")
+    egui::Window::new(lang.text("Revisions"))
         .open(&mut open)
         .resizable(false)
         .collapsible(false)
@@ -68,13 +69,15 @@ fn revisions(app: &mut ScriptApp, ctx: &egui::Context) {
         .default_pos(ctx.content_rect().center_top() + vec2(0.0, 110.0))
         .show(ctx, |ui| {
             let mut tracking = r.tracking;
-            if ui.checkbox(&mut tracking, RichText::new("Revision mode: mark changes").strong()).changed() {
+            if ui.checkbox(&mut tracking, RichText::new(lang.text("Revision mode: mark changes")).strong()).changed() {
                 runs.push(("revision.mode", json!({"on": tracking})));
             }
-            ui.label(RichText::new("New and changed text is marked with the active set; pages with changes show its label.").size(11.5).weak());
+            ui.label(
+                RichText::new(lang.text("New and changed text is marked with the active set; pages with changes show its label.")).size(11.5).weak(),
+            );
             ui.add_space(6.0);
             egui::Grid::new("revsets").num_columns(5).spacing([10.0, 4.0]).striped(true).show(ui, |ui| {
-                for h in ["Active", "Colour", "Set", "Date", "Mark"] {
+                for h in [lang.text("Active"), lang.text("Colour"), lang.text("Set"), lang.text("Date"), lang.text("Mark")] {
                     ui.label(RichText::new(h).strong());
                 }
                 ui.end_row();
@@ -90,7 +93,7 @@ fn revisions(app: &mut ScriptApp, ctx: &egui::Context) {
                         runs.push(("revision.editSet", json!({"set": i, "name": name})));
                     }
                     let mut date = st.date.clone();
-                    if ui.add_sized([90.0, 20.0], egui::TextEdit::singleline(&mut date).hint_text("date")).changed() {
+                    if ui.add_sized([90.0, 20.0], egui::TextEdit::singleline(&mut date).hint_text(lang.text("date"))).changed() {
                         runs.push(("revision.editSet", json!({"set": i, "date": date})));
                     }
                     let mut mark = st.mark.clone();
@@ -102,19 +105,23 @@ fn revisions(app: &mut ScriptApp, ctx: &egui::Context) {
             });
             ui.add_space(6.0);
             let (mut show, mut color) = (r.show_marks, r.color_pages);
-            if ui.checkbox(&mut show, "Show revision marks in the margin").changed() {
+            if ui.checkbox(&mut show, lang.text("Show revision marks in the margin")).changed() {
                 runs.push(("revision.set", json!({"showMarks": show})));
             }
-            if ui.checkbox(&mut color, "Colour revised pages").changed() {
+            if ui.checkbox(&mut color, lang.text("Colour revised pages")).changed() {
                 runs.push(("revision.set", json!({"colorPages": color})));
             }
             ui.add_space(6.0);
-            ui.label(RichText::new(format!("{marks} mark(s) on {pages} page(s).")).size(11.5).weak());
+            ui.label(
+                RichText::new(lang.format("{marks} mark(s) on {pages} page(s).", &[("marks", (marks).to_string()), ("pages", (pages).to_string())]))
+                    .size(11.5)
+                    .weak(),
+            );
             ui.horizontal(|ui| {
-                if ui.add_enabled(marks > 0, egui::Button::new("Clear Marks in Selection")).clicked() {
+                if ui.add_enabled(marks > 0, egui::Button::new(lang.text("Clear Marks in Selection"))).clicked() {
                     runs.push(("revision.clearMarks", json!({"selection": true})));
                 }
-                if ui.add_enabled(marks > 0, egui::Button::new("Clear All Marks")).clicked() {
+                if ui.add_enabled(marks > 0, egui::Button::new(lang.text("Clear All Marks"))).clicked() {
                     runs.push(("revision.clearMarks", json!({})));
                 }
             });
@@ -139,28 +146,30 @@ pub fn toggle_print(app: &mut ScriptApp) {
 /// natively it is written to a temporary file and opened in the default viewer, whose Print
 /// command does the rest (not in tests or headless runs, where only the file is written).
 pub fn print_now(app: &mut ScriptApp, p: &Value) -> Result<Value, CmdError> {
+    let lang = app.prefs.appearance.language;
     let r = app.session.run("print.render", p)?;
     let name = r["name"].as_str().unwrap_or("Untitled.pdf").to_string();
     let bytes = scriptcraft_engine::b64::decode(r["data"].as_str().unwrap_or("")).map_err(CmdError::Failed)?;
     let pages = r["pages"].clone();
     if let Some(h) = &app.host {
         h.save(&name, bytes);
-        app.set_status(format!("Downloaded {name} to print"));
+        app.set_status(lang.format("Downloaded {name} to print", &[("name", (name).to_string())]));
         return Ok(json!({"name": name, "pages": pages, "downloaded": true}));
     }
     #[cfg(not(target_arch = "wasm32"))]
     {
         let dir = std::env::temp_dir().join("scriptcraft-print");
-        std::fs::create_dir_all(&dir).map_err(|e| CmdError::Failed(format!("could not prepare the print file: {e}")))?;
+        std::fs::create_dir_all(&dir)
+            .map_err(|e| CmdError::Failed(lang.format("could not prepare the print file: {e}", &[("e", (e).to_string())])))?;
         let path = dir.join(format!("{}-{}", std::process::id(), name.replace(['/', '\\'], "-")));
-        std::fs::write(&path, &bytes).map_err(|e| CmdError::Failed(format!("could not write the print file: {e}")))?;
+        std::fs::write(&path, &bytes).map_err(|e| CmdError::Failed(lang.format("could not write the print file: {e}", &[("e", (e).to_string())])))?;
         let opened = app.dialogs && open_in_viewer(&path);
         app.set_status(if opened {
-            format!("Opened {name} for printing")
+            lang.format("Opened {name} for printing", &[("name", (name).to_string())])
         } else if app.dialogs {
-            format!("Could not open a PDF viewer; the pages are in {}", path.display())
+            lang.format("Could not open a PDF viewer; the pages are in {path}", &[("path", (path.display()).to_string())])
         } else {
-            format!("Print file written to {}", path.display())
+            lang.format("Print file written to {path}", &[("path", (path.display()).to_string())])
         });
         Ok(json!({"name": name, "pages": pages, "path": path.display().to_string(), "opened": opened}))
     }
@@ -206,22 +215,23 @@ fn open_in_viewer(path: &std::path::Path) -> bool {
 }
 
 fn print_dialog(app: &mut ScriptApp, ctx: &egui::Context) {
+    let lang = app.prefs.appearance.language;
     let Some(mut form) = app.production.print.clone() else { return };
     let mut open = true;
     let mut go = false;
     let mut cancelled = false;
     let pages = app.session.layout().script_pages().max(1);
     let has_title = !app.session.script.title.is_empty();
-    egui::Window::new("Print")
+    egui::Window::new(lang.text("Print"))
         .open(&mut open)
         .resizable(false)
         .collapsible(false)
         .pivot(egui::Align2::CENTER_TOP)
         .default_pos(ctx.content_rect().center_top() + vec2(0.0, 110.0))
         .show(ctx, |ui| {
-            ui.radio_value(&mut form.all, true, format!("All pages (1–{pages})"));
+            ui.radio_value(&mut form.all, true, lang.format("All pages (1–{pages})", &[("pages", (pages).to_string())]));
             ui.horizontal(|ui| {
-                ui.radio_value(&mut form.all, false, "Pages");
+                ui.radio_value(&mut form.all, false, lang.text("Pages"));
                 let a = ui.add(egui::DragValue::new(&mut form.from).range(1..=pages));
                 ui.label("to");
                 let b = ui.add(egui::DragValue::new(&mut form.to).range(1..=pages));
@@ -230,18 +240,24 @@ fn print_dialog(app: &mut ScriptApp, ctx: &egui::Context) {
                     form.to = form.to.max(form.from);
                 }
             });
-            ui.add_enabled_ui(has_title, |ui| ui.checkbox(&mut form.title_page, "Include the title page"));
+            ui.add_enabled_ui(has_title, |ui| ui.checkbox(&mut form.title_page, lang.text("Include the title page")));
             let revised = app.session.layout().page_rev.iter().any(Option::is_some);
-            ui.add_enabled_ui(revised || form.revised_only, |ui| ui.checkbox(&mut form.revised_only, "Only revised pages"));
+            ui.add_enabled_ui(revised || form.revised_only, |ui| ui.checkbox(&mut form.revised_only, lang.text("Only revised pages")));
             ui.add_space(4.0);
             let shown = app.session.run("print.pages", &form.params()).ok().map_or(0, |v| v["count"].as_u64().unwrap_or(0));
-            ui.label(RichText::new(format!("{shown} page(s). The pages open in your PDF viewer; print from there.")).size(11.5).weak());
+            ui.label(
+                RichText::new(
+                    lang.format("{shown} page(s). The pages open in your PDF viewer; print from there.", &[("shown", (shown).to_string())]),
+                )
+                .size(11.5)
+                .weak(),
+            );
             ui.add_space(6.0);
             ui.horizontal(|ui| {
-                let print = ui.add_enabled(shown > 0, egui::Button::new("Print…"));
-                let cancel = ui.button("Cancel");
-                app.dialog_buttons.push(("Print…".into(), print.rect));
-                app.dialog_buttons.push(("Cancel".into(), cancel.rect));
+                let print = ui.add_enabled(shown > 0, egui::Button::new(lang.text("Print…")));
+                let cancel = ui.button(lang.text("Cancel"));
+                app.dialog_buttons.push((lang.text("Print…").into(), print.rect));
+                app.dialog_buttons.push((lang.text("Cancel").into(), cancel.rect));
                 if print.clicked() {
                     go = true;
                 }
@@ -259,12 +275,13 @@ fn print_dialog(app: &mut ScriptApp, ctx: &egui::Context) {
 }
 
 fn page_setup(app: &mut ScriptApp, ctx: &egui::Context) {
+    let lang = app.prefs.appearance.language;
     let mut open = true;
     let pg = app.session.script.settings.page.clone();
     let title_page = app.session.script.settings.title_page;
     let mut changes: Vec<serde_json::Value> = Vec::new();
     let mut reset = false;
-    egui::Window::new("Page Setup")
+    egui::Window::new(lang.text("Page Setup"))
         .open(&mut open)
         .resizable(false)
         .collapsible(false)
@@ -272,23 +289,27 @@ fn page_setup(app: &mut ScriptApp, ctx: &egui::Context) {
         .default_pos(ctx.content_rect().center_top() + vec2(0.0, 110.0))
         .show(ctx, |ui| {
             ui.horizontal(|ui| {
-                ui.label("Paper");
+                ui.label(lang.text("Paper"));
                 for p in scriptcraft_doc::Paper::ALL {
                     if ui.selectable_label(pg.paper == p, p.name()).clicked() && pg.paper != p {
                         changes.push(json!({"paper": p.id()}));
                     }
                 }
-                ui.label(RichText::new(format!("{} lines per page", scriptcraft_layout::body_rows(pg.paper))).size(11.5).weak());
+                ui.label(
+                    RichText::new(lang.format("{lines} lines per page", &[("lines", (scriptcraft_layout::body_rows(pg.paper)).to_string())]))
+                        .size(11.5)
+                        .weak(),
+                );
             });
             ui.add_space(6.0);
             egui::Grid::new("hf").num_columns(4).spacing([10.0, 6.0]).show(ui, |ui| {
                 ui.label("");
-                for h in ["Left", "Centre", "Right"] {
+                for h in [lang.text("Left"), lang.text("Centre"), lang.text("Right")] {
                     ui.label(RichText::new(h).strong());
                 }
                 ui.end_row();
                 for (what, hf) in [("header", &pg.header), ("footer", &pg.footer)] {
-                    ui.label(if what == "header" { "Header" } else { "Footer" });
+                    ui.label(if what == "header" { lang.text("Header") } else { lang.text("Footer") });
                     for (slot, text) in [("left", &hf.left), ("center", &hf.center), ("right", &hf.right)] {
                         let mut v = text.clone();
                         if ui.add_sized([150.0, 20.0], egui::TextEdit::singleline(&mut v).hint_text("—")).changed() {
@@ -298,21 +319,21 @@ fn page_setup(app: &mut ScriptApp, ctx: &egui::Context) {
                     ui.end_row();
                 }
             });
-            ui.label(RichText::new("Fields: {page} {pages} {title} {author} {date} {revision} {revname} {revdate}").size(11.5).weak());
+            ui.label(RichText::new(lang.text("Fields: {page} {pages} {title} {author} {date} {revision} {revname} {revdate}")).size(11.5).weak());
             ui.add_space(6.0);
             for (label, key, on) in [
-                ("Header on the first page", "headerFirstPage", pg.header_first_page),
-                ("Footer on the first page", "footerFirstPage", pg.footer_first_page),
-                ("Header and footer on the title page", "headerOnTitlePage", pg.header_on_title_page),
-                ("Print the title page", "titlePage", title_page),
+                (lang.text("Header on the first page"), "headerFirstPage", pg.header_first_page),
+                (lang.text("Footer on the first page"), "footerFirstPage", pg.footer_first_page),
+                (lang.text("Header and footer on the title page"), "headerOnTitlePage", pg.header_on_title_page),
+                (lang.text("Print the title page"), "titlePage", title_page),
             ] {
                 let mut v = on;
-                if ui.checkbox(&mut v, label).changed() {
+                if ui.checkbox(&mut v, lang.text(label)).changed() {
                     changes.push(json!({key: v}));
                 }
             }
             ui.add_space(6.0);
-            if ui.button("Reset Header and Footer").clicked() {
+            if ui.button(lang.text("Reset Header and Footer")).clicked() {
                 reset = true;
             }
         });

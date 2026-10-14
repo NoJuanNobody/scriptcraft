@@ -2947,6 +2947,9 @@ dependencies = [
 [[package]]
 name = "scriptcraft-fonts"
 version = "0.1.0"
+dependencies = [
+ "ttf-parser",
+]
 
 [[package]]
 name = "scriptcraft-fountain"

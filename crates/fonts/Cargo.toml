@@ -3,10 +3,13 @@ name = "scriptcraft-fonts"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Courier Prime (SIL OFL 1.1), the screenplay typeface ScriptCraft embeds (L1)"
+description = "Courier Badi (SIL OFL 1.1), the screenplay typeface ScriptCraft embeds (L1)"
 include = ["src/**", "fonts/**", "Cargo.toml"]
 
 [lints]
 workspace = true
 
 [dependencies]
+
+[dev-dependencies]
+ttf-parser = "0.25"

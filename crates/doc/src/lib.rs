@@ -787,7 +787,8 @@ pub fn character_name(cue: &str) -> String {
 }
 
 /// Scene-heading prefixes, longest first.
-pub const HEADING_PREFIXES: [&str; 8] = ["INT./EXT.", "EXT./INT.", "INT/EXT.", "I/E.", "INT.", "EXT.", "EST.", "INT "];
+pub const HEADING_PREFIXES: [&str; 13] =
+    ["ИНТ./НАТ.", "НАТ./ИНТ.", "ИНТ/НАТ.", "ИНТ.", "НАТ.", "INT./EXT.", "EXT./INT.", "INT/EXT.", "I/E.", "INT.", "EXT.", "EST.", "INT "];
 
 /// A heading split into (prefix, location, time): `"INT. DINER - NIGHT"` →
 /// `("INT.", "DINER", "NIGHT")`. Missing parts are empty.

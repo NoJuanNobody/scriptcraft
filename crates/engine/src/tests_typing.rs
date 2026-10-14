@@ -244,3 +244,23 @@ fn element_settings_change_the_flow() {
     s.run("settings.resetElements", &json!({})).unwrap();
     assert!(s.script.settings.elements.is_default());
 }
+
+#[test]
+fn russian_heading_typing_and_locations() {
+    let mut s = Session::new(Default::default());
+    s.run("element.set", &json!({"element":"action"})).unwrap();
+    s.run("text.insert", &json!({"text":"инт. "})).unwrap();
+    s.run("text.insert", &json!({"text":"кухня - ночь"})).unwrap();
+    assert_eq!(s.script.paras[0].element, Element::SceneHeading);
+    assert_eq!(s.script.paras[0].text, "ИНТ. КУХНЯ - НОЧЬ");
+    let locations = crate::reports::locations(&s.script);
+    assert_eq!(locations[0].location, "КУХНЯ");
+    assert!(locations[0].interior);
+    assert!(!locations[0].exterior);
+    s.run("text.enter", &json!({})).unwrap();
+    s.run("text.insert", &json!({"text":"инт./нат. "})).unwrap();
+    s.run("text.insert", &json!({"text":"двор - день"})).unwrap();
+    assert_eq!(s.script.paras[1].element, Element::SceneHeading);
+    let locations = crate::reports::locations(&s.script);
+    assert!(locations[1].interior && locations[1].exterior);
+}

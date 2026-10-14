@@ -52,13 +52,14 @@ pub struct Prefs {
 #[serde(default)]
 pub struct Appearance {
     pub theme: Theme,
+    pub language: crate::i18n::Language,
     /// Page zoom (0.4 to 3.0).
     pub zoom: f64,
 }
 
 impl Default for Appearance {
     fn default() -> Self {
-        Appearance { theme: Theme::System, zoom: 1.0 }
+        Appearance { theme: Theme::System, language: Default::default(), zoom: 1.0 }
     }
 }
 
@@ -100,7 +101,18 @@ impl Default for Files {
 
 impl craft_settings::Settings for Prefs {
     const APP_ID: &'static str = scriptcraft_control_key::APP_ID;
-    const SCHEMA_VERSION: u32 = 1;
+    const SCHEMA_VERSION: u32 = 2;
+
+    fn migrate(from: u32, doc: &mut craft_settings::DocumentMut) -> Result<(), craft_settings::MigrateError> {
+        // Version 2 adds only an optional field; missing language keeps existing profiles in English.
+        if from == 1
+            && let Some(appearance) = doc.get_mut("appearance").and_then(|item| item.as_table_like_mut())
+            && !appearance.contains_key("language")
+        {
+            appearance.insert("language", "en".into());
+        }
+        Ok(())
+    }
 }
 
 impl Prefs {
@@ -146,7 +158,7 @@ pub fn parse_legacy_prefs(bytes: &[u8]) -> Result<Prefs, String> {
         None => Theme::System,
     };
     Ok(Prefs {
-        appearance: Appearance { theme, zoom: old.zoom.unwrap_or(d.appearance.zoom) },
+        appearance: Appearance { theme, zoom: old.zoom.unwrap_or(d.appearance.zoom), ..Default::default() },
         editing: Editing {
             spelling: old.spelling.unwrap_or(d.editing.spelling),
             element_list_on_enter: old.enter_picker.unwrap_or(d.editing.element_list_on_enter),
@@ -295,6 +307,17 @@ mod tests {
     }
 
     #[test]
+    fn version_one_settings_migrate_without_losing_hand_edits() {
+        use craft_settings::Settings;
+        let mut doc: craft_settings::DocumentMut =
+            "schema_version = 1\n[appearance]\ntheme = \"dark\"\nzoom = 1.25\ncustom = \"keep\"\n".parse().unwrap();
+        Prefs::migrate(1, &mut doc).unwrap();
+        assert_eq!(doc["appearance"]["language"].as_str(), Some("en"));
+        assert_eq!(doc["appearance"]["theme"].as_str(), Some("dark"));
+        assert_eq!(doc["appearance"]["custom"].as_str(), Some("keep"));
+    }
+
+    #[test]
     fn prefs_recovery_backups() {
         let dir = tmp("state");
         let folders = scriptcraft_control_key::Folders { config: Some(dir.clone()), data: Some(dir.clone()), rule: "test".into(), legacy: None };
@@ -308,16 +331,18 @@ mod tests {
             p.touch_recent("/s/3.fdx");
             p.appearance.theme = Theme::Dark;
             p.appearance.zoom = 1.5;
+            p.appearance.language = crate::i18n::Language::Russian;
         });
         store.flush().unwrap();
         let toml = std::fs::read_to_string(dir.join("config.toml")).unwrap();
-        assert!(toml.starts_with("schema_version = 1"), "{toml}");
+        assert!(toml.starts_with("schema_version = 2"), "{toml}");
         assert!(toml.contains("[appearance]") && toml.contains("theme = \"dark\""), "{toml}");
         let (again, _) = open_settings(&folders);
         let q = again.get().clone();
         assert_eq!(q.files.recent.len(), MAX_RECENT);
         assert_eq!(q.files.recent[0], "/s/3.fdx");
         assert_eq!(q.appearance.zoom, 1.5);
+        assert_eq!(q.appearance.language, crate::i18n::Language::Russian);
         // A hand-edited value out of range is clamped when used.
         let wild = Prefs { appearance: Appearance { zoom: f64::NAN, ..Default::default() }, ..Default::default() };
         assert_eq!(wild.sanitized().appearance.zoom, 1.0);

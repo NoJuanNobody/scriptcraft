@@ -10,6 +10,7 @@ mod canvas;
 pub mod cards;
 mod chrome;
 pub mod control;
+pub mod i18n;
 pub mod icons;
 pub mod persist;
 pub mod production;
@@ -55,6 +56,7 @@ impl View {
 
 /// UI-only commands (`ui.*`): id, label, menu location, shortcut.
 pub const UI_COMMANDS: &[(&str, &str, &str, &str)] = &[
+    ("ui.language", "Language", "View", ""),
     ("ui.view.page", "Page View", "View", "Mod+Alt+1"),
     ("ui.view.cards", "Index Cards", "View", "Mod+Alt+2"),
     ("ui.view.reports", "Reports", "View", "Mod+Alt+3"),
@@ -321,7 +323,7 @@ impl ScriptApp {
         let now = std::time::Instant::now();
         let r = store.tick(now);
         if let craft_settings::SaveStatus::Failed(e) = r.status {
-            self.status = Some((format!("Settings not saved, retrying: {e}"), 0.0));
+            self.status = Some((self.prefs.appearance.language.format("Settings not saved, retrying: {e}", &[("e", (e).to_string())]), 0.0));
         }
         if let Some(d) = r.next_deadline {
             ctx.request_repaint_after(d.saturating_duration_since(now));
@@ -451,7 +453,7 @@ impl ScriptApp {
                     && let Some(dir) = &self.state_dir
                     && let Err(e) = persist::save_words(dir, &self.session.user_words)
                 {
-                    self.status = Some((format!("Could not save the dictionary: {e}"), 0.0));
+                    self.status = Some((self.prefs.appearance.language.format("Could not save the dictionary: {e}", &[("e", (e).to_string())]), 0.0));
                 }
                 if !id.starts_with("ui.") && !matches!(id, "document.inspect" | "document.stats" | "smarttype.suggest") {
                     self.canvas.scroll_to_caret = true;
@@ -474,6 +476,10 @@ impl ScriptApp {
     fn ui_command(&mut self, id: &str, p: &Value) -> Result<Value, CmdError> {
         let path = p.get("path").and_then(Value::as_str).map(str::to_string);
         match id {
+            "ui.language" => {
+                self.prefs.appearance.language = serde_json::from_value(p.get("language").cloned().unwrap_or(Value::Null))
+                    .map_err(|_| CmdError::Params("unknown or missing language".into()))?;
+            }
             "ui.view.page" => {
                 self.view = View::Page;
                 self.session.speed = false;
@@ -586,7 +592,7 @@ impl ScriptApp {
             other => return Err(CmdError::Unknown(other.to_string())),
         }
         Ok(
-            json!({"view": self.view.id(), "dark": self.dark, "zoom": self.canvas.zoom, "navigator": self.navigator, "showTags": self.show_tags, "alternates": self.alt_window}),
+            json!({"view": self.view.id(), "dark": self.dark, "zoom": self.canvas.zoom, "navigator": self.navigator, "showTags": self.show_tags, "alternates": self.alt_window, "language": self.prefs.appearance.language}),
         )
     }
 
@@ -638,7 +644,9 @@ impl ScriptApp {
         }
         #[cfg(not(target_arch = "wasm32"))]
         {
-            let d = rfd::FileDialog::new().set_title(title).add_filter("Script", exts);
+            let d = rfd::FileDialog::new()
+                .set_title(self.prefs.appearance.language.text(title))
+                .add_filter(self.prefs.appearance.language.text("Script"), exts);
             let r = if save { d.set_file_name(name).save_file() } else { d.pick_file() };
             r.map(|p| p.display().to_string())
         }
@@ -665,14 +673,17 @@ impl ScriptApp {
             return;
         }
         let mut fonts = egui::FontDefinitions::default();
-        fonts.font_data.insert("courier-prime".into(), std::sync::Arc::new(egui::FontData::from_static(scriptcraft_fonts::REGULAR)));
-        fonts.font_data.insert("courier-prime-bold".into(), std::sync::Arc::new(egui::FontData::from_static(scriptcraft_fonts::BOLD)));
-        fonts.families.insert(egui::FontFamily::Name("courier".into()), vec!["courier-prime".into()]);
-        fonts.font_data.insert("courier-prime-italic".into(), std::sync::Arc::new(egui::FontData::from_static(scriptcraft_fonts::ITALIC)));
-        fonts.font_data.insert("courier-prime-bolditalic".into(), std::sync::Arc::new(egui::FontData::from_static(scriptcraft_fonts::BOLD_ITALIC)));
-        fonts.families.insert(egui::FontFamily::Name("courier-bold".into()), vec!["courier-prime-bold".into()]);
-        fonts.families.insert(egui::FontFamily::Name("courier-italic".into()), vec!["courier-prime-italic".into()]);
-        fonts.families.insert(egui::FontFamily::Name("courier-bolditalic".into()), vec!["courier-prime-bolditalic".into()]);
+        fonts.font_data.insert("courier-badi".into(), std::sync::Arc::new(egui::FontData::from_static(scriptcraft_fonts::REGULAR)));
+        fonts.font_data.insert("courier-badi-bold".into(), std::sync::Arc::new(egui::FontData::from_static(scriptcraft_fonts::BOLD)));
+        fonts.families.insert(egui::FontFamily::Name("courier".into()), vec!["courier-badi".into()]);
+        fonts.font_data.insert("courier-badi-italic".into(), std::sync::Arc::new(egui::FontData::from_static(scriptcraft_fonts::ITALIC)));
+        fonts.font_data.insert("courier-badi-bolditalic".into(), std::sync::Arc::new(egui::FontData::from_static(scriptcraft_fonts::BOLD_ITALIC)));
+        fonts.families.insert(egui::FontFamily::Name("courier-bold".into()), vec!["courier-badi-bold".into()]);
+        fonts.families.insert(egui::FontFamily::Name("courier-italic".into()), vec!["courier-badi-italic".into()]);
+        fonts.families.insert(egui::FontFamily::Name("courier-bolditalic".into()), vec!["courier-badi-bolditalic".into()]);
+        for family in [egui::FontFamily::Proportional, egui::FontFamily::Monospace] {
+            fonts.families.entry(family).or_default().push("courier-badi".into());
+        }
         ctx.set_fonts(fonts);
         self.fonts_installed = true;
     }
@@ -719,7 +730,14 @@ impl ScriptApp {
         if self.control.is_some() || !self.synthetic.is_empty() {
             ctx.request_repaint_after(std::time::Duration::from_millis(50));
         }
-        let name = self.session.path.as_ref().and_then(|p| p.file_name()).and_then(|n| n.to_str()).unwrap_or("Untitled").to_string();
+        let name = self
+            .session
+            .path
+            .as_ref()
+            .and_then(|p| p.file_name())
+            .and_then(|n| n.to_str())
+            .unwrap_or(self.prefs.appearance.language.text("Untitled"))
+            .to_string();
         let title = format!("{name}{} — ScriptCraft", if self.session.dirty { " •" } else { "" });
         if title != self.sent_title {
             // The browser backend has no window title.

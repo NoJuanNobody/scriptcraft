@@ -15,7 +15,7 @@ workflow parity. Conventions follow the sibling Craft apps (WordCraft et al.).
 ## Clean room and assets
 - Never copy Final Draft icons, images, templates, sample scripts, fonts or wording (feature names only).
 - Every asset (font, image, sample script) has a row in ATTRIBUTION.md; `cargo xtask assets` checks.
-- Icons are drawn in code (`crates/ui-egui/src/icons.rs`). Typeface: Courier Prime (OFL).
+- Icons are drawn in code (`crates/ui-egui/src/icons.rs`). Typeface: Courier Badi (OFL).
 - File formats come from public structure: Fountain (fountain.io) and observed FDX XML. Never read GPL code.
 
 ## Architecture
