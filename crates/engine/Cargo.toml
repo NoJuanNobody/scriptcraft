@@ -17,6 +17,7 @@ scriptcraft-layout = { workspace = true }
 scriptcraft-pdf = { workspace = true }
 scriptcraft-spell = { workspace = true }
 scriptcraft-collab = { workspace = true }
+scriptcraft-import = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
