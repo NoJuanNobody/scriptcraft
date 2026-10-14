@@ -17,6 +17,7 @@ pub mod drafts;
 pub mod icons;
 pub mod outline;
 pub mod persist;
+pub mod printing;
 pub mod production;
 mod reports;
 pub mod speech;
@@ -205,6 +206,9 @@ pub struct ScriptApp {
     /// Text to speech (and speech to text) from the host: system voices natively, the browser's
     /// speech synthesis on the web; `None` in tests and headless runs.
     pub speaker: Option<Box<dyn speech::SpeechHost>>,
+    /// Printing from the host: CUPS or the Windows print action natively, the browser's print
+    /// window on the web; `None` in tests and headless runs (File › Print then writes a PDF).
+    pub printer: Option<Box<dyn printing::PrintHost>>,
     /// Read Aloud: the window and what is being read.
     pub read_aloud: speech::ReadAloud,
     /// The Dictation window.
@@ -282,6 +286,7 @@ impl ScriptApp {
             host: None,
             inbox: Inbox::default(),
             speaker: None,
+            printer: None,
             read_aloud: speech::ReadAloud::default(),
             dictation: speech::Dictation::default(),
             status: None,
@@ -414,6 +419,7 @@ impl ScriptApp {
     /// the user chose not to save, leaves no recovery file behind.
     pub fn on_exit(&mut self) {
         self.flush_prefs();
+        printing::cleanup(self);
         if !self.session.dirty || self.quit_requested {
             self.clear_recovery();
         }
@@ -438,6 +444,7 @@ impl ScriptApp {
             let _ = persist::write_recovery(&dir, self.session.path.as_deref(), &self.session.script);
         }
         self.flush_prefs();
+        printing::cleanup(self);
     }
 
     /// Before a save over an existing file: keep the old version in the backups folder.
@@ -495,6 +502,11 @@ impl ScriptApp {
         self.status = Some((s.into(), 0.0));
     }
 
+    /// The status bar's current message, if any.
+    pub fn status_message(&self) -> Option<&str> {
+        self.status.as_ref().map(|(s, _)| s.as_str())
+    }
+
     /// Run a command: `ui.*` here, everything else in the engine. Errors go to the status bar.
     pub fn execute(&mut self, id: &str, params: Value) -> Result<Value, CmdError> {
         // Replacing a script with unsaved changes asks first (interactive windows only).
@@ -514,6 +526,8 @@ impl ScriptApp {
         } else if id.starts_with("ui.") {
             self.ui_command(id, &params)
         } else if let Some(r) = speech::command(self, id, &params) {
+            r
+        } else if let Some(r) = printing::command(self, id, &params) {
             r
         } else {
             if matches!(id, "file.open" | "file.load" | "file.new" | "file.sample" | "file.revert") {
@@ -847,6 +861,7 @@ impl ScriptApp {
         self.tick_prefs(ctx);
         self.drain_inbox(ctx);
         speech::tick(self, ctx);
+        printing::tick(self, ctx);
         if let Some((_, t)) = &mut self.status
             && *t == 0.0
         {
