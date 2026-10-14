@@ -39,6 +39,7 @@
 //! Tab targets have no FDX equivalent and are not written.
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
+mod beats;
 mod page;
 mod revision;
 
@@ -72,6 +73,8 @@ enum Kind {
     HeaderFooter(bool),
     /// The text of a script note.
     Note,
+    /// A line of a beat-board card (`ListItem Type="Beat"`).
+    Beat,
 }
 
 /// A note read so far: character range, colour, author, text.
@@ -109,6 +112,10 @@ struct Open {
     rev: Option<u32>,
     /// Revised byte ranges (levels are raw revision IDs until remapped).
     revs: Vec<scriptcraft_doc::RevMark>,
+    /// `Bookmark`.
+    bookmark: Option<String>,
+    /// Linked beats (`ScriptCraftBeats`).
+    beats: Vec<u32>,
 }
 
 /// Parse an FDX document.
@@ -130,6 +137,7 @@ pub fn parse(src: &str) -> Result<Script, FdxError> {
     let mut production: Option<(bool, bool, bool)> = None;
     let mut page_read = page::Read::default();
     let mut rev_read = revision::Read::default();
+    let mut beat_read = beats::Read::default();
     loop {
         let ev = r.read_event().map_err(|e| FdxError::Xml(e.to_string()))?;
         let empty = matches!(ev, Event::Empty(_));
@@ -183,7 +191,9 @@ pub fn parse(src: &str) -> Result<Script, FdxError> {
                         }
                     }
                     "Paragraph" => {
-                        let kind = if stack.iter().any(|n| n == "ScriptNote") {
+                        let kind = if stack.iter().any(|n| n == "ListItem") {
+                            Kind::Beat
+                        } else if stack.iter().any(|n| n == "ScriptNote") {
                             Kind::Note
                         } else if stack.iter().any(|n| n == "HeaderAndFooter") {
                             Kind::HeaderFooter(stack.iter().any(|n| n == "Footer"))
@@ -216,16 +226,30 @@ pub fn parse(src: &str) -> Result<Script, FdxError> {
                             alts: Vec::new(),
                             rev: None,
                             revs: Vec::new(),
+                            bookmark: attr("Bookmark"),
+                            beats: attr("ScriptCraftBeats").map(|v| beat_read.links(&v)).unwrap_or_default(),
                         };
                         if empty {
                             if let Kind::HeaderFooter(footer) = o.kind {
                                 page_read.add(footer, &o.align, &o.text);
+                            } else if o.kind == Kind::Beat {
+                                beat_read.line(&o.text);
                             } else {
                                 finish(o, &mut open, &mut paras, &mut title_lines, &mut dual_chars);
                             }
                         } else {
                             open.push(o);
                         }
+                    }
+                    "ListItem" => {
+                        beat_read.list_item(attr("Id"), attr("Type"), attr("Title"), attr("Color"));
+                        if empty {
+                            beat_read.end_list_item();
+                        }
+                    }
+                    "DisplayBoard" => beat_read.board(attr("Type").as_deref()),
+                    "Item" if stack.iter().any(|n| n == "DisplayBoard") => {
+                        beat_read.item(attr("Id"), attr("Left"), attr("Top"), attr("Width"), attr("Height"));
                     }
                     "ScriptCraftProduction" if !in_title => {
                         let yes = |k: &str| attr(k).is_some_and(|v| v.trim().eq_ignore_ascii_case("yes"));
@@ -326,6 +350,8 @@ pub fn parse(src: &str) -> Result<Script, FdxError> {
                         }
                     }
                     "DualDialogue" => dual_chars = None,
+                    "ListItem" => beat_read.end_list_item(),
+                    "DisplayBoard" => beat_read.board(None),
                     "ScriptNote" => {
                         if let Some(o) = open.last_mut().filter(|o| o.kind == Kind::Body)
                             && let Some(n) = o.note.take()
@@ -349,6 +375,8 @@ pub fn parse(src: &str) -> Result<Script, FdxError> {
                         if let Some(o) = open.pop() {
                             if let Kind::HeaderFooter(footer) = o.kind {
                                 page_read.add(footer, &o.align, &o.text);
+                            } else if o.kind == Kind::Beat {
+                                beat_read.line(&o.text);
                             } else {
                                 finish(o, &mut open, &mut paras, &mut title_lines, &mut dual_chars);
                             }
@@ -405,6 +433,7 @@ pub fn parse(src: &str) -> Result<Script, FdxError> {
     }
     page_read.apply(&mut s.settings.page);
     rev_read.apply(&mut s);
+    beat_read.apply(&mut s);
     s.normalize().map_err(|_| FdxError::TooLarge)?;
     s.title = title_from_lines(&title_lines);
     Ok(s)
@@ -511,7 +540,7 @@ fn finish(o: Open, open: &mut [Open], paras: &mut Vec<Para>, title_lines: &mut V
                 n.text.push_str(o.text.trim());
             }
         }
-        Kind::HeaderFooter(_) => {}
+        Kind::HeaderFooter(_) | Kind::Beat => {}
         Kind::Body => {
             if o.wrapper && o.text.trim().is_empty() {
                 return;
@@ -524,6 +553,8 @@ fn finish(o: Open, open: &mut [Open], paras: &mut Vec<Para>, title_lines: &mut V
             p.page_lock = o.page_lock;
             p.omitted = o.omitted && element == Element::SceneHeading;
             p.revs = o.revs;
+            p.bookmark = o.bookmark;
+            p.beats = o.beats;
             if element == Element::SceneHeading {
                 p.scene_number = o.number.filter(|n| !n.trim().is_empty());
                 p.summary = o.summary;
@@ -624,7 +655,18 @@ fn esc(s: &str) -> String {
 }
 
 fn para_xml(out: &mut String, indent: &str, p: &Para) {
+    para_xml_with(out, indent, p, None);
+}
+
+/// A paragraph, with the heading's linked beats' keys (`ScriptCraftBeats`) when it has any.
+fn para_xml_with(out: &mut String, indent: &str, p: &Para, beat_links: Option<String>) {
     out.push_str(&format!("{indent}<Paragraph Type=\"{}\"", p.element.name()));
+    if let Some(b) = &p.bookmark {
+        out.push_str(&format!(" Bookmark=\"{}\"", esc(b)));
+    }
+    if let Some(l) = beat_links {
+        out.push_str(&format!(" ScriptCraftBeats=\"{}\"", esc(&l)));
+    }
     if let Some(n) = p.scene_number.as_deref().filter(|n| !n.trim().is_empty()) {
         out.push_str(&format!(" Number=\"{}\"", esc(n.trim())));
     }
@@ -718,10 +760,11 @@ pub fn write(s: &Script) -> String {
                 continue;
             }
         }
-        para_xml(&mut out, "    ", p);
+        para_xml_with(&mut out, "    ", p, beats::links_attr(s, &p.beats));
         i += 1;
     }
     out.push_str("  </Content>\n");
+    beats::write(&mut out, s);
     let st = &s.settings;
     if st.pages_locked || st.scene_numbers_locked || st.show_scene_numbers {
         let yn = |b: bool| if b { "Yes" } else { "No" };
@@ -792,3 +835,7 @@ mod tests;
 #[cfg(test)]
 #[path = "annot_tests.rs"]
 mod annot_tests;
+
+#[cfg(test)]
+#[path = "board_tests.rs"]
+mod board_tests;

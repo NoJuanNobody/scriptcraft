@@ -2953,6 +2953,8 @@ name = "scriptcraft-fountain"
 version = "0.1.0"
 dependencies = [
  "scriptcraft-doc",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

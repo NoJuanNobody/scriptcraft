@@ -33,6 +33,8 @@ pub struct CanvasState {
     pub picker: Option<usize>,
     /// The misspelled word a context menu was opened on, with its suggestions.
     pub spell_target: Option<(usize, usize, usize, Vec<String>)>,
+    /// Which split-screen pane this canvas belongs to (0 or 1; see `split.rs`).
+    pub pane: usize,
 }
 
 impl Default for CanvasState {
@@ -51,6 +53,7 @@ impl Default for CanvasState {
             picker: None,
             last_activity: 0.0,
             blink: true,
+            pane: 0,
         }
     }
 }
@@ -64,6 +67,11 @@ impl CanvasState {
 
 pub fn canvas_id() -> Id {
     Id::new("scriptcraft-page-view")
+}
+
+/// The page view's widget id in split-screen pane `pane` (pane 0 is [`canvas_id`]).
+pub fn canvas_id_for(pane: usize) -> Id {
+    if pane == 0 { canvas_id() } else { canvas_id().with(pane) }
 }
 
 fn courier(size: f32) -> FontId {
@@ -396,7 +404,7 @@ fn page_point(rects: &[Rect], z: f32, at: Pos2) -> Option<(usize, f32, f32)> {
 }
 
 pub fn show(app: &mut ScriptApp, ui: &mut Ui) {
-    let id = canvas_id();
+    let id = canvas_id_for(app.canvas.pane);
     // Keep the page focused unless another widget (find bar, dialogs) has the keyboard.
     let focused_other = ui.memory(|m| m.focused().is_some_and(|f| f != id));
     if !focused_other {
@@ -516,8 +524,11 @@ pub fn show(app: &mut ScriptApp, ui: &mut Ui) {
         app.canvas.page_rects = rects;
         app.canvas.canvas_rect = Some(clip);
     });
-    smarttype_popup(app, ui);
-    element_picker(app, ui);
+    // With two page panes, only the one with the keyboard shows the pop-ups.
+    if app.canvas.pane == 0 || ui.memory(|m| m.has_focus(id)) {
+        smarttype_popup(app, ui);
+        element_picker(app, ui);
+    }
 }
 
 fn element_picker(app: &mut ScriptApp, ui: &mut Ui) {

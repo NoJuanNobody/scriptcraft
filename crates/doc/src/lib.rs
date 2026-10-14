@@ -7,6 +7,7 @@
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 mod annot;
+mod beats;
 mod element;
 mod format;
 pub mod page_setup;
@@ -18,6 +19,10 @@ mod text;
 pub use annot::{
     Alternate, MAX_ALTERNATES, MAX_NOTES, MAX_TAGGED, Note, NoteRef, TAG_CATEGORIES, Tagged, alternate_from_runs, category_rgb, clean_author,
     clean_category, clean_note,
+};
+pub use beats::{
+    BEAT_H, BEAT_MAX, BEAT_MIN, BEAT_W, BOARD_EXTENT, Beat, BeatBoard, MAX_BEAT_TEXT, MAX_BEAT_TITLE, MAX_BEATS, MAX_BOOKMARK_CHARS, beat_key,
+    clean_beat_text, clean_beat_title, clean_bookmark,
 };
 pub use element::Element;
 pub use format::{Align, ElementFormat, ElementFormats};
@@ -89,6 +94,12 @@ pub struct Para {
     /// Revised text (byte ranges of `text` and their revision set).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub revs: Vec<RevMark>,
+    /// A named bookmark on this paragraph (FDX `Bookmark`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bookmark: Option<String>,
+    /// Beat-board beats linked to this scene (scene headings only): beat ids.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub beats: Vec<u32>,
 }
 
 /// Index-card colours.
@@ -185,6 +196,8 @@ impl Para {
             tagged: Vec::new(),
             alternates: Vec::new(),
             revs: Vec::new(),
+            bookmark: None,
+            beats: Vec::new(),
         }
     }
 
@@ -410,6 +423,9 @@ pub struct Script {
     pub paras: Vec<Para>,
     #[serde(default)]
     pub settings: Settings,
+    /// The beat board.
+    #[serde(default, skip_serializing_if = "BeatBoard::is_empty")]
+    pub board: BeatBoard,
 }
 
 impl Default for Script {
@@ -421,12 +437,17 @@ impl Default for Script {
 impl Script {
     /// A blank script: one empty scene heading.
     pub fn new() -> Self {
-        Script { title: TitlePage::default(), paras: vec![Para::new(Element::SceneHeading, "")], settings: Settings::default() }
+        Script {
+            title: TitlePage::default(),
+            paras: vec![Para::new(Element::SceneHeading, "")],
+            settings: Settings::default(),
+            board: BeatBoard::default(),
+        }
     }
 
     /// A script from paragraphs (an empty list gets one empty Action).
     pub fn from_paras(paras: Vec<Para>) -> Result<Self, DocError> {
-        let mut s = Script { title: TitlePage::default(), paras, settings: Settings::default() };
+        let mut s = Script { title: TitlePage::default(), paras, settings: Settings::default(), board: BeatBoard::default() };
         s.normalize()?;
         Ok(s)
     }
@@ -482,6 +503,7 @@ impl Script {
             }
         }
         self.normalize_production();
+        self.normalize_boards();
         Ok(())
     }
 
@@ -624,7 +646,8 @@ impl Script {
         }
         let end = b.para.min(self.paras.len().saturating_sub(1));
         if a.para < end {
-            self.paras.drain(a.para + 1..=end);
+            let gone: Vec<Para> = self.paras.drain(a.para + 1..=end).collect();
+            self.inherit_anchors(a.para, &gone);
         }
         a
     }

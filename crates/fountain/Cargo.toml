@@ -10,3 +10,5 @@ workspace = true
 
 [dependencies]
 scriptcraft-doc = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }

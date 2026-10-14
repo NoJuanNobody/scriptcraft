@@ -1,6 +1,7 @@
 //! Command implementations, one module per area. Each module exposes `specs()`.
 
 pub mod alternates;
+pub mod boards;
 pub mod caret;
 pub mod edit;
 pub mod element;
@@ -45,6 +46,7 @@ pub fn registry() -> Registry {
     v.extend(page::specs());
     v.extend(print::specs());
     v.extend(revision::specs());
+    v.extend(boards::specs());
     Registry::new(v)
 }
 

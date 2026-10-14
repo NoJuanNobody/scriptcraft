@@ -8,7 +8,7 @@ use scriptcraft_geom::{CHAR_W, LINE_H};
 use scriptcraft_layout::{Line, LineKind};
 use serde_json::{Value, json};
 
-use crate::{ScriptApp, View};
+use crate::ScriptApp;
 
 /// The note being written or edited.
 #[derive(Clone, Debug)]
@@ -139,11 +139,11 @@ pub fn notes_tab(app: &mut ScriptApp, ui: &mut Ui) {
         let any = app.session.script.paras.iter().any(|p| !p.notes.is_empty());
         if ui.add_enabled(any, egui::Button::new("‹").small()).on_hover_text("Previous note").clicked() {
             app.run("note.previous", json!({}));
-            app.view = View::Page;
+            crate::split::show_page(app);
         }
         if ui.add_enabled(any, egui::Button::new("›").small()).on_hover_text("Next note").clicked() {
             app.run("note.next", json!({}));
-            app.view = View::Page;
+            crate::split::show_page(app);
         }
     });
     ui.add_space(4.0);
@@ -200,7 +200,7 @@ pub fn notes_tab(app: &mut ScriptApp, ui: &mut Ui) {
     }
     if let Some(i) = goto {
         app.run("note.goto", json!({"index": i}));
-        app.view = View::Page;
+        crate::split::show_page(app);
     }
     if let Some(i) = edit {
         open_note(app, i);
