@@ -11,7 +11,8 @@
 //! - `{"type": "text"}`: type text, one character per frame
 //! - `{"key": "Enter", "cmd": bool, "shift": bool, "alt": bool}`: press a key
 //! - `{"point": target, "secs": s}`: glide the pointer to a target:
-//!   `{"text": "STORMY"}` (scrolls it into view), `{"label": "Cancel"}`, `{"card": 2}`, `{"xy": [x, y]}`
+//!   `{"text": "STORMY"}` (scrolls it into view), `{"label": "Cancel"}`, `{"card": 2}`, `{"xy": [x, y]}`;
+//!   `"edge": "left"` aims at a label's left edge, `"dx"`/`"dy"` shift the target
 //! - `{"click": "left"|"right", "count": n}`: click at the pointer
 //! - `{"drag": target, "secs": s}`: press, glide to the target, release
 //! - `{"copy": true}`, `{"paste": true}`: copy the selection; paste it at the caret
@@ -22,6 +23,10 @@
 //! - `{"state": true}`: use a temporary settings folder (autosave, recent files, backups)
 //! - `{"recovery": true}`: leave an autosaved copy there and offer it, as after a crash
 //! - `{"badge": "ScriptCraft v0.3 · PR #40"}`: the label in the top-right corner
+//! - `{"speaker": "silent"}` (first lines): a silent speech engine with a few voices, for Read Aloud
+//! - `{"peer": "join", "name": "Ana"}`: another person joins the window's hosted session (a second
+//!   session on its own thread, as another computer would); `{"peer": "cmd", "id": …, "params": …}`
+//!   runs a command as them; `{"peer": "type", "text": "…"}` types as them; `{"peer": "leave"}`
 //! - `{"run": ["program", "arg", …]}`: run a helper program and wait (e.g. render an exported PDF
 //!   to PNGs for a later `pictures` line); its failure is reported, not fatal
 
@@ -48,6 +53,44 @@ static PICTURE: Mutex<Option<egui::TextureHandle>> = Mutex::new(None);
 static PICTURE_BAR: Mutex<String> = Mutex::new(String::new());
 /// The label in the top-right corner.
 static BADGE: Mutex<String> = Mutex::new(String::new());
+
+type Job = Box<dyn FnOnce(&mut Session) + Send>;
+
+/// Another person in a collaboration session: a session ticking on its own thread.
+struct Peer {
+    tx: std::sync::mpsc::Sender<Job>,
+}
+
+impl Peer {
+    fn join(addr: String, key: String, name: String) -> Peer {
+        let (tx, rx) = std::sync::mpsc::channel::<Job>();
+        std::thread::spawn(move || {
+            let mut s = Session::new(Default::default());
+            if let Err(e) = s.run("collab.join", &json!({"addr": addr, "key": key, "name": name, "force": true})) {
+                eprintln!("peer join: {e}");
+            }
+            loop {
+                s.collab_tick();
+                match rx.recv_timeout(std::time::Duration::from_millis(5)) {
+                    Ok(job) => job(&mut s),
+                    Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
+                    Err(_) => {
+                        let _ = s.run("collab.leave", &json!({}));
+                        return;
+                    }
+                }
+            }
+        });
+        Peer { tx }
+    }
+    fn run(&self, id: String, params: Value) {
+        let _ = self.tx.send(Box::new(move |s: &mut Session| {
+            if let Err(e) = s.run(&id, &params) {
+                eprintln!("peer {id}: {e}");
+            }
+        }));
+    }
+}
 
 struct Rec {
     dir: PathBuf,
@@ -176,6 +219,11 @@ fn pointer() -> Pos2 {
 
 /// Screen point of a target.
 fn target(h: &mut egui_kittest::Harness<'_, ScriptApp>, rec: &mut Rec, t: &Value) -> Option<Pos2> {
+    let d = vec2(t.get("dx").and_then(Value::as_f64).unwrap_or(0.0) as f32, t.get("dy").and_then(Value::as_f64).unwrap_or(0.0) as f32);
+    target_at(h, rec, t).map(|p| p + d)
+}
+
+fn target_at(h: &mut egui_kittest::Harness<'_, ScriptApp>, rec: &mut Rec, t: &Value) -> Option<Pos2> {
     if let Some(xy) = t.get("xy").and_then(Value::as_array) {
         return Some(pos2(xy.first()?.as_f64()? as f32, xy.get(1)?.as_f64()? as f32));
     }
@@ -184,8 +232,10 @@ fn target(h: &mut egui_kittest::Harness<'_, ScriptApp>, rec: &mut Rec, t: &Value
         return Some(r.left_top() + vec2(r.width() * 0.5, 24.0));
     }
     if let Some(l) = t.get("label").and_then(Value::as_str) {
-        let exact = h.query_all_by_label(l).next().map(|n| n.rect().center());
-        return exact.or_else(|| h.query_all_by_label_contains(l).next().map(|n| n.rect().center()));
+        let left = t.get("edge").and_then(Value::as_str) == Some("left");
+        let at = |r: egui::Rect| if left { r.left_center() } else { r.center() };
+        let exact = h.query_all_by_label(l).next().map(|n| at(n.rect()));
+        return exact.or_else(|| h.query_all_by_label_contains(l).next().map(|n| at(n.rect())));
     }
     if let Some(text) = t.get("text").and_then(Value::as_str) {
         let skip = t.get("nth").and_then(Value::as_u64).unwrap_or(0) as usize;
@@ -233,6 +283,11 @@ fn main() {
         .collect();
     let mut app = ScriptApp::new(Session::sample());
     app.dialogs = false;
+    if lines.iter().any(|l| l.get("speaker").is_some()) {
+        let mut s = scriptcraft_ui_egui::speech::SilentSpeaker::new(&["Samantha", "Daniel", "Karen", "Moira", "Tessa", "Fred", "Rishi"]);
+        s.frames_per_line = 6;
+        app.speaker = Some(Box::new(s));
+    }
     let mut h = egui_kittest::Harness::builder()
         .with_size(egui::vec2(1280.0, 800.0))
         .with_pixels_per_point(1.5)
@@ -249,6 +304,7 @@ fn main() {
             app,
         );
     let mut rec = Rec { dir: dir.clone(), n: 0 };
+    let mut peer: Option<Peer> = None;
     let state_dir = std::env::temp_dir().join(format!("scriptcraft-demo-{}", std::process::id()));
     for _ in 0..4 {
         step(&mut h);
@@ -408,6 +464,45 @@ fn main() {
         } else if let Some(b) = l.get("badge").and_then(Value::as_str) {
             if let Ok(mut g) = BADGE.lock() {
                 *g = b.to_string();
+            }
+        } else if let Some(what) = l.get("peer").and_then(Value::as_str) {
+            match what {
+                "join" => {
+                    let st = h.state().session.collab.status();
+                    let addr = format!("127.0.0.1:{}", st["port"]);
+                    let key = st["key"].as_str().unwrap_or("").to_string();
+                    let name = l.get("name").and_then(Value::as_str).unwrap_or("Ana").to_string();
+                    peer = Some(Peer::join(addr, key, name));
+                    for _ in 0..8 {
+                        std::thread::sleep(std::time::Duration::from_millis(40));
+                        rec.shot(&mut h);
+                    }
+                }
+                "cmd" => {
+                    if let (Some(p), Some(id)) = (&peer, l.get("id").and_then(Value::as_str)) {
+                        p.run(id.to_string(), l.get("params").cloned().unwrap_or(json!({})));
+                        for _ in 0..3 {
+                            std::thread::sleep(std::time::Duration::from_millis(30));
+                            rec.shot(&mut h);
+                        }
+                    }
+                }
+                "type" => {
+                    if let Some(p) = &peer {
+                        for c in l.get("text").and_then(Value::as_str).unwrap_or("").chars() {
+                            p.run("text.insert".into(), json!({"text": c.to_string()}));
+                            std::thread::sleep(std::time::Duration::from_millis(15));
+                            rec.shot(&mut h);
+                        }
+                    }
+                }
+                _ => {
+                    peer = None;
+                    for _ in 0..4 {
+                        std::thread::sleep(std::time::Duration::from_millis(40));
+                        rec.shot(&mut h);
+                    }
+                }
             }
         } else if let Some(argv) = l.get("run").and_then(Value::as_array) {
             let argv: Vec<&str> = argv.iter().filter_map(Value::as_str).collect();

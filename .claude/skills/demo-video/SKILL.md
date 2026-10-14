@@ -8,8 +8,8 @@ description: Record a narrated demo video of ScriptCraft that proves a PR or mil
 A tour is a JSON-lines script that `crates/ui-egui/examples/ui_demo.rs` plays against the real
 `ScriptApp`. It renders offscreen with wgpu, so a locked screen or a hidden window doesn't matter. It draws a
 caption bar, a pointer and a corner badge, and writes PNG frames at 15 fps. `docs/demo/record-tour.sh` builds
-it, plays the tour and encodes an MP4 with ffmpeg. Past tours: `docs/demo/pr33-tour.jsonl` (v0.2)
-and `docs/demo/v03-tour.jsonl` (v0.3). Copy the closest one.
+it, plays the tour and encodes an MP4 with ffmpeg. Past tours: `docs/demo/pr33-tour.jsonl` (v0.2),
+`docs/demo/v03-tour.jsonl` (v0.3) and `docs/demo/v04-tour.jsonl` (v0.4: silent Read Aloud speaker, a second collaborator via `peer` lines). Copy the closest one.
 
 Requirements: ffmpeg; on macOS, `swift` for PDF pages (`docs/demo/pdf-pages.swift`, PDFKit).
 
