@@ -42,6 +42,12 @@ All open work is tracked as [GitHub issues](https://github.com/NoJuanNobody/scri
 - [x] [#19](https://github.com/NoJuanNobody/scriptcraft/issues/19) Print dialog
 - [x] [#20](https://github.com/NoJuanNobody/scriptcraft/issues/20) Split dual dialogue across a page break
 
+Follow-ups found while testing v0.3:
+
+- [ ] [#41](https://github.com/NoJuanNobody/scriptcraft/issues/41) Reports show counted page numbers instead of printed labels (12A) when pages are locked
+- [ ] [#43](https://github.com/NoJuanNobody/scriptcraft/issues/43) Print directly to a printer (printer list, copies), browser print, temp file cleanup
+- [ ] [#45](https://github.com/NoJuanNobody/scriptcraft/issues/45) Dual dialogue: a long cue plus (CONT'D) runs past the right column and margin after a page split
+
 ## v0.4: structure and collaboration (done)
 
 - [x] [#21](https://github.com/NoJuanNobody/scriptcraft/issues/21) Outline view with structure points
@@ -58,6 +64,8 @@ All open work is tracked as [GitHub issues](https://github.com/NoJuanNobody/scri
 - [ ] [#29](https://github.com/NoJuanNobody/scriptcraft/issues/29) Keep Shot and General elements in Fountain
 - [ ] [#30](https://github.com/NoJuanNobody/scriptcraft/issues/30) Keep all title page fields in FDX; support free-form title pages
 - [ ] [#31](https://github.com/NoJuanNobody/scriptcraft/issues/31) Import from Word, Celtx and PDF
+- [ ] [#42](https://github.com/NoJuanNobody/scriptcraft/issues/42) Final Draft compatibility: map revisions, locks, omitted scenes, tags, alternates and page setup to Final Draft's own FDX
+- [ ] [#44](https://github.com/NoJuanNobody/scriptcraft/issues/44) Get sample .fdx files from Final Draft 13 (tags, omitted scene, alternate line, locked pages)
 
 ## Verification
 
