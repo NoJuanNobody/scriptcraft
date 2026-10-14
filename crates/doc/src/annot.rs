@@ -143,8 +143,8 @@ pub fn clean_note(s: &str) -> String {
 /// Moved notes and tags (a paragraph's tail when it splits, or a joined paragraph's).
 #[derive(Default)]
 pub(crate) struct Marks {
-    notes: Vec<Note>,
-    tagged: Vec<Tagged>,
+    pub(crate) notes: Vec<Note>,
+    pub(crate) tagged: Vec<Tagged>,
 }
 
 /// `x` after inserting `len` bytes at `at`: positions at or after it move, unless `stay` (a range

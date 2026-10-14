@@ -7,25 +7,38 @@
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 mod annot;
+mod beats;
 mod element;
 mod format;
 pub mod page_setup;
 mod production;
 pub mod revision;
+mod structure;
 mod style;
+pub mod template;
 mod text;
+pub mod track;
+pub mod voices;
 
 pub use annot::{
     Alternate, MAX_ALTERNATES, MAX_NOTES, MAX_TAGGED, Note, NoteRef, TAG_CATEGORIES, Tagged, alternate_from_runs, category_rgb, clean_author,
     clean_category, clean_note,
+};
+pub use beats::{
+    BEAT_H, BEAT_MAX, BEAT_MIN, BEAT_W, BOARD_EXTENT, Beat, BeatBoard, MAX_BEAT_TEXT, MAX_BEAT_TITLE, MAX_BEATS, MAX_BOOKMARK_CHARS, beat_key,
+    clean_beat_text, clean_beat_title, clean_bookmark,
 };
 pub use element::Element;
 pub use format::{Align, ElementFormat, ElementFormats};
 pub use page_setup::{HeaderFooter, PageSetup, Paper};
 pub use production::{expand_page_label, next_label};
 pub use revision::{RevMark, RevisionSet, Revisions};
+pub use structure::{MAX_STRUCTURE, OutlineItem, PointSlot, StructureKind, StructurePoint};
 pub use style::{Flag, Span, Style};
+pub use template::Template;
 pub use text::{next_boundary, prev_boundary, word_left, word_right};
+pub use track::{Change, ChangeKind, TrackSettings};
+pub use voices::Voices;
 
 use serde::{Deserialize, Serialize};
 
@@ -89,6 +102,19 @@ pub struct Para {
     /// Revised text (byte ranges of `text` and their revision set).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub revs: Vec<RevMark>,
+    /// Structure points (acts, sequences, sections) that start just before this paragraph
+    /// (scene headings only); see [`structure`].
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub structure: Vec<StructurePoint>,
+    /// A named bookmark on this paragraph (FDX `Bookmark`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bookmark: Option<String>,
+    /// Beat-board beats linked to this scene (scene headings only): beat ids.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub beats: Vec<u32>,
+    /// Tracked changes awaiting accept or reject (see [`track`]).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub changes: Vec<Change>,
 }
 
 /// Index-card colours.
@@ -185,6 +211,10 @@ impl Para {
             tagged: Vec::new(),
             alternates: Vec::new(),
             revs: Vec::new(),
+            structure: Vec::new(),
+            bookmark: None,
+            beats: Vec::new(),
+            changes: Vec::new(),
         }
     }
 
@@ -354,6 +384,15 @@ pub struct Settings {
     /// Revision sets, the active one and revision mode.
     #[serde(skip_serializing_if = "Revisions::is_default")]
     pub revision: Revisions,
+    /// Read-aloud voices: the narrator's and each character's.
+    #[serde(skip_serializing_if = "Voices::is_default")]
+    pub voices: Voices,
+    /// Number Scenes uses letters (A, B … Z, AA, BB …), as multi-camera scripts do.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub scene_letters: bool,
+    /// Track changes.
+    #[serde(skip_serializing_if = "TrackSettings::is_default")]
+    pub track: TrackSettings,
 }
 
 impl Default for Settings {
@@ -368,6 +407,9 @@ impl Default for Settings {
             scene_numbers_locked: false,
             page: PageSetup::default(),
             revision: Revisions::default(),
+            voices: Voices::default(),
+            scene_letters: false,
+            track: TrackSettings::default(),
         }
     }
 }
@@ -410,6 +452,12 @@ pub struct Script {
     pub paras: Vec<Para>,
     #[serde(default)]
     pub settings: Settings,
+    /// Structure points after the last scene (e.g. an act with no scenes yet).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub structure_tail: Vec<StructurePoint>,
+    /// The beat board.
+    #[serde(default, skip_serializing_if = "BeatBoard::is_empty")]
+    pub board: BeatBoard,
 }
 
 impl Default for Script {
@@ -421,12 +469,19 @@ impl Default for Script {
 impl Script {
     /// A blank script: one empty scene heading.
     pub fn new() -> Self {
-        Script { title: TitlePage::default(), paras: vec![Para::new(Element::SceneHeading, "")], settings: Settings::default() }
+        Script {
+            title: TitlePage::default(),
+            paras: vec![Para::new(Element::SceneHeading, "")],
+            settings: Settings::default(),
+            structure_tail: Vec::new(),
+            board: BeatBoard::default(),
+        }
     }
 
     /// A script from paragraphs (an empty list gets one empty Action).
     pub fn from_paras(paras: Vec<Para>) -> Result<Self, DocError> {
-        let mut s = Script { title: TitlePage::default(), paras, settings: Settings::default() };
+        let mut s =
+            Script { title: TitlePage::default(), paras, settings: Settings::default(), structure_tail: Vec::new(), board: BeatBoard::default() };
         s.normalize()?;
         Ok(s)
     }
@@ -447,6 +502,7 @@ impl Script {
         self.settings.page.header.clean();
         self.settings.page.footer.clean();
         self.settings.revision.normalize();
+        self.settings.voices.normalize();
         let top_level = (self.settings.revision.sets.len().saturating_sub(1)).min(usize::from(u8::MAX)) as u8;
         let caps = Element::ALL.map(|e| self.upper(e));
         for p in &mut self.paras {
@@ -482,6 +538,11 @@ impl Script {
             }
         }
         self.normalize_production();
+        self.fix_structure();
+        self.normalize_boards();
+        if self.paras.iter().any(|p| !p.changes.is_empty()) {
+            track::fix_all(self);
+        }
         Ok(())
     }
 
@@ -624,7 +685,14 @@ impl Script {
         }
         let end = b.para.min(self.paras.len().saturating_sub(1));
         if a.para < end {
-            self.paras.drain(a.para + 1..=end);
+            // Structure points of removed paragraphs stay: they move to the next heading.
+            let gone: Vec<Para> = self.paras.drain(a.para + 1..=end).collect();
+            let kept: Vec<StructurePoint> = gone.iter().flat_map(|p| p.structure.iter().cloned()).collect();
+            if let Some(p) = self.paras.get_mut(a.para) {
+                p.structure.extend(kept);
+            }
+            self.inherit_anchors(a.para, &gone);
+            self.fix_structure();
         }
         a
     }
@@ -643,9 +711,17 @@ impl Script {
         let tail = p.text.split_off(pos.off);
         p.spans = style::compress(&p.text, &st);
         let moved = p.marks_split(pos.off);
+        // Splitting at the very start moves the whole text down: its structure points go too.
+        // So do its bookmark and beat links, which belong to the text.
+        let whole = pos.off == 0 && !tail.is_empty();
+        let structure = if whole { std::mem::take(&mut p.structure) } else { Vec::new() };
+        let (bookmark, beats) = if whole { (p.bookmark.take(), std::mem::take(&mut p.beats)) } else { (None, Vec::new()) };
         let mut next = Para::new(element, "");
         next.set_text_styled(&tail, &tail_st, caps);
         next.marks_append(moved);
+        next.structure = structure;
+        next.bookmark = bookmark;
+        next.beats = beats;
         self.paras.insert(pos.para + 1, next);
         Ok(Pos::new(pos.para + 1, 0))
     }
@@ -665,6 +741,9 @@ impl Script {
         }
         if element != Element::Character {
             p.dual = false;
+        }
+        if element != Element::SceneHeading && !p.structure.is_empty() {
+            self.fix_structure();
         }
         Ok(())
     }
@@ -699,23 +778,25 @@ impl Script {
     /// Move scene `from` (heading through the paragraph before the next heading) so it becomes
     /// scene `to`. Returns the new paragraph index of the moved heading.
     pub fn move_scene(&mut self, from: usize, to: usize) -> Result<usize, DocError> {
-        let scenes = self.scenes();
-        let src = scenes.get(from).ok_or(DocError::NoScene(from))?;
-        if to >= scenes.len() {
+        let n = self.scenes().len();
+        if from >= n {
+            return Err(DocError::NoScene(from));
+        }
+        if to >= n {
             return Err(DocError::NoScene(to));
         }
-        if from == to {
-            return Ok(src.para);
+        if from != to {
+            // Structure points stay where they are: the scene joins the group of the scene it
+            // lands next to.
+            let order = self.outline();
+            let src = order.iter().position(|i| *i == OutlineItem::Scene(from)).ok_or(DocError::NoScene(from))?;
+            let mut rest = order.clone();
+            rest.remove(src);
+            let at = rest.iter().position(|i| *i == OutlineItem::Scene(to)).ok_or(DocError::NoScene(to))?;
+            let dest = if to < from { at } else { at + 1 };
+            self.move_outline_item(src, dest.min(order.len().saturating_sub(1)));
         }
-        let block: Vec<Para> = self.paras.drain(src.para..src.end).collect();
-        let n = block.len();
-        // Where the target scene starts once the block is gone.
-        let at = if to < from { scenes.get(to).map_or(0, |s| s.para) } else { scenes.get(to).map_or(self.paras.len(), |s| s.end.saturating_sub(n)) };
-        let at = at.min(self.paras.len());
-        for (i, p) in block.into_iter().enumerate() {
-            self.paras.insert(at + i, p);
-        }
-        Ok(at)
+        self.scenes().get(to).map(|s| s.para).ok_or(DocError::NoScene(to))
     }
 
     /// Character names in order of first appearance (cue extensions removed).
@@ -753,11 +834,12 @@ impl Script {
 
     /// Renumber every scene 1, 2, 3…
     pub fn number_scenes(&mut self) {
+        let letters = self.settings.scene_letters;
         let mut n = 0usize;
         for p in &mut self.paras {
             if p.element == Element::SceneHeading {
                 n += 1;
-                p.scene_number = Some(n.to_string());
+                p.scene_number = Some(if letters { template::scene_letter(n) } else { n.to_string() });
             }
         }
     }
@@ -810,4 +892,9 @@ pub fn heading_parts(h: &str) -> (String, String, String) {
 }
 
 #[cfg(test)]
+mod structure_tests;
+#[cfg(test)]
 mod tests;
+#[cfg(test)]
+#[path = "v04_tests.rs"]
+mod v04_tests;

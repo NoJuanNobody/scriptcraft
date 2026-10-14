@@ -1,0 +1,223 @@
+{"badge": "ScriptCraft v0.4 · PR #47"}
+{"speaker": "silent"}
+{"title": "ScriptCraft v0.4: structure and collaboration (PR #47)", "sub": "Every frame is the real app, driven through its own menus, keys and clicks"}
+// Keep today's sample as the "older draft" for the compare segment.
+{"cmd": "file.exportFdx", "params": {"path": "@WORK@/night-signal-draft1.fdx"}}
+{"hold": 2.5}
+// #26 Templates
+{"title": "#26  New from Template: TV sitcom / multi-camera", "sub": "File > New from Template. Our own templates: single-camera, multi-camera, stage play"}
+{"point": {"label": "File"}, "secs": 0.7}
+{"click": "left"}
+{"point": {"label": "New from Template"}, "secs": 0.6}
+{"hold": 0.5}
+{"point": {"label": "New from Template", "dx": 100}, "secs": 0.4}
+{"point": {"label": "TV Sitcom / Multi-Camera"}, "secs": 0.5}
+{"hold": 0.6}
+{"click": "left"}
+{"hold": 1.2}
+{"title": "#26  Multi-camera format", "sub": "Scene letters, action in capitals, double-spaced dialogue, every act and scene on a new page"}
+{"type": "INT. BENSON KITCHEN - DAY"}
+{"key": "Enter"}
+{"type": "Ray stirs a huge pot of sauce."}
+{"key": "Enter"}
+{"cmd": "element.set", "params": {"element": "character"}}
+{"type": "RAY"}
+{"key": "Enter"}
+{"type": "Who ate the meatballs? I counted them. There were forty."}
+{"hold": 2.0}
+{"cmd": "ui.zoomOut"}
+{"cmd": "ui.zoomOut"}
+{"cmd": "ui.zoomOut"}
+{"hold": 2.2}
+{"cmd": "ui.zoomReset"}
+// Back to the sample script.
+{"cmd": "file.sample"}
+{"hold": 0.6}
+// #21 Outline
+{"title": "#21  Structure points: acts and sequences", "sub": "Kept on the scene headings; they survive scene moves, undo, FDX and Fountain"}
+{"cmd": "structure.add", "params": {"kind": "act", "title": "Act One", "summary": "The storm and the mayday.", "before": 0, "color": "blue"}}
+{"cmd": "structure.add", "params": {"kind": "sequence", "title": "The Mayday", "summary": "A voice breaks through the static.", "before": 1, "color": "yellow"}}
+{"cmd": "structure.add", "params": {"kind": "act", "title": "Act Two", "summary": "Bringing the Marguerite home.", "before": 2, "color": "green"}}
+{"cmd": "ui.toggleNavigator", "params": {"on": false}}
+{"point": {"label": "View"}, "secs": 0.7}
+{"click": "left"}
+{"point": {"label": "Outline"}, "secs": 0.6}
+{"hold": 0.4}
+{"click": "left"}
+{"hold": 1.6}
+{"title": "#21  Outline view: drag a scene under another act", "sub": "Drag a row by its grip; the wheelhouse scene moves from Act Two into Act One"}
+{"hold": 0.8}
+{"point": {"xy": [65, 421]}, "secs": 0.8}
+{"drag": {"xy": [80, 240]}, "secs": 1.2}
+{"hold": 2.0}
+// #23 Story map
+{"title": "#23  Story map: scenes and acts against page count", "sub": "View > Story Map docks a strip at the bottom; click a block to go there"}
+{"cmd": "ui.toggleStoryMap", "params": {"on": true}}
+{"hold": 1.6}
+{"title": ""}
+{"hold": 2.4}
+// #28 Split screen
+{"title": "#28  Split screen: outline beside the page", "sub": "View > Split Screen > Side by Side. Each pane has its own view and scroll; one caret"}
+{"point": {"label": "View"}, "secs": 0.7}
+{"click": "left"}
+{"point": {"label": "Split Screen"}, "secs": 0.6}
+{"hold": 0.5}
+{"point": {"label": "Split Screen", "dx": 100}, "secs": 0.4}
+{"point": {"label": "Side by Side"}, "secs": 0.6}
+{"hold": 0.4}
+{"click": "left"}
+{"hold": 1.4}
+{"point": {"xy": [200, 478]}, "secs": 0.8}
+{"click": "left"}
+{"hold": 2.2}
+{"cmd": "ui.split", "params": {"mode": "off"}}
+{"cmd": "ui.toggleStoryMap", "params": {"on": false}}
+// #22 Beat board
+{"title": "#22  Beat board: free-form cards before they become scenes", "sub": "Text, colour and position; pan, zoom, drag; saved with the script"}
+{"cmd": "beat.add", "params": {"title": "Storm hits", "text": "Nell alone at the station as the barometer drops.", "color": "blue", "x": 40, "y": 40}}
+{"cmd": "beat.add", "params": {"title": "Mayday", "text": "The Marguerite calls in: dismasted, two aboard.", "color": "red", "x": 300, "y": 40}}
+{"cmd": "beat.add", "params": {"title": "The old way", "text": "Nell guides Teo by dead reckoning.", "color": "green", "x": 560, "y": 40}}
+{"point": {"label": "View"}, "secs": 0.7}
+{"click": "left"}
+{"point": {"label": "Beat Board"}, "secs": 0.6}
+{"hold": 0.4}
+{"click": "left"}
+{"hold": 1.2}
+{"point": {"label": "+ New Beat"}, "secs": 0.7}
+{"click": "left"}
+{"hold": 0.6}
+{"type": "Lighthouse goes dark"}
+{"hold": 0.6}
+{"point": {"label": "Add Beat"}, "secs": 0.6}
+{"click": "left"}
+{"hold": 1.4}
+// position the new card so it is easy to target
+{"cmd": "beat.move", "params": {"id": 4, "x": 300, "y": 240}}
+{"hold": 0.6}
+{"title": "#22  Link a beat to a scene, then jump to it", "sub": "Right-click a card: Link to Scene, Go to Scene, New Scene from Beat"}
+{"point": {"xy": [430, 405]}, "secs": 0.7}
+{"click": "right"}
+{"hold": 0.6}
+{"point": {"label": "Link to Scene"}, "secs": 0.6}
+{"hold": 0.6}
+{"point": {"label": "Link to Scene", "dx": 140}, "secs": 0.4}
+{"point": {"label": "4  INT. WEATHER"}, "secs": 0.6}
+{"click": "left"}
+{"hold": 1.4}
+{"point": {"xy": [430, 405]}, "secs": 0.5}
+{"click": "right"}
+{"hold": 0.4}
+{"point": {"label": "Go to Scene"}, "secs": 0.6}
+{"click": "left"}
+{"hold": 2.0}
+// #28 Bookmarks
+{"title": "#28  Bookmarks in the navigator", "sub": "Navigator Bookmarks tab (or Edit > Bookmarks); a bookmark follows its paragraph through edits and undo"}
+{"cmd": "ui.toggleNavigator", "params": {"on": true}}
+{"cmd": "ui.view.page"}
+{"point": {"label": "Bookmarks"}, "secs": 0.7}
+{"click": "left"}
+{"hold": 0.6}
+{"point": {"text": "The RADIO crackles"}, "secs": 0.7}
+{"cmd": "bookmark.add", "params": {"name": "The mayday"}}
+{"point": {"text": "Then we do it the old way"}, "secs": 0.7}
+{"point": {"label": "Add Bookmark"}, "secs": 0.6}
+{"click": "left"}
+{"hold": 0.8}
+{"cmd": "caret.docEnd"}
+{"hold": 1.0}
+{"point": {"xy": [80, 176]}, "secs": 0.7}
+{"click": "left"}
+{"hold": 1.8}
+// #24 Track changes
+{"title": "#24  Track changes, per author", "sub": "Tools > Track Changes. Insertions are underlined in the author's colour"}
+{"cmd": "track.setAuthor", "params": {"name": "Sam"}}
+{"point": {"label": "Tools"}, "secs": 0.7}
+{"click": "left"}
+{"point": {"label": "Track Changes"}, "secs": 0.6}
+{"hold": 0.5}
+{"point": {"label": "Track Changes", "dx": 120}, "secs": 0.6}
+{"click": "left"}
+{"point": {"text": "She taps the glass"}, "secs": 0.8}
+{"click": "left"}
+{"key": "End"}
+{"type": " It doesn't help."}
+{"hold": 0.8}
+{"point": {"text": "Don't you dare"}, "secs": 0.7}
+{"cmd": "select.text", "params": {"text": "Don't you dare."}}
+{"type": "Not tonight. Not on my watch."}
+{"hold": 1.2}
+{"title": "#24  Accept or reject: one change, all, or one author's", "sub": "Tools > Track Changes > Show Changes. Deleted text stays visible, struck through"}
+{"cmd": "ui.trackChanges"}
+{"hold": 2.0}
+{"point": {"label": "Accept"}, "secs": 0.7}
+{"click": "left"}
+{"hold": 2.0}
+{"cmd": "ui.trackChanges"}
+{"cmd": "track.toggle", "params": {"on": false}}
+// #24 Compare
+{"title": "#24  Compare two drafts by element", "sub": "Tools > Compare with Draft: changed, moved, added and removed paragraphs, with a word diff"}
+{"cmd": "compare.with", "params": {"path": "@WORK@/night-signal-draft1.fdx"}}
+{"cmd": "ui.compareWindow"}
+{"hold": 3.2}
+{"cmd": "ui.compareWindow"}
+// #27 Read aloud
+{"title": "#27  Read aloud with a voice per character", "sub": "Offline system voices (say, System.Speech, espeak-ng); voices are saved with the script"}
+{"cmd": "scene.goto", "params": {"index": 1}}
+{"point": {"label": "Tools"}, "secs": 0.7}
+{"click": "left"}
+{"point": {"label": "Read Aloud"}, "secs": 0.6}
+{"hold": 0.4}
+{"point": {"label": "Read Aloud…"}, "secs": 0.6}
+{"click": "left"}
+{"hold": 1.6}
+{"point": {"text": "Marguerite, this is Gull Point"}, "secs": 0.7}
+{"point": {"label": "Read from Caret"}, "secs": 0.7}
+{"click": "left"}
+{"hold": 4.0}
+{"point": {"label": "Stop"}, "secs": 0.5}
+{"click": "left"}
+{"cmd": "ui.readAloud"}
+// #27 Dictation
+{"title": "#27  Dictation: spoken phrases become script", "sub": "Tools > Dictation. Feed it OS dictation, whisper.cpp, the browser, or an agent"}
+{"cmd": "caret.docEnd"}
+{"point": {"label": "Tools"}, "secs": 0.7}
+{"click": "left"}
+{"point": {"label": "Dictation…"}, "secs": 0.6}
+{"click": "left"}
+{"hold": 0.8}
+{"title": "#27  Dictation: \"new scene interior kitchen night\""}
+{"type": "new scene interior kitchen night"}
+{"point": {"label": "Insert"}, "secs": 0.6}
+{"click": "left"}
+{"hold": 0.8}
+{"title": "#27  Dictation: \"character Nell. Time for tea period\""}
+{"type": "character Nell. Time for tea period"}
+{"point": {"label": "Insert"}, "secs": 0.6}
+{"click": "left"}
+{"hold": 2.2}
+{"cmd": "ui.dictation"}
+// #25 Collaboration
+{"title": "#25  Real-time collaboration", "sub": "File > Collaborate: host on this computer or your network; others join with a key"}
+{"cmd": "collab.host", "params": {"name": "Sam"}}
+{"peer": "join", "name": "Ana"}
+{"hold": 1.0}
+{"point": {"text": "Cramped, warm"}, "secs": 0.7}
+{"peer": "cmd", "id": "select.text", "params": {"text": "A kettle ticks on a hot plate."}}
+{"peer": "cmd", "id": "caret.right"}
+{"hold": 0.6}
+{"title": "#25  Ana's caret and typing appear live", "sub": "Names, colours and carets; edits merge on the host; undo only removes your own"}
+{"peer": "type", "text": " The window rattles in its frame."}
+{"hold": 1.0}
+{"point": {"text": "A squat concrete hut"}, "secs": 0.7}
+{"click": "left"}
+{"key": "Home"}
+{"type": "Lightning. "}
+{"hold": 2.0}
+{"cmd": "ui.collaborate"}
+{"hold": 2.0}
+{"cmd": "ui.collaborate"}
+{"peer": "leave"}
+{"cmd": "collab.leave"}
+// End card
+{"title": "PR #47 · v0.4: #21 #22 #23 #24 #25 #26 #27 #28", "sub": "cargo xtask ci: all green · every frame above is the real app"}
+{"hold": 3.0}

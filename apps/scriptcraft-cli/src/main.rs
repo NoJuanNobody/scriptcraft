@@ -4,6 +4,8 @@
 //! scriptcraft-cli convert in.fountain out.pdf        # .fountain/.fdx → .pdf/.fdx/.fountain
 //! scriptcraft-cli commands [--json]                  # every command id
 //! scriptcraft-cli run [--open f | --sample] --cmd 'text.insert={"text":"Hi"}' … [--save out.fdx]
+//! scriptcraft-cli new tv-multi-camera pilot.fdx       # a new script from a template
+//! scriptcraft-cli compare draft1.fdx draft2.fdx       # what changed between two drafts
 //! scriptcraft-cli report script.fdx                  # character, scene and location reports
 //! scriptcraft-cli parity                             # Final Draft 13 parity checklist (Markdown)
 //! scriptcraft-cli mcp [--connect 127.0.0.1:7990]     # MCP server on stdio
@@ -21,6 +23,8 @@ USAGE:
   scriptcraft-cli convert <in.fountain|in.fdx> <out.pdf|out.fdx|out.fountain>
   scriptcraft-cli commands [--json]
   scriptcraft-cli run [--open <file> | --sample] [--cmd 'id' | --cmd 'id={json}']... [--save <file>]
+  scriptcraft-cli new <feature|tv-single-camera|tv-multi-camera|stage-play> <out.fdx|out.fountain|out.pdf>
+  scriptcraft-cli compare <older> <newer> [--json]
   scriptcraft-cli report <file>
   scriptcraft-cli parity
   scriptcraft-cli mcp [--connect 127.0.0.1:<port>]
@@ -33,6 +37,8 @@ fn main() -> ExitCode {
         Some("commands") => commands(args.iter().any(|a| a == "--json")),
         Some("run") => run(args.get(1..).unwrap_or(&[])),
         Some("report") => report(args.get(1..).unwrap_or(&[])),
+        Some("new") => new_from_template(args.get(1..).unwrap_or(&[])),
+        Some("compare") => compare(args.get(1..).unwrap_or(&[])),
         Some("parity") => {
             print!("{}", catalog::markdown());
             Ok(())
@@ -58,6 +64,31 @@ fn main() -> ExitCode {
 
 fn exec(s: &mut Session, id: &str, params: Value) -> Result<Value, String> {
     s.run(id, &params).map_err(|e| e.to_string())
+}
+
+fn new_from_template(a: &[String]) -> Result<(), String> {
+    let (Some(t), Some(output)) = (a.first(), a.get(1)) else { return Err(format!("new needs <template> <out>\n\n{USAGE}")) };
+    let mut s = Session::new(scriptcraft_doc::Script::new());
+    let r = exec(&mut s, "template.new", json!({"template": t}))?;
+    let ext = std::path::Path::new(output).extension().and_then(|e| e.to_str()).unwrap_or("").to_ascii_lowercase();
+    let id = if ext == "pdf" { "file.exportPdf" } else { "file.saveAs" };
+    exec(&mut s, id, json!({"path": output}))?;
+    println!("{output}: new {} script", r["template"].as_str().unwrap_or(t));
+    Ok(())
+}
+
+fn compare(a: &[String]) -> Result<(), String> {
+    let files: Vec<&String> = a.iter().filter(|x| !x.starts_with("--")).collect();
+    let (Some(older), Some(newer)) = (files.first(), files.get(1)) else { return Err(format!("compare needs <older> <newer>\n\n{USAGE}")) };
+    let old = scriptcraft_engine::io::read(std::path::Path::new(older.as_str()))?;
+    let new = scriptcraft_engine::io::read(std::path::Path::new(newer.as_str()))?;
+    let r = scriptcraft_engine::compare::compare(&old, &new);
+    if a.iter().any(|x| x == "--json") {
+        println!("{}", serde_json::to_string_pretty(&r).map_err(|e| e.to_string())?);
+    } else {
+        print!("{}", scriptcraft_engine::compare::text_report(&r));
+    }
+    Ok(())
 }
 
 fn convert(a: &[String]) -> Result<(), String> {

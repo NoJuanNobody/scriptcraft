@@ -285,3 +285,41 @@ fn misspellings_update_as_you_type() {
     h.state_mut().execute("text.insert", json!({"text": "x"})).unwrap();
     assert!(h.state().session.revision() > rev);
 }
+
+#[test]
+fn outline_view_drags_a_scene_under_an_act() {
+    let mut app = ScriptApp::new(Session::sample());
+    app.dialogs = false;
+    let mut h = harness(app);
+    step(&mut h, 3);
+    h.state_mut().execute("structure.add", json!({"title": "One", "before": 0})).unwrap();
+    h.state_mut().execute("structure.add", json!({"title": "Two", "before": 2})).unwrap();
+    h.state_mut().execute("ui.view.outline", json!({})).unwrap();
+    h.state_mut().execute("ui.toggleStoryMap", json!({})).unwrap();
+    step(&mut h, 4);
+    let rows: Vec<egui::Rect> = h.ctx.data(|d| d.get_temp(scriptcraft_ui_egui::outline::rows_id())).unwrap_or_default();
+    assert_eq!(rows.len(), 6, "[One] 0 1 [Two] 2 3");
+    let last_heading = h.state().session.script.scenes()[3].heading.clone();
+    // Grab the last scene's grip (it is under act two: one level in) and drop it just below [One].
+    let grip = egui::pos2(rows[5].left() + 26.0 + 11.0, rows[5].center().y);
+    let drop = egui::pos2(grip.x, rows[1].top() + 4.0);
+    let ev = |e: egui::Event, h: &mut egui_kittest::Harness<'static, ScriptApp>| h.state_mut().synthetic.push(e);
+    ev(egui::Event::PointerMoved(grip), &mut h);
+    step(&mut h, 1);
+    ev(egui::Event::PointerButton { pos: grip, button: egui::PointerButton::Primary, pressed: true, modifiers: Default::default() }, &mut h);
+    step(&mut h, 1);
+    for k in 1..=8 {
+        ev(egui::Event::PointerMoved(grip + (drop - grip) * (k as f32 / 8.0)), &mut h);
+        step(&mut h, 1);
+    }
+    ev(egui::Event::PointerButton { pos: drop, button: egui::PointerButton::Primary, pressed: false, modifiers: Default::default() }, &mut h);
+    step(&mut h, 3);
+    let s = &h.state().session.script;
+    assert_eq!(s.scenes()[0].heading, last_heading);
+    // Act one opens the moved scene; act two still opens scene 2's old neighbour.
+    assert_eq!(s.paras[s.scenes()[0].para].structure.first().map(|p| p.title.as_str()), Some("One"));
+    assert_eq!(s.structure_count(), 2);
+    // The story map and navigator draw with structure.
+    h.state_mut().execute("ui.view.page", json!({})).unwrap();
+    step(&mut h, 2);
+}

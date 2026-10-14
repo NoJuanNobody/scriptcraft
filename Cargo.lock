@@ -2904,6 +2904,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "scriptcraft-collab"
+version = "0.1.0"
+dependencies = [
+ "getrandom 0.3.4",
+ "scriptcraft-doc",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "scriptcraft-control-key"
 version = "0.1.0"
 dependencies = [
@@ -2923,6 +2933,7 @@ dependencies = [
 name = "scriptcraft-engine"
 version = "0.1.0"
 dependencies = [
+ "scriptcraft-collab",
  "scriptcraft-doc",
  "scriptcraft-fdx",
  "scriptcraft-fountain",
@@ -2953,6 +2964,8 @@ name = "scriptcraft-fountain"
 version = "0.1.0"
 dependencies = [
  "scriptcraft-doc",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -3006,6 +3019,7 @@ dependencies = [
  "egui_kittest",
  "image",
  "rfd",
+ "scriptcraft-collab",
  "scriptcraft-control-key",
  "scriptcraft-doc",
  "scriptcraft-engine",

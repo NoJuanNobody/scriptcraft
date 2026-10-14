@@ -4,7 +4,7 @@ use egui::{RichText, Ui};
 use scriptcraft_engine::reports;
 use serde_json::json;
 
-use crate::{ScriptApp, View};
+use crate::ScriptApp;
 
 pub fn show(app: &mut ScriptApp, ui: &mut Ui) {
     let t = app.tokens();
@@ -85,6 +85,6 @@ pub fn show(app: &mut ScriptApp, ui: &mut Ui) {
     });
     if let Some(i) = goto {
         app.run("scene.goto", json!({"index": i}));
-        app.view = View::Page;
+        crate::split::show_page(app);
     }
 }

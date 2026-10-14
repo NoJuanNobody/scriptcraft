@@ -141,3 +141,47 @@ fn production_locks_round_trip() {
     assert_eq!(back.paras[0].page_lock, vec!["x".to_string(), "1-2".to_string()]);
     assert!(!back.paras[0].omitted, "only headings are omitted");
 }
+
+#[test]
+fn template_formats_round_trip() {
+    let (s, _) = scriptcraft_doc::Template::TvMultiCamera.script(None, None);
+    let xml = write(&s);
+    assert!(xml.contains("Spacing=\"2\"") && xml.contains("StartsNewPage=\"Yes\"") && xml.contains("<ScriptCraftFormat SceneLetters=\"Yes\"/>"));
+    let back = parse(&xml).unwrap();
+    assert_eq!(back.settings.elements, s.settings.elements);
+    assert!(back.settings.scene_letters);
+    assert_eq!(back.paras, s.paras);
+}
+
+#[test]
+fn tracked_changes_round_trip() {
+    use scriptcraft_doc::Pos;
+    use scriptcraft_doc::track::{self, ChangeKind};
+    let old = Script::from_paras(vec![
+        Para::new(Element::Action, "Café one & two."),
+        Para::new(Element::Character, "ANA"),
+        Para::new(Element::Dialogue, "Hi \"there\"."),
+    ])
+    .unwrap();
+    let mut new = old.clone();
+    new.insert_text(Pos::new(0, 6), "<big> ").unwrap();
+    new.delete_range(Pos::new(0, 15), Pos::new(2, 0));
+    new.set_element(0, Element::General).unwrap();
+    track::follow(&old, &mut new, Some("Jo \"J\""));
+    new.settings.track.on = true;
+    let kinds: Vec<ChangeKind> = track::list(&new).iter().map(|c| c.kind).collect();
+    assert!(kinds.contains(&ChangeKind::Insert) && kinds.contains(&ChangeKind::Delete) && kinds.contains(&ChangeKind::Element), "{kinds:?}");
+    let xml = write(&new);
+    assert!(xml.contains("<ScriptCraftTrackChanges On=\"Yes\"/>") && xml.contains("&#10;"), "{xml}");
+    let back = parse(&xml).unwrap();
+    assert!(back.settings.track.on);
+    assert_eq!(back.paras, new.paras);
+    // Rejecting everything in the reopened file gives the original back.
+    let mut r = back;
+    track::resolve_all(&mut r, false, None);
+    assert_eq!(r.paras, old.paras);
+    // Hostile values.
+    let x = "<FinalDraft><Content><Paragraph Type=\"Action\"><Text>abc</Text><ScriptCraftChange Kind=\"Insert\" Range=\"2,999\" Author=\"\"/><ScriptCraftChange Kind=\"Delete\" At=\"99\" Text=\"a&#10;b\" Elements=\"Nope\"/><ScriptCraftChange Kind=\"Wat\"/><ScriptCraftChange Kind=\"Element\" From=\"x\"/></Paragraph></Content></FinalDraft>";
+    let back = parse(x).unwrap();
+    assert_eq!(track::list(&back).len(), 2);
+}

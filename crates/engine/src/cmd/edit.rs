@@ -64,6 +64,11 @@ fn clip(s: &mut Session) -> Value {
     let paras = fragment(s, a, b);
     let mut frag = Script::from_paras(paras.clone()).unwrap_or_default();
     frag.settings = s.script.settings.clone();
+    // Bookmarks and beat links stay in this script; the clipboard text carries none.
+    for p in &mut frag.paras {
+        p.bookmark = None;
+        p.beats.clear();
+    }
     let text = scriptcraft_fountain::write(&frag);
     let n = paras.len();
     s.clip = Some((text.clone(), paras));
@@ -101,7 +106,14 @@ pub fn paste_paras(s: &mut Session, paras: &[Para]) -> CmdResult {
     let el = s.element();
     let tail = s.script.split(at, el)?;
     for (i, p) in paras.iter().enumerate() {
-        s.script.paras.insert(tail.para + i, p.clone());
+        let mut p = p.clone();
+        // A pasted copy doesn't take a bookmark or beat link the script already has (a cut and
+        // paste, which moves them, keeps them).
+        if p.bookmark.as_deref().is_some_and(|b| s.script.bookmark_para(b).is_some()) {
+            p.bookmark = None;
+        }
+        p.beats.retain(|id| s.script.beat_para(*id).is_none());
+        s.script.paras.insert(tail.para + i, p);
     }
     let mut last = tail.para + paras.len() - 1;
     if s.script.para(last + 1).is_some_and(|p| p.text.is_empty()) {

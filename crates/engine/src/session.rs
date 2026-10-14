@@ -75,6 +75,10 @@ pub struct Session {
     /// Counts changes to the script (anything that drops the layout cache), for caches keyed
     /// on the script's state.
     revision: u64,
+    /// Real-time collaboration (off unless hosting or joined).
+    pub collab: crate::collab::Collab,
+    /// Who is writing: the author of tracked changes (the app sets it from its preferences).
+    pub author: String,
 }
 
 impl Session {
@@ -99,6 +103,8 @@ impl Session {
             speed: false,
             speed_layout: None,
             revision: 0,
+            collab: Default::default(),
+            author: String::new(),
         };
         let _ = s.script.normalize();
         s
@@ -181,6 +187,47 @@ impl Session {
         self.history.last().map(|s| s.label)
     }
 
+    /// Rewrite every undo and redo snapshot (collaboration rebases them onto remote changes) and
+    /// keep at most `cap` undo steps.
+    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
+    pub(crate) fn rebase_history(&mut self, cap: usize, f: &mut dyn FnMut(&Script) -> Script) {
+        if self.history.len() > cap {
+            let drop = self.history.len() - cap;
+            self.history.drain(..drop);
+        }
+        for snap in self.history.iter_mut().chain(self.redo.iter_mut()) {
+            snap.script = f(&snap.script);
+            snap.sel.anchor = snap.script.clamp(snap.sel.anchor);
+            snap.sel.focus = snap.script.clamp(snap.sel.focus);
+        }
+        self.typing_open = false;
+    }
+
+    /// Undo steps recorded so far.
+    pub(crate) fn history_len(&self) -> usize {
+        self.history.len()
+    }
+
+    /// Merge the undo steps recorded since `from` into one (the oldest), named `label`.
+    pub(crate) fn squash_history(&mut self, from: usize, label: &'static str) {
+        if self.history.len() > from {
+            self.history.truncate(from + 1);
+            if let Some(s) = self.history.last_mut() {
+                s.label = label;
+            }
+        }
+    }
+
+    /// Go back to the state before the steps recorded since `from`, dropping them (no redo).
+    pub(crate) fn rollback_history(&mut self, from: usize) {
+        if let Some(snap) = self.history.get(from).cloned() {
+            self.history.truncate(from);
+            self.script = snap.script;
+            self.sel = snap.sel;
+            self.after_change();
+        }
+    }
+
     pub fn undo(&mut self) -> bool {
         let Some(snap) = self.history.pop() else { return false };
         let cur = Snapshot { script: std::mem::replace(&mut self.script, snap.script), sel: self.sel, label: snap.label };
@@ -215,6 +262,8 @@ impl Session {
             return Err(CmdError::Disabled(format!("{id}: {why}")));
         }
         let history_cmd = matches!(id, "edit.undo" | "edit.redo");
+        // Dictation runs other commands and merges their undo steps into one itself.
+        let self_managed = id == "dictation.insert";
         let typing = id == "text.insert";
         // Consecutive typing is one undo step; anything else in between ends it.
         let coalesce = typing && self.typing_open;
@@ -230,7 +279,7 @@ impl Session {
         if id.starts_with("text.") || id.starts_with("element.") {
             self.suggest_dismissed = false;
         }
-        let before = (spec.mutates && !history_cmd).then(|| (self.script.clone(), self.sel));
+        let before = (spec.mutates && !history_cmd && !self_managed).then(|| (self.script.clone(), self.sel));
         let result = catch_unwind(AssertUnwindSafe(|| (spec.run)(self, params)));
         let result = match result {
             Ok(r) => r,
@@ -238,7 +287,7 @@ impl Session {
         };
         self.clamp_selection();
         let Some((old, old_sel)) = before else {
-            if history_cmd {
+            if history_cmd || self_managed {
                 self.typing_open = false;
             }
             return result;
@@ -247,6 +296,12 @@ impl Session {
             Ok(_) if self.script != old => {
                 // Revision marks follow the edit; in revision mode the edit is marked.
                 scriptcraft_doc::revision::mark_changes(&old, &mut self.script);
+                // Tracked changes follow the edit; with track changes on, the edit is recorded
+                // (track.* commands resolve changes themselves).
+                if !id.starts_with("track.") {
+                    let author = self.script.settings.track.on.then(|| self.author.clone());
+                    scriptcraft_doc::track::follow(&old, &mut self.script, author.as_deref());
+                }
                 let _ = self.script.normalize();
                 self.clamp_selection();
                 if !coalesce {

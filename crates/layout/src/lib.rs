@@ -408,7 +408,27 @@ fn dual_item(script: &Script, para: usize, col: (f32, f32)) -> Option<Item> {
 
 fn item(script: &Script, para: usize) -> Option<Item> {
     let p = script.paras.get(para)?;
-    Some(Item { para, el: p.element, lines: wrap(&p.text, width_in(script, p.element)), suffix: String::new(), cols: None })
+    let spacing = usize::from(script.settings.elements.get(p.element).spacing).max(1);
+    Some(Item { para, el: p.element, lines: spaced(wrap(&p.text, width_in(script, p.element)), spacing), suffix: String::new(), cols: None })
+}
+
+/// A blank row between the lines of a double-spaced paragraph (no text, no caret).
+const BLANK: (usize, usize) = (usize::MAX, usize::MAX);
+
+/// Lines with `spacing - 1` blank rows between them.
+fn spaced(lines: Vec<(usize, usize)>, spacing: usize) -> Vec<(usize, usize)> {
+    if spacing <= 1 {
+        return lines;
+    }
+    let n = lines.len();
+    let mut out = Vec::with_capacity(n * spacing);
+    for (k, l) in lines.into_iter().enumerate() {
+        out.push(l);
+        if k + 1 < n {
+            out.extend(std::iter::repeat_n(BLANK, spacing - 1));
+        }
+    }
+    out
 }
 
 fn block_end(script: &Script, i: usize) -> usize {
@@ -512,6 +532,10 @@ impl Builder<'_> {
 
     fn emit(&mut self, it: &Item, k: usize, suffix: bool) {
         let Some(&(start, end)) = it.lines.get(k) else { return };
+        if (start, end) == BLANK {
+            self.row += 1;
+            return;
+        }
         let para = self.script.paras.get(it.para);
         let text = para.and_then(|p| p.text.get(start..end)).unwrap_or("").to_string();
         let spans: Vec<Span> = para
@@ -783,6 +807,9 @@ pub fn layout_with(script: &Script, mode: Mode) -> Layout {
                 b.new_page();
             }
             segments.push((b.pages.len(), labels));
+        } else if !speed && !b.cur.is_empty() && script.settings.elements.get(u.first_el()).new_page {
+            // Elements set to start a new page (multi-camera scenes, act breaks).
+            b.new_page();
         }
         match u {
             Unit::Single(it) => {

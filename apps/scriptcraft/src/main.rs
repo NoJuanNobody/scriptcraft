@@ -11,6 +11,7 @@
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 mod control_server;
+mod tts;
 
 use scriptcraft_engine::Session;
 use scriptcraft_ui_egui::ScriptApp;
@@ -167,6 +168,8 @@ fn main() -> eframe::Result<()> {
             let folders = scriptcraft_control_key::folders(config_dir);
             let data = folders.data.clone();
             app = app.with_folders(folders);
+            // Read aloud with the system's voices (and whisper.cpp dictation when installed).
+            app.speaker = tts::detect().map(|s| Box::new(s) as Box<dyn scriptcraft_ui_egui::speech::SpeechHost>);
             let mut key_file = None;
             if let Some(port) = control_port
                 && let Some((rx, kf)) = control_server::start(port, cc.egui_ctx.clone(), data.as_deref())

@@ -6,14 +6,22 @@
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 pub mod annotations;
+pub mod beatboard;
+pub mod bookmarks;
 mod canvas;
 pub mod cards;
 mod chrome;
+pub mod collab_ui;
 pub mod control;
+pub mod drafts;
 pub mod icons;
+pub mod outline;
 pub mod persist;
 pub mod production;
 mod reports;
+pub mod speech;
+pub mod split;
+pub mod storymap;
 pub mod theme;
 
 use std::sync::mpsc::Receiver;
@@ -41,6 +49,10 @@ pub enum View {
     Page,
     Cards,
     Reports,
+    /// Acts, sequences and sections with their scenes.
+    Outline,
+    /// Free canvas of beat cards.
+    BeatBoard,
 }
 
 impl View {
@@ -49,6 +61,18 @@ impl View {
             View::Page => "page",
             View::Cards => "cards",
             View::Reports => "reports",
+            View::Outline => "outline",
+            View::BeatBoard => "beats",
+        }
+    }
+    pub fn parse(s: &str) -> Option<View> {
+        match s.trim() {
+            "page" => Some(View::Page),
+            "cards" => Some(View::Cards),
+            "reports" => Some(View::Reports),
+            "beats" | "beatBoard" => Some(View::BeatBoard),
+            "outline" => Some(View::Outline),
+            _ => None,
         }
     }
 }
@@ -58,6 +82,8 @@ pub const UI_COMMANDS: &[(&str, &str, &str, &str)] = &[
     ("ui.view.page", "Page View", "View", "Mod+Alt+1"),
     ("ui.view.cards", "Index Cards", "View", "Mod+Alt+2"),
     ("ui.view.reports", "Reports", "View", "Mod+Alt+3"),
+    ("ui.view.outline", "Outline", "View", "Mod+Alt+5"),
+    ("ui.toggleStoryMap", "Story Map", "View", "Mod+Alt+M"),
     ("ui.toggleNavigator", "Navigator", "View", "Mod+Alt+N"),
     ("ui.theme.toggle", "Dark Mode", "View", "Mod+Alt+D"),
     ("ui.theme.dark", "Dark Theme", "View", ""),
@@ -67,6 +93,12 @@ pub const UI_COMMANDS: &[(&str, &str, &str, &str)] = &[
     ("ui.zoomReset", "Actual Size", "View", "Mod+0"),
     ("ui.zoomFit", "Fit Page Width", "View", "Mod+9"),
     ("ui.view.speed", "Speed View", "View", "Mod+Alt+4"),
+    ("ui.view.beats", "Beat Board", "View", "Mod+Alt+6"),
+    ("ui.split", "Split Screen", "View", "Mod+Alt+S"),
+    ("ui.splitView", "View in Pane", "View", ""),
+    ("ui.focusPane", "Focus Pane", "View", ""),
+    ("ui.editBeat", "Edit Beat…", "View", ""),
+    ("ui.bookmarks", "Show Bookmarks", "Edit", ""),
     ("ui.find", "Find…", "Edit", "Mod+F"),
     ("ui.toggleSpelling", "Check Spelling as You Type", "Tools", ""),
     ("ui.toggleEnterPicker", "Element List on Enter in an Empty Paragraph", "Format", ""),
@@ -92,6 +124,12 @@ pub const UI_COMMANDS: &[(&str, &str, &str, &str)] = &[
     ("ui.toggleTags", "Highlight Tagged Items", "Tools", ""),
     ("ui.breakdown", "Breakdown Report", "Tools", ""),
     ("ui.exportBreakdown", "Export Breakdown (CSV)…", "Tools", ""),
+    ("ui.collaborate", "Collaborate…", "File", ""),
+    ("ui.readAloud", "Read Aloud…", "Tools", ""),
+    ("ui.dictation", "Dictation…", "Tools", ""),
+    ("ui.trackChanges", "Show Changes…", "Tools › Track Changes", ""),
+    ("ui.compare", "Compare with Draft…", "Tools", ""),
+    ("ui.compareWindow", "Compare Drafts Window", "Tools", ""),
 ];
 
 /// The application state.
@@ -100,14 +138,22 @@ pub struct ScriptApp {
     pub view: View,
     pub dark: bool,
     pub navigator: bool,
-    /// Which navigator tab: 0 scenes, 1 characters, 2 notes.
+    /// Which navigator tab: 0 scenes, 1 characters, 2 notes, 3 bookmarks.
     pub nav_tab: usize,
+    /// Split screen: the second pane and which pane has focus.
+    pub split: split::Split,
+    /// The beat board's pan, zoom, selection and Beat window.
+    pub board: beatboard::BoardState,
+    /// A bookmark being renamed in the navigator: (paragraph, new name).
+    pub bookmark_edit: Option<(usize, String)>,
     /// The script note being written or edited.
     pub note_editor: Option<annotations::NoteEditor>,
     /// The Alternate Lines window is open.
     pub alt_window: bool,
     /// Highlight production-tagged items on the page.
     pub show_tags: bool,
+    /// Show the story map strip at the bottom of the window.
+    pub story_map: bool,
     /// The custom category field of the Tag Selection As menu.
     pub custom_category: String,
     pub canvas: canvas::CanvasState,
@@ -116,6 +162,10 @@ pub struct ScriptApp {
     pub element_dialog: bool,
     /// Page Setup, Print and Revisions dialogs.
     pub production: production::Dialogs,
+    /// The Collaborate window (real-time collaboration).
+    pub collab: collab_ui::CollabDialog,
+    /// Track Changes and Compare Drafts windows.
+    pub drafts: drafts::DraftsUi,
     /// The index card being dragged.
     pub card_drag: Option<usize>,
     /// Screen rectangles of the index cards last drawn (for demos and agents).
@@ -152,6 +202,13 @@ pub struct ScriptApp {
     pub host: Option<Box<dyn FileHost>>,
     /// Files delivered by the host or dropped on the window.
     pub inbox: Inbox,
+    /// Text to speech (and speech to text) from the host: system voices natively, the browser's
+    /// speech synthesis on the web; `None` in tests and headless runs.
+    pub speaker: Option<Box<dyn speech::SpeechHost>>,
+    /// Read Aloud: the window and what is being read.
+    pub read_aloud: speech::ReadAloud,
+    /// The Dictation window.
+    pub dictation: speech::Dictation,
     /// Buttons of the open modal dialog this frame (label, screen rect), for `ui.inspect`.
     pub dialog_buttons: Vec<(String, egui::Rect)>,
     /// An open/new waiting for the user to save or discard unsaved changes.
@@ -187,15 +244,21 @@ impl ScriptApp {
             dark: false,
             navigator: true,
             nav_tab: 0,
+            split: split::Split::default(),
+            board: beatboard::BoardState::default(),
+            bookmark_edit: None,
             note_editor: None,
             alt_window: false,
             show_tags: false,
+            story_map: false,
             custom_category: String::new(),
             canvas: canvas::CanvasState::default(),
             find: None,
             title_dialog: false,
             element_dialog: false,
             production: production::Dialogs::default(),
+            collab: collab_ui::CollabDialog::default(),
+            drafts: drafts::DraftsUi::default(),
             card_drag: None,
             card_rects: Vec::new(),
             tag_edit: None,
@@ -218,6 +281,9 @@ impl ScriptApp {
             dialog_buttons: Vec::new(),
             host: None,
             inbox: Inbox::default(),
+            speaker: None,
+            read_aloud: speech::ReadAloud::default(),
+            dictation: speech::Dictation::default(),
             status: None,
             control: None,
             synthetic: Vec::new(),
@@ -434,7 +500,7 @@ impl ScriptApp {
         // Replacing a script with unsaved changes asks first (interactive windows only).
         if self.dialogs
             && self.session.dirty
-            && matches!(id, "file.new" | "file.sample" | "file.open" | "ui.open" | "ui.openRecent")
+            && matches!(id, "file.new" | "file.sample" | "file.open" | "ui.open" | "ui.openRecent" | "template.new")
             && self.confirm_replace.is_none()
         {
             self.confirm_replace = Some((id.to_string(), params));
@@ -443,7 +509,18 @@ impl ScriptApp {
         if !id.starts_with("ui.") {
             self.before_save(id, &params);
         }
-        let r = if id.starts_with("ui.") { self.ui_command(id, &params) } else { self.session.run(id, &params) };
+        let r = if id.starts_with("ui.zoom") {
+            split::with_focused_canvas(self, |app| app.ui_command(id, &params))
+        } else if id.starts_with("ui.") {
+            self.ui_command(id, &params)
+        } else if let Some(r) = speech::command(self, id, &params) {
+            r
+        } else {
+            if matches!(id, "file.open" | "file.load" | "file.new" | "file.sample" | "file.revert") {
+                speech::stop(self);
+            }
+            self.session.run(id, &params)
+        };
         match &r {
             Ok(_) => {
                 self.after_file(id);
@@ -453,8 +530,8 @@ impl ScriptApp {
                 {
                     self.status = Some((format!("Could not save the dictionary: {e}"), 0.0));
                 }
-                if !id.starts_with("ui.") && !matches!(id, "document.inspect" | "document.stats" | "smarttype.suggest") {
-                    self.canvas.scroll_to_caret = true;
+                if !id.starts_with("ui.") && !matches!(id, "document.inspect" | "document.stats" | "smarttype.suggest") && !id.starts_with("beat.") {
+                    split::follow_caret(self);
                 }
                 if !self.session.status.is_empty() {
                     let s = std::mem::take(&mut self.session.status);
@@ -475,11 +552,80 @@ impl ScriptApp {
         let path = p.get("path").and_then(Value::as_str).map(str::to_string);
         match id {
             "ui.view.page" => {
-                self.view = View::Page;
+                split::set_view(self, View::Page);
                 self.session.speed = false;
             }
-            "ui.view.cards" => self.view = View::Cards,
-            "ui.view.reports" => self.view = View::Reports,
+            "ui.view.cards" => split::set_view(self, View::Cards),
+            "ui.view.reports" => split::set_view(self, View::Reports),
+            "ui.view.beats" => split::set_view(self, View::BeatBoard),
+            "ui.view.outline" => split::set_view(self, View::Outline),
+            "ui.toggleStoryMap" => self.story_map = p.get("on").and_then(Value::as_bool).unwrap_or(!self.story_map),
+            "ui.split" => {
+                let mode = match p.get("mode").and_then(Value::as_str) {
+                    Some(m) => {
+                        split::SplitMode::parse(m).ok_or_else(|| CmdError::Params(format!("unknown split mode `{m}` (off, side, stacked)")))?
+                    }
+                    None if self.split.on() => split::SplitMode::Off,
+                    None => split::SplitMode::SideBySide,
+                };
+                if mode != split::SplitMode::Off && !self.split.on() {
+                    // The second pane starts on the other main view, scrolled to the caret.
+                    self.split.second = if self.view == View::Page { View::Cards } else { View::Page };
+                    self.split.canvas.zoom = self.canvas.zoom;
+                    self.split.canvas.scroll_to_caret = true;
+                    self.split.focus = 0;
+                }
+                if mode == split::SplitMode::Off {
+                    self.split.focus = 0;
+                }
+                self.split.mode = mode;
+            }
+            "ui.splitView" => {
+                let v = p
+                    .get("view")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| CmdError::Params("`view` (page, cards, reports, outline, beats) is required".into()))?;
+                let v = View::parse(v).ok_or_else(|| CmdError::Params(format!("unknown view `{v}`")))?;
+                match p.get("pane").and_then(Value::as_u64) {
+                    Some(0) => self.view = v,
+                    Some(1) => {
+                        if !self.split.on() {
+                            self.split.mode = split::SplitMode::SideBySide;
+                        }
+                        self.split.second = v;
+                    }
+                    Some(n) => return Err(CmdError::Params(format!("no pane {n} (0 or 1)"))),
+                    None => split::set_view(self, v),
+                }
+                if v == View::Page {
+                    self.session.speed = false;
+                }
+            }
+            "ui.focusPane" => {
+                let n = p.get("pane").and_then(Value::as_u64).ok_or_else(|| CmdError::Params("`pane` (0 or 1) is required".into()))?;
+                if n > 1 || (n == 1 && !self.split.on()) {
+                    return Err(CmdError::Params(format!("no pane {n}")));
+                }
+                self.split.focus = n as usize;
+            }
+            "ui.editBeat" => {
+                let id = p.get("id").and_then(Value::as_u64).and_then(|i| u32::try_from(i).ok());
+                if let Some(i) = id
+                    && self.session.script.board.get(i).is_none()
+                {
+                    return Err(CmdError::Params(format!("no beat {i}")));
+                }
+                if self.board.editor.is_some() && p.get("open").and_then(Value::as_bool) == Some(false) {
+                    self.board.editor = None;
+                } else {
+                    let at = self.session.script.board.free_spot();
+                    beatboard::edit(self, id, at);
+                }
+            }
+            "ui.bookmarks" => {
+                self.navigator = true;
+                self.nav_tab = 3;
+            }
             "ui.toggleNavigator" => self.navigator = !self.navigator,
             "ui.theme.toggle" => {
                 self.dark = !self.dark;
@@ -504,7 +650,7 @@ impl ScriptApp {
                 self.canvas.zoom = ((w - 2.0 * 28.0 - 16.0) / pw).clamp(0.4, 3.0);
             }
             "ui.view.speed" => {
-                self.view = View::Page;
+                split::set_view(self, View::Page);
                 return self.session.run("view.speed", p);
             }
             "ui.find" => {
@@ -519,6 +665,7 @@ impl ScriptApp {
             "ui.elementSettings" => self.element_dialog = !self.element_dialog,
             "ui.pageSetup" => self.production.page_setup = !self.production.page_setup,
             "ui.revisions" => self.production.revisions = !self.production.revisions,
+            "ui.trackChanges" | "ui.compare" | "ui.compareWindow" => return drafts::command(self, id, p),
             "ui.print" => production::toggle_print(self),
             "ui.printNow" => return production::print_now(self, p),
             "ui.about" => self.about = true,
@@ -537,7 +684,13 @@ impl ScriptApp {
             "ui.addNote" => annotations::open_new_note(self),
             "ui.alternates" => self.alt_window = p.get("open").and_then(Value::as_bool).unwrap_or(!self.alt_window),
             "ui.toggleTags" => self.show_tags = p.get("on").and_then(Value::as_bool).unwrap_or(!self.show_tags),
-            "ui.breakdown" => self.view = View::Reports,
+            "ui.breakdown" => split::set_view(self, View::Reports),
+            "ui.collaborate" => collab_ui::toggle(self, p),
+            "ui.readAloud" => self.read_aloud.window = p.get("open").and_then(Value::as_bool).unwrap_or(!self.read_aloud.window),
+            "ui.dictation" => {
+                self.dictation.window = p.get("open").and_then(Value::as_bool).unwrap_or(!self.dictation.window);
+                self.dictation.focus = self.dictation.window;
+            }
             "ui.exportBreakdown" if self.host.is_some() && path.is_none() => return self.host_save("csv"),
             "ui.exportBreakdown" => {
                 let stem = self.session.path.as_ref().and_then(|p| p.file_stem()).and_then(|s| s.to_str()).unwrap_or("Untitled").to_string();
@@ -586,7 +739,7 @@ impl ScriptApp {
             other => return Err(CmdError::Unknown(other.to_string())),
         }
         Ok(
-            json!({"view": self.view.id(), "dark": self.dark, "zoom": self.canvas.zoom, "navigator": self.navigator, "showTags": self.show_tags, "alternates": self.alt_window}),
+            json!({"view": self.view.id(), "split": self.split.mode.id(), "second": self.split.second.id(), "focusPane": self.split.focus, "dark": self.dark, "zoom": self.canvas.zoom, "navigator": self.navigator, "showTags": self.show_tags, "alternates": self.alt_window}),
         )
     }
 
@@ -627,7 +780,12 @@ impl ScriptApp {
         let mut files = std::mem::take(&mut *self.inbox.lock().unwrap_or_else(|e| e.into_inner()));
         files.extend(dropped);
         for (name, bytes) in files {
-            let _ = self.execute("file.load", json!({"name": name, "data": scriptcraft_engine::b64::encode(&bytes)}));
+            let data = scriptcraft_engine::b64::encode(&bytes);
+            if std::mem::take(&mut self.drafts.compare_pending) {
+                let _ = drafts::run_compare(self, json!({"name": name, "data": data}));
+                continue;
+            }
+            let _ = self.execute("file.load", json!({"name": name, "data": data}));
         }
     }
 
@@ -688,6 +846,7 @@ impl ScriptApp {
         #[cfg(not(target_arch = "wasm32"))]
         self.tick_prefs(ctx);
         self.drain_inbox(ctx);
+        speech::tick(self, ctx);
         if let Some((_, t)) = &mut self.status
             && *t == 0.0
         {
@@ -719,6 +878,7 @@ impl ScriptApp {
         if self.control.is_some() || !self.synthetic.is_empty() {
             ctx.request_repaint_after(std::time::Duration::from_millis(50));
         }
+        collab_ui::tick(self, ctx);
         let name = self.session.path.as_ref().and_then(|p| p.file_name()).and_then(|n| n.to_str()).unwrap_or("Untitled").to_string();
         let title = format!("{name}{} — ScriptCraft", if self.session.dirty { " •" } else { "" });
         if title != self.sent_title {
@@ -772,14 +932,17 @@ impl ScriptApp {
         if self.navigator {
             chrome::navigator(self, ui);
         }
+        if self.story_map {
+            storymap::panel(self, ui);
+        }
         let t = self.tokens();
-        egui::CentralPanel::default().frame(egui::Frame::NONE.fill(t.desk)).show(ui, |ui| match self.view {
-            View::Page => canvas::show(self, ui),
-            View::Cards => cards::show(self, ui),
-            View::Reports => reports::show(self, ui),
-        });
+        egui::CentralPanel::default().frame(egui::Frame::NONE.fill(t.desk)).show(ui, |ui| split::central(self, ui));
         self.dialog_buttons.clear();
         chrome::dialogs(self, &ctx);
         annotations::dialogs(self, &ctx);
+        beatboard::dialog(self, &ctx);
+        collab_ui::window(self, &ctx);
+        speech::windows(self, &ctx);
+        drafts::dialogs(self, &ctx);
     }
 }

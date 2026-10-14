@@ -1,12 +1,12 @@
 //! Index cards: one card per scene with its heading, an editable summary, colour and tags.
 //! Drag a card onto another to move the scene there; right-click for colour and tags.
 
-use egui::{Align2, Color32, FontId, Id, Rect, RichText, Sense, Stroke, StrokeKind, Ui, vec2};
+use egui::{Align2, Color32, FontId, Rect, RichText, Sense, Stroke, StrokeKind, Ui, vec2};
 use scriptcraft_doc::CardColor;
 use serde_json::json;
 
+use crate::ScriptApp;
 use crate::chrome::elide;
-use crate::{ScriptApp, View};
 
 const CARD_W: f32 = 270.0;
 const CARD_H: f32 = 206.0;
@@ -47,7 +47,7 @@ pub fn show(app: &mut ScriptApp, ui: &mut Ui) {
                 for sc in row {
                     let (r, _) = ui.allocate_exact_size(vec2(CARD_W, CARD_H), Sense::hover());
                     rects.push(r);
-                    let resp = ui.interact(r, Id::new(("card", sc.index)), Sense::click_and_drag());
+                    let resp = ui.interact(r, ui.id().with(("card", sc.index)), Sense::click_and_drag());
                     if resp.drag_started() {
                         app.card_drag = Some(sc.index);
                     }
@@ -146,7 +146,7 @@ pub fn show(app: &mut ScriptApp, ui: &mut Ui) {
     for (id, p) in actions {
         app.run(id, p);
         if id == "scene.goto" {
-            app.view = View::Page;
+            crate::split::show_page(app);
         }
     }
 }

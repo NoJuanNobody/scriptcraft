@@ -33,6 +33,8 @@ pub struct CanvasState {
     pub picker: Option<usize>,
     /// The misspelled word a context menu was opened on, with its suggestions.
     pub spell_target: Option<(usize, usize, usize, Vec<String>)>,
+    /// Which split-screen pane this canvas belongs to (0 or 1; see `split.rs`).
+    pub pane: usize,
 }
 
 impl Default for CanvasState {
@@ -51,6 +53,7 @@ impl Default for CanvasState {
             picker: None,
             last_activity: 0.0,
             blink: true,
+            pane: 0,
         }
     }
 }
@@ -64,6 +67,11 @@ impl CanvasState {
 
 pub fn canvas_id() -> Id {
     Id::new("scriptcraft-page-view")
+}
+
+/// The page view's widget id in split-screen pane `pane` (pane 0 is [`canvas_id`]).
+pub fn canvas_id_for(pane: usize) -> Id {
+    if pane == 0 { canvas_id() } else { canvas_id().with(pane) }
 }
 
 fn courier(size: f32) -> FontId {
@@ -291,14 +299,14 @@ pub fn key_command(app: &mut ScriptApp, key: Key, m: Modifiers) {
 }
 
 /// Screen rect of a line's columns `[c0, c1)` on page rect `pr`.
-fn cols_rect(pr: Rect, z: f32, l: &Line, c0: usize, c1: usize) -> Rect {
+pub(crate) fn cols_rect(pr: Rect, z: f32, l: &Line, c0: usize, c1: usize) -> Rect {
     let x0 = pr.left() + (l.x + c0 as f32 * CHAR_W) * z;
     let x1 = pr.left() + (l.x + c1 as f32 * CHAR_W) * z;
     Rect::from_min_max(pos2(x0, pr.top() + l.y * z), pos2(x1, pr.top() + (l.y + LINE_H) * z))
 }
 
 /// Selected column range of a body line, if any.
-fn selected_cols(l: &Line, a: Pos, b: Pos) -> Option<(usize, usize)> {
+pub(crate) fn selected_cols(l: &Line, a: Pos, b: Pos) -> Option<(usize, usize)> {
     let para = l.para?;
     if para < a.para || para > b.para || a == b {
         return None;
@@ -340,8 +348,11 @@ fn paint_page(ui: &Ui, app: &ScriptApp, l: &Layout, i: usize, pr: Rect, bad: &[(
         {
             p.rect_filled(cols_rect(pr, z, line, c0, c1), 0.0, t.selection);
         }
+        crate::speech::paint_reading(app, p, line, pr, z);
         crate::annotations::paint_behind(app, p, line, pr, z);
         crate::annotations::paint_margin(app, p, line, pr, z);
+        crate::outline::paint_marker(app, p, line, pr, z);
+        crate::drafts::paint_changes(app, p, line, pr, z);
         let color = match line.kind {
             LineKind::Header | LineKind::Footer | LineKind::More | LineKind::Contd | LineKind::SceneNumber => t.ink_soft,
             _ => t.ink,
@@ -396,7 +407,7 @@ fn page_point(rects: &[Rect], z: f32, at: Pos2) -> Option<(usize, f32, f32)> {
 }
 
 pub fn show(app: &mut ScriptApp, ui: &mut Ui) {
-    let id = canvas_id();
+    let id = canvas_id_for(app.canvas.pane);
     // Keep the page focused unless another widget (find bar, dialogs) has the keyboard.
     let focused_other = ui.memory(|m| m.focused().is_some_and(|f| f != id));
     if !focused_other {
@@ -446,6 +457,7 @@ pub fn show(app: &mut ScriptApp, ui: &mut Ui) {
                 paint_page(ui, app, &layout, i, *pr, &bad);
             }
         }
+        crate::collab_ui::paint_peers(app, ui, &layout, &rects);
         // Caret.
         let caret = layout.caret(app.session.sel.focus).and_then(|c| {
             let pr = rects.get(c.page)?;
@@ -516,8 +528,11 @@ pub fn show(app: &mut ScriptApp, ui: &mut Ui) {
         app.canvas.page_rects = rects;
         app.canvas.canvas_rect = Some(clip);
     });
-    smarttype_popup(app, ui);
-    element_picker(app, ui);
+    // With two page panes, only the one with the keyboard shows the pop-ups.
+    if app.canvas.pane == 0 || ui.memory(|m| m.has_focus(id)) {
+        smarttype_popup(app, ui);
+        element_picker(app, ui);
+    }
 }
 
 fn element_picker(app: &mut ScriptApp, ui: &mut Ui) {

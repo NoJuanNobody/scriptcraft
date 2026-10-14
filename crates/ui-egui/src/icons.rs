@@ -11,6 +11,8 @@ pub enum Icon {
     Page,
     Cards,
     Reports,
+    Outline,
+    StoryMap,
     Navigator,
     Find,
     Moon,
@@ -20,6 +22,8 @@ pub enum Icon {
     Title,
     Undo,
     Redo,
+    Beats,
+    Split,
 }
 
 /// Draw `icon` in `r` with colour `c`.
@@ -78,6 +82,22 @@ pub fn paint(ui: &Ui, icon: Icon, r: Rect, c: Color32) {
                 p.rect_filled(page(x, 0.82 - h, x + 0.14, 0.82), 1.0, c);
             }
         }
+        Icon::Outline => {
+            // Indented rows: an act, then its scenes.
+            for (x, y) in [(0.18, 0.26), (0.32, 0.44), (0.32, 0.6), (0.32, 0.76)] {
+                p.circle_filled(at(x, y), 1.6, c);
+                p.line_segment([at(x + 0.08, y), at(0.84, y)], Stroke::new(if x < 0.2 { 1.8 } else { 1.2 }, c));
+            }
+        }
+        Icon::StoryMap => {
+            // Bands over a row of scene blocks.
+            p.rect_filled(page(0.12, 0.24, 0.52, 0.34), 1.0, c);
+            p.rect_filled(page(0.55, 0.24, 0.88, 0.34), 1.0, c.gamma_multiply(0.6));
+            for (x0, x1) in [(0.12, 0.3), (0.33, 0.45), (0.48, 0.7), (0.73, 0.88)] {
+                p.rect_stroke(page(x0, 0.44, x1, 0.66), 1.0, Stroke::new(1.2, c), StrokeKind::Middle);
+            }
+            p.line_segment([at(0.12, 0.78), at(0.88, 0.78)], Stroke::new(1.0, c));
+        }
         Icon::Navigator => {
             p.rect_stroke(page(0.15, 0.2, 0.85, 0.8), 2.0, s, StrokeKind::Middle);
             p.line_segment([at(0.4, 0.2), at(0.4, 0.8)], s);
@@ -106,6 +126,20 @@ pub fn paint(ui: &Ui, icon: Icon, r: Rect, c: Color32) {
         }
         Icon::Numbers => {
             p.text(at(0.5, 0.52), egui::Align2::CENTER_CENTER, "#", egui::FontId::proportional(0.62 * r.height()), c);
+        }
+        Icon::Beats => {
+            // Loose cards joined by a thread.
+            p.line_segment([at(0.3, 0.32), at(0.68, 0.66)], Stroke::new(1.0, c));
+            for (x, y, w, h) in [(0.1, 0.18, 0.38, 0.28), (0.5, 0.54, 0.38, 0.28)] {
+                p.rect_stroke(Rect::from_min_size(at(x, y), vec2(w * r.width(), h * r.height())), 1.5, s, StrokeKind::Middle);
+            }
+            p.circle_filled(at(0.74, 0.27), 0.07 * r.height(), c);
+        }
+        Icon::Split => {
+            p.rect_stroke(page(0.14, 0.2, 0.86, 0.8), 2.0, s, StrokeKind::Middle);
+            p.line_segment([at(0.5, 0.2), at(0.5, 0.8)], s);
+            lines(0.22, 0.42, &[0.36, 0.5, 0.64]);
+            lines(0.58, 0.78, &[0.36, 0.5]);
         }
         Icon::Undo | Icon::Redo => {
             let flip = if icon == Icon::Redo { -1.0 } else { 1.0 };
