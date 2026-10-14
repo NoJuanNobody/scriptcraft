@@ -30,7 +30,7 @@ mod web {
         fn open(&self, inbox: Inbox) {
             let ctx = self.ctx.clone();
             wasm_bindgen_futures::spawn_local(async move {
-                let picked = rfd::AsyncFileDialog::new().add_filter("Script", &["fountain", "fdx", "spmd", "txt"]).pick_file().await;
+                let picked = rfd::AsyncFileDialog::new().add_filter("Script", &scriptcraft_engine::io::OPEN_EXTENSIONS).pick_file().await;
                 if let Some(f) = picked {
                     let bytes = f.read().await;
                     if let Ok(mut q) = inbox.lock() {

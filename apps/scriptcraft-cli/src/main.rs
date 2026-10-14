@@ -20,7 +20,7 @@ use serde_json::{Value, json};
 const USAGE: &str = "ScriptCraft command line
 
 USAGE:
-  scriptcraft-cli convert <in.fountain|in.fdx> <out.pdf|out.fdx|out.fountain>
+  scriptcraft-cli convert <in.fountain|in.fdx|in.docx|in.celtx|in.pdf> <out.pdf|out.fdx|out.fountain>
   scriptcraft-cli commands [--json]
   scriptcraft-cli run [--open <file> | --sample] [--cmd 'id' | --cmd 'id={json}']... [--save <file>]
   scriptcraft-cli new <feature|tv-single-camera|tv-multi-camera|stage-play> <out.fdx|out.fountain|out.pdf>

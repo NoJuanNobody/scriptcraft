@@ -271,7 +271,13 @@ pub const FEATURES: &[Feature] = &[
     f("Files", "Autosave, crash recovery and backups", Done, &[], "data folder; recovery offered after a crash, previous versions kept on save"),
     f("Files", "Recent files", Done, &["ui.openRecent", "ui.clearRecent"], ""),
     f("Files", "Settings shared with the other Craft apps (config.toml, folder rules)", Done, &[], "craft-settings from storytold/craft-libs"),
-    f("Files", "Import from other formats (Word, Celtx, PDF)", Missing, &[], ""),
+    f(
+        "Files",
+        "Import from other formats (Word, Celtx, PDF)",
+        Done,
+        &["file.import", "file.open", "ui.import"],
+        "Word .docx by paragraph style, indent or text; legacy .celtx projects; PDF by indent (scene numbers, title page, dual dialogue); also `scriptcraft-cli convert`",
+    ),
     // View
     f("View", "Page view with page breaks", Done, &["ui.view.page"], ""),
     f("View", "Dark mode", Done, &["ui.theme.toggle"], ""),

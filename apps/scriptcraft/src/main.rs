@@ -1,6 +1,6 @@
 //! The ScriptCraft desktop app.
 //!
-//! Usage: `scriptcraft [--new | --sample] [--config-dir <dir>] [--control <port>] [file.fountain|file.fdx]`
+//! Usage: `scriptcraft [--new | --sample] [--config-dir <dir>] [--control <port>] [file.fountain|file.fdx|file.docx|file.celtx|file.pdf]`
 //!
 //! With no file it opens the sample script (`--new` starts blank). Settings and data follow the
 //! Craft suite's folder rules (craft-settings): `--config-dir`, then `SCRIPTCRAFT_CONFIG_DIR`
@@ -125,7 +125,9 @@ fn main() -> eframe::Result<()> {
             "--new" => blank = true,
             "--sample" => blank = false,
             "--help" | "-h" => {
-                println!("scriptcraft [--new | --sample] [--config-dir <dir>] [--control <port>] [file.fountain|file.fdx]");
+                println!(
+                    "scriptcraft [--new | --sample] [--config-dir <dir>] [--control <port>] [file.fountain|file.fdx|file.docx|file.celtx|file.pdf]"
+                );
                 return Ok(());
             }
             other => file = Some(other.to_string()),

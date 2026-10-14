@@ -107,6 +107,7 @@ pub const UI_COMMANDS: &[(&str, &str, &str, &str)] = &[
     ("ui.revisions", "Revisions…", "Document", ""),
     ("ui.elementSettings", "Element Settings…", "Format", ""),
     ("ui.open", "Open…", "File", "Mod+O"),
+    ("ui.import", "Import…", "File", ""),
     ("ui.save", "Save", "File", "Mod+S"),
     ("ui.saveAs", "Save As…", "File", "Mod+Shift+S"),
     ("ui.print", "Print…", "File", "Mod+P"),
@@ -500,7 +501,7 @@ impl ScriptApp {
         // Replacing a script with unsaved changes asks first (interactive windows only).
         if self.dialogs
             && self.session.dirty
-            && matches!(id, "file.new" | "file.sample" | "file.open" | "ui.open" | "ui.openRecent" | "template.new")
+            && matches!(id, "file.new" | "file.sample" | "file.open" | "file.import" | "ui.open" | "ui.import" | "ui.openRecent" | "template.new")
             && self.confirm_replace.is_none()
         {
             self.confirm_replace = Some((id.to_string(), params));
@@ -516,7 +517,7 @@ impl ScriptApp {
         } else if let Some(r) = speech::command(self, id, &params) {
             r
         } else {
-            if matches!(id, "file.open" | "file.load" | "file.new" | "file.sample" | "file.revert") {
+            if matches!(id, "file.open" | "file.load" | "file.import" | "file.new" | "file.sample" | "file.revert") {
                 speech::stop(self);
             }
             self.session.run(id, &params)
@@ -699,7 +700,7 @@ impl ScriptApp {
                 };
                 return self.session.run("file.exportBreakdown", &json!({"path": path}));
             }
-            "ui.open" if self.host.is_some() && path.is_none() => {
+            "ui.open" | "ui.import" if self.host.is_some() && path.is_none() => {
                 if let Some(h) = &self.host {
                     h.open(self.inbox.clone());
                 }
@@ -709,10 +710,17 @@ impl ScriptApp {
             "ui.exportFdx" if self.host.is_some() && path.is_none() => return self.host_save("fdx"),
             "ui.exportFountain" if self.host.is_some() && path.is_none() => return self.host_save("fountain"),
             "ui.open" => {
-                let Some(path) = path.or_else(|| self.pick(false, "Open Script", &["fountain", "fdx", "spmd", "txt"], "")) else {
+                let Some(path) = path.or_else(|| self.pick(false, "Open Script", &scriptcraft_engine::io::OPEN_EXTENSIONS, "")) else {
                     return Ok(json!({}));
                 };
                 return self.execute("file.open", json!({"path": path}));
+            }
+            "ui.import" => {
+                let Some(path) = path.or_else(|| self.pick(false, "Import from Word, Celtx or PDF", &scriptcraft_engine::io::IMPORT_EXTENSIONS, ""))
+                else {
+                    return Ok(json!({}));
+                };
+                return self.execute("file.import", json!({"path": path}));
             }
             "ui.save" => {
                 if self.session.path.is_some() && path.is_none() {

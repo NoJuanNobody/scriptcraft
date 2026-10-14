@@ -812,7 +812,7 @@ dependencies = [
  "libc",
  "option-ext",
  "redox_users",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2938,6 +2938,7 @@ dependencies = [
  "scriptcraft-fdx",
  "scriptcraft-fountain",
  "scriptcraft-geom",
+ "scriptcraft-import",
  "scriptcraft-layout",
  "scriptcraft-pdf",
  "scriptcraft-spell",
@@ -2973,6 +2974,16 @@ name = "scriptcraft-geom"
 version = "0.1.0"
 dependencies = [
  "serde",
+]
+
+[[package]]
+name = "scriptcraft-import"
+version = "0.1.0"
+dependencies = [
+ "flate2",
+ "quick-xml",
+ "scriptcraft-doc",
+ "scriptcraft-fountain",
 ]
 
 [[package]]

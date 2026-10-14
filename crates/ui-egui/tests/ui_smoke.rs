@@ -323,3 +323,36 @@ fn outline_view_drags_a_scene_under_an_act() {
     h.state_mut().execute("ui.view.page", json!({})).unwrap();
     step(&mut h, 2);
 }
+
+#[test]
+fn import_from_word_celtx_and_pdf() {
+    // Through the host (the browser): the picked file arrives in the inbox and is imported.
+    let saved = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let mut app = ScriptApp::new(Session::sample());
+    app.dialogs = false;
+    let html = br#"<p class="sceneheading">INT. LAMP ROOM - NIGHT</p><p class="character">NELL</p><p class="dialog">Light it.</p>"#;
+    app.host = Some(Box::new(MockHost { saved, pick: Some(("lamp.celtx".into(), html.to_vec())) }));
+    let mut h = harness(app);
+    step(&mut h, 2);
+    h.state_mut().execute("ui.import", json!({})).unwrap();
+    step(&mut h, 2);
+    let st = h.state();
+    assert_eq!(st.session.script.paras.len(), 3);
+    assert_eq!(st.session.script.paras[2].text, "Light it.");
+    assert!(st.session.dirty && st.session.path.is_none());
+    // Natively, with a path: a PDF exported by ScriptCraft comes back as the same script.
+    let dir = std::env::temp_dir().join(format!("sc-ui-import-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let pdf = dir.join("night.pdf");
+    let mut s = Session::sample();
+    s.run("file.exportPdf", &json!({"path": pdf})).unwrap();
+    let want = s.script.paras.len();
+    let mut app = ScriptApp::new(Session::new(Default::default()));
+    app.dialogs = false;
+    let mut h = harness(app);
+    step(&mut h, 2);
+    let v = h.state_mut().execute("ui.import", json!({"path": pdf})).unwrap();
+    assert_eq!(v["format"], "PDF");
+    assert_eq!(h.state().session.script.paras.len(), want);
+    let _ = std::fs::remove_dir_all(&dir);
+}

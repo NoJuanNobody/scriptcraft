@@ -115,6 +115,7 @@ pub fn menu_bar(app: &mut ScriptApp, ui: &mut Ui) {
                 item(app, ui, "New Script", "file.new", "Mod+N");
                 crate::drafts::new_menu(app, ui);
                 item(app, ui, "Open…", "ui.open", "Mod+O");
+                item(app, ui, "Import from Word, Celtx or PDF…", "ui.import", "");
                 ui.menu_button("Open Recent", |ui| {
                     let recent = app.prefs.files.recent.clone();
                     if recent.is_empty() {
