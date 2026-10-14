@@ -143,3 +143,15 @@ fn card_colour_and_tags() {
     assert_eq!(s.paras[1].text, "Beakers bubble.");
     assert_eq!(parse(&write(&s)), s, "{}", write(&s));
 }
+
+#[test]
+fn russian_screenplay_round_trips() {
+    let source = "ИНТ. КУХНЯ - НОЧЬ\n\nЁжик ждёт у окна.\n\nАЛЁНА\n(тихо)\nВсё готово?\n\nНАТ. ДВОР - ДЕНЬ\n\nПадает снег.\n";
+    let script = parse(source);
+    assert_eq!(script.paras[0].element, Element::SceneHeading);
+    assert_eq!(script.paras[2].element, Element::Character);
+    assert_eq!(script.paras[4].element, Element::Dialogue);
+    assert_eq!(script.paras[5].element, Element::SceneHeading);
+    assert_eq!(parse(&write(&script)), script);
+    assert!(!is_heading("ИНТЕРЕСНЫЙ ДЕНЬ"));
+}

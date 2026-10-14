@@ -70,7 +70,7 @@ fn courier(size: f32) -> FontId {
     FontId::new(size, FontFamily::Name("courier".into()))
 }
 
-/// The Courier Prime face for a style.
+/// The Courier Badi face for a style.
 pub fn courier_styled(size: f32, st: scriptcraft_doc::Style) -> FontId {
     let fam = match (st.bold, st.italic) {
         (false, false) => "courier",
@@ -324,6 +324,7 @@ fn page_color(app: &ScriptApp, l: &Layout, i: usize, paper: Color32, dark: bool)
 }
 
 fn paint_page(ui: &Ui, app: &ScriptApp, l: &Layout, i: usize, pr: Rect, bad: &[(usize, usize, usize)]) {
+    let lang = app.prefs.appearance.language;
     let t = app.tokens();
     let z = app.canvas.zoom;
     let p = ui.painter();
@@ -382,7 +383,13 @@ fn paint_page(ui: &Ui, app: &ScriptApp, l: &Layout, i: usize, pr: Rect, bad: &[(
         }
     }
     if page.title_page && !app.session.speed {
-        p.text(pr.left_bottom() + vec2(10.0, -8.0), Align2::LEFT_BOTTOM, "Title page", FontId::proportional(10.0), t.ink_soft.gamma_multiply(0.7));
+        p.text(
+            pr.left_bottom() + vec2(10.0, -8.0),
+            Align2::LEFT_BOTTOM,
+            lang.text("Title page"),
+            FontId::proportional(10.0),
+            t.ink_soft.gamma_multiply(0.7),
+        );
     }
 }
 
@@ -521,6 +528,7 @@ pub fn show(app: &mut ScriptApp, ui: &mut Ui) {
 }
 
 fn element_picker(app: &mut ScriptApp, ui: &mut Ui) {
+    let lang = app.prefs.appearance.language;
     let (Some(sel), Some(cr)) = (app.canvas.picker, app.canvas.caret_screen) else { return };
     if !caret_para_blank(app) {
         app.canvas.picker = None;
@@ -531,14 +539,14 @@ fn element_picker(app: &mut ScriptApp, ui: &mut Ui) {
     egui::Area::new(Id::new("element-picker")).order(egui::Order::Foreground).fixed_pos(pos2(cr.left(), cr.bottom() + 3.0)).show(ui.ctx(), |ui| {
         egui::Frame::popup(ui.style()).inner_margin(4.0).show(ui, |ui| {
             ui.set_min_width(200.0);
-            ui.label(egui::RichText::new("Change element").size(10.0).color(t.text_soft));
+            ui.label(egui::RichText::new(lang.text("Change element")).size(10.0).color(t.text_soft));
             for (i, e) in Element::ALL.iter().enumerate() {
-                let label = format!("{}  {}", i + 1, e.name());
+                let label = format!("{}  {}", i + 1, lang.text(e.name()));
                 if ui.add(egui::Button::selectable(i == sel, label).min_size(vec2(190.0, 0.0))).clicked() {
                     chosen = Some(*e);
                 }
             }
-            ui.label(egui::RichText::new("Arrows or 1–8 · Return chooses · Esc cancels").size(10.0).color(t.text_soft));
+            ui.label(egui::RichText::new(lang.text("Arrows or 1–8 · Return chooses · Esc cancels")).size(10.0).color(t.text_soft));
         });
     });
     if let Some(e) = chosen {
@@ -548,9 +556,10 @@ fn element_picker(app: &mut ScriptApp, ui: &mut Ui) {
 }
 
 fn context_menu(app: &mut ScriptApp, ui: &mut Ui) {
+    let lang = app.prefs.appearance.language;
     if let Some((para, a, b, sugg)) = app.canvas.spell_target.clone() {
         if sugg.is_empty() {
-            ui.label(egui::RichText::new("No suggestions").italics());
+            ui.label(egui::RichText::new(lang.text("No suggestions")).italics());
         }
         for w in sugg {
             if ui.button(egui::RichText::new(&w).strong()).clicked() {
@@ -561,32 +570,33 @@ fn context_menu(app: &mut ScriptApp, ui: &mut Ui) {
         }
         ui.separator();
         let word = app.session.script.para(para).and_then(|p| p.text.get(a..b)).unwrap_or("").to_string();
-        if ui.button("Ignore Spelling").clicked() {
+        if ui.button(lang.text("Ignore Spelling")).clicked() {
             app.run("spell.ignore", json!({"word": word}));
             ui.close();
         }
-        if ui.button("Add to Dictionary").clicked() {
+        if ui.button(lang.text("Add to Dictionary")).clicked() {
             app.run("spell.addWord", json!({"word": word}));
             ui.close();
         }
         ui.separator();
     }
     crate::annotations::context_items(app, ui);
-    for (label, id) in [("Cut", "edit.cut"), ("Copy", "edit.copy")] {
-        if ui.add_enabled(!app.session.sel.is_caret(), egui::Button::new(label)).clicked() {
+    for (label, id) in [(lang.text("Cut"), "edit.cut"), (lang.text("Copy"), "edit.copy")] {
+        if ui.add_enabled(!app.session.sel.is_caret(), egui::Button::new(lang.text(label))).clicked() {
             if let Ok(v) = app.execute(id, json!({})) {
                 ui.ctx().copy_text(v["text"].as_str().unwrap_or("").to_string());
             }
             ui.close();
         }
     }
-    if ui.button("Select All").clicked() {
+    if ui.button(lang.text("Select All")).clicked() {
         app.run("select.all", json!({}));
         ui.close();
     }
 }
 
 fn smarttype_popup(app: &mut ScriptApp, ui: &mut Ui) {
+    let lang = app.prefs.appearance.language;
     let sugg = current_suggest(app);
     app.canvas.suggest_shown = false;
     let (Some(sg), Some(cr)) = (sugg, app.canvas.caret_screen) else {
@@ -615,7 +625,7 @@ fn smarttype_popup(app: &mut ScriptApp, ui: &mut Ui) {
                     clicked = Some(i);
                 }
             }
-            ui.label(egui::RichText::new("↩ accept · esc dismiss").size(10.0).color(t.text_soft));
+            ui.label(egui::RichText::new(lang.text("↩ accept · esc dismiss")).size(10.0).color(t.text_soft));
         });
     });
     if let Some(i) = clicked {

@@ -736,7 +736,7 @@ pub fn write(s: &Script) -> String {
         let f = s.settings.elements.get(e);
         let caps = if f.uppercase { " Style=\"AllCaps\"" } else { "" };
         out.push_str(&format!(
-            "  <ElementSettings Type=\"{n}\">\n    <FontSpec Font=\"Courier Prime\" Size=\"12\"{caps}/>\n    <ParagraphSpec Alignment=\"{a}\" FirstIndent=\"0.00\" Leading=\"Regular\" LeftIndent=\"{l:.2}\" RightIndent=\"{r:.2}\" SpaceBefore=\"{sb}\" Spacing=\"1\" StartsNewPage=\"No\"/>\n    <Behavior PaginateAs=\"{n}\" ReturnKey=\"{rk}\" Shortcut=\"{k}\"/>\n  </ElementSettings>\n",
+            "  <ElementSettings Type=\"{n}\">\n    <FontSpec Font=\"Courier Badi\" Size=\"12\"{caps}/>\n    <ParagraphSpec Alignment=\"{a}\" FirstIndent=\"0.00\" Leading=\"Regular\" LeftIndent=\"{l:.2}\" RightIndent=\"{r:.2}\" SpaceBefore=\"{sb}\" Spacing=\"1\" StartsNewPage=\"No\"/>\n    <Behavior PaginateAs=\"{n}\" ReturnKey=\"{rk}\" Shortcut=\"{k}\"/>\n  </ElementSettings>\n",
             n = e.name(),
             a = f.align.name(),
             l = f.left,

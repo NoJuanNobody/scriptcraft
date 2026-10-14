@@ -141,3 +141,20 @@ fn production_locks_round_trip() {
     assert_eq!(back.paras[0].page_lock, vec!["x".to_string(), "1-2".to_string()]);
     assert!(!back.paras[0].omitted, "only headings are omitted");
 }
+
+#[test]
+fn russian_text_and_styles_round_trip() {
+    let mut s = Script::from_paras(vec![
+        Para::new(Element::SceneHeading, "ИНТ. КУХНЯ - НОЧЬ"),
+        Para::new(Element::Action, "Ёжик ждёт у окна."),
+        Para::new(Element::Character, "АЛЁНА"),
+        Para::new(Element::Dialogue, "Всё готово?"),
+    ])
+    .unwrap();
+    s.title.title = "Ночной разговор".into();
+    s.title.author = "Алёна Ёлкина".into();
+    s.set_flag(scriptcraft_doc::Pos::new(1, 0), scriptcraft_doc::Pos::new(1, "Ёжик".len()), scriptcraft_doc::Flag::Bold, true);
+    let xml = write(&s);
+    assert!(xml.contains("Courier Badi"));
+    assert_eq!(parse(&xml).unwrap(), s);
+}
