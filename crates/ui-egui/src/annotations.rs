@@ -503,7 +503,7 @@ pub fn breakdown_section(app: &mut ScriptApp, ui: &mut Ui, goto: &mut Option<usi
             } else if ui.link(&b.heading).clicked() {
                 *goto = Some(b.scene - 1);
             }
-            ui.label(b.page.to_string());
+            ui.label(&b.page_label);
             ui.label(&b.length);
             for c in &cats {
                 ui.label(b.categories.iter().find(|x| x.category == *c).map(|x| x.items.join(", ")).unwrap_or_default());

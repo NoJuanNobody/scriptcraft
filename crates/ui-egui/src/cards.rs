@@ -76,7 +76,7 @@ pub fn show(app: &mut ScriptApp, ui: &mut Ui) {
                     p.text(r.left_top() + vec2(12.0, 18.0), Align2::LEFT_TOP, num, FontId::monospace(13.0), band);
                     let info = reports
                         .get(sc.index)
-                        .map(|x| format!("p.{} · {}", x.page, scriptcraft_engine::reports::eighths_label(x.eighths)))
+                        .map(|x| format!("p.{} · {}", x.page_label, scriptcraft_engine::reports::eighths_label(x.eighths)))
                         .unwrap_or_default();
                     p.text(r.right_top() + vec2(-12.0, 19.0), Align2::RIGHT_TOP, info, FontId::proportional(11.0), t.text_soft);
                     p.text(

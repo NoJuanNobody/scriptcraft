@@ -650,7 +650,7 @@ pub fn navigator(app: &mut ScriptApp, ui: &mut Ui) {
                         ui.horizontal(|ui| {
                             ui.label(RichText::new(&c.name).strong());
                             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                ui.label(RichText::new(format!("{} lines · p.{}", c.speeches, c.first_page)).size(11.0).color(t.text_soft));
+                                ui.label(RichText::new(format!("{} lines · p.{}", c.speeches, c.first_page_label)).size(11.0).color(t.text_soft));
                             });
                         });
                     }

@@ -175,7 +175,7 @@ fn report(a: &[String]) -> Result<(), String> {
             c["name"].as_str().unwrap_or(""),
             c["speeches"].as_u64().unwrap_or(0),
             c["words"].as_u64().unwrap_or(0),
-            c["firstPage"]
+            c["firstPageLabel"].as_str().unwrap_or("")
         );
     }
     println!("\nSCENES");
@@ -184,7 +184,7 @@ fn report(a: &[String]) -> Result<(), String> {
         println!(
             "  {:>3}  p.{:<3} {:>6}  {}",
             c["scene"].as_u64().unwrap_or(0),
-            c["page"].as_u64().unwrap_or(0),
+            c["pageLabel"].as_str().unwrap_or(""),
             scriptcraft_engine::reports::eighths_label(e),
             c["heading"].as_str().unwrap_or("")
         );
