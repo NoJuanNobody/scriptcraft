@@ -1,9 +1,9 @@
 # ScriptCraft roadmap
 
-**Stage:** v0.3 (production) complete on branch `v0.3-production`; v0.2 writing comfort merged.
-**Headline numbers:** 52 of 68 Final Draft 13 catalog features implemented
-([docs/parity-checklist.md](docs/parity-checklist.md)); 133 engine commands + 37 window commands;
-~18.5k lines of Rust; 133 tests; native and browser builds; CI on Linux, macOS and Windows.
+**Stage:** v0.4 (structure and collaboration) complete on branch `v0.4-structure` (PR #47); v0.3 production and v0.2 writing comfort done.
+**Headline numbers:** 62 of 68 Final Draft 13 catalog features implemented
+([docs/parity-checklist.md](docs/parity-checklist.md)); 185 engine commands + 51 window commands;
+~31.5k lines of Rust; 228 tests; native and browser builds; CI on Linux, macOS and Windows.
 
 ## v0.1 (this release)
 
@@ -42,16 +42,16 @@ All open work is tracked as [GitHub issues](https://github.com/NoJuanNobody/scri
 - [x] [#19](https://github.com/NoJuanNobody/scriptcraft/issues/19) Print dialog
 - [x] [#20](https://github.com/NoJuanNobody/scriptcraft/issues/20) Split dual dialogue across a page break
 
-## v0.4: structure and collaboration
+## v0.4: structure and collaboration (done)
 
-- [ ] [#21](https://github.com/NoJuanNobody/scriptcraft/issues/21) Outline view with structure points
-- [ ] [#22](https://github.com/NoJuanNobody/scriptcraft/issues/22) Beat board
-- [ ] [#23](https://github.com/NoJuanNobody/scriptcraft/issues/23) Story map
-- [ ] [#24](https://github.com/NoJuanNobody/scriptcraft/issues/24) Track changes and comparing two drafts
-- [ ] [#25](https://github.com/NoJuanNobody/scriptcraft/issues/25) Real-time collaboration
-- [ ] [#26](https://github.com/NoJuanNobody/scriptcraft/issues/26) Templates: TV single-camera, multi-camera, stage play
-- [ ] [#27](https://github.com/NoJuanNobody/scriptcraft/issues/27) Read aloud with cast voices, and dictation (speech to script)
-- [ ] [#28](https://github.com/NoJuanNobody/scriptcraft/issues/28) Bookmarks and split screen
+- [x] [#21](https://github.com/NoJuanNobody/scriptcraft/issues/21) Outline view with structure points
+- [x] [#22](https://github.com/NoJuanNobody/scriptcraft/issues/22) Beat board
+- [x] [#23](https://github.com/NoJuanNobody/scriptcraft/issues/23) Story map
+- [x] [#24](https://github.com/NoJuanNobody/scriptcraft/issues/24) Track changes and comparing two drafts
+- [x] [#25](https://github.com/NoJuanNobody/scriptcraft/issues/25) Real-time collaboration
+- [x] [#26](https://github.com/NoJuanNobody/scriptcraft/issues/26) Templates: TV single-camera, multi-camera, stage play
+- [x] [#27](https://github.com/NoJuanNobody/scriptcraft/issues/27) Read aloud with cast voices, and dictation (speech to script)
+- [x] [#28](https://github.com/NoJuanNobody/scriptcraft/issues/28) Bookmarks and split screen
 
 ## File-format fidelity
 
@@ -80,3 +80,8 @@ All open work is tracked as [GitHub issues](https://github.com/NoJuanNobody/scri
   revised-page headers; locked pages with A/B pages, omitted scenes and locked scene numbers;
   header/footer editor and A4 paper; script notes; alternate dialogue lines; production tagging
   with a breakdown report and CSV; File › Print; dual dialogue split across page breaks.
+- 2026-10-14 — v0.4 structure and collaboration (#21–#28): acts, sequences and sections with an
+  Outline view and a story map; beat board with beats linked to scenes; bookmarks and split screen;
+  track changes per author with accept/reject, and Compare Drafts (also `scriptcraft-cli compare`);
+  LAN real-time collaboration with presence (docs/collaboration.md); TV single-camera,
+  multi-camera and stage-play templates; read aloud with a voice per character and dictation.
