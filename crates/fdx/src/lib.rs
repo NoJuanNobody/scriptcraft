@@ -24,15 +24,23 @@
 //! in Final Draft's 48-bit `#RRRRGGGGBBBB` form); card tags use a ScriptCraft-only
 //! `ScriptCraftTags` attribute.
 //!
+//! `docs/fdx-format.md` lists every element and attribute ScriptCraft reads and writes, which
+//! are Final Draft's own form (with the evidence) and which are ScriptCraft-only.
+//!
 //! Production locks use ScriptCraft-only names: `<ScriptCraftProduction LockedPages="Yes"
-//! LockedSceneNumbers="Yes" ShowSceneNumbers="Yes"/>` under the root, and on paragraphs `ScriptCraftOmitted="Yes"`
+//! LockedSceneNumbers="Yes"/>` under the root, and on paragraphs `ScriptCraftOmitted="Yes"`
 //! (an omitted scene's heading; its text stays in the file) and `ScriptCraftLockedPages="12,12A"`
-//! (the locked pages that start with that paragraph). Scene numbers use `Number` as usual.
-//! Script notes are `<ScriptNote Range="start,length" Color="…" Author="…">` inside the paragraph
-//! they annotate, holding the note's text as paragraphs (ranges count characters). Production tags
-//! and alternate lines have no FDX form we know of and use ScriptCraft-only elements:
-//! `<ScriptCraftTag Range="start,length" Category="Props"/>` and
-//! `<ScriptCraftAlternate><Text>…</Text></ScriptCraftAlternate>`. Read-aloud voices: `<ScriptCraftVoices>` (see `voices.rs`).
+//! (the locked pages that start with that paragraph). Scene numbers use `Number`, shown per
+//! `<SceneNumberOptions ShowNumbersOnLeft ShowNumbersOnRight>`; (MORE)/(CONT'D) follow
+//! `<MoresAndContinueds><DialogueBreaks>`.
+//! Script notes are `<ScriptNote ID Author Color Name Type>` placed among the paragraph's text
+//! runs where the note starts (Final Draft's form), holding the note's text as paragraphs, plus a
+//! ScriptCraft `Range="start,length"` (characters) for the exact range; a note without one
+//! covers the rest of its paragraph. Production tags and alternate lines have no FDX form we
+//! know of and use ScriptCraft-only elements: `<ScriptCraftTag Range="start,length"
+//! Category="Props"/>` and `<ScriptCraftAlternate><Text>…</Text></ScriptCraftAlternate>`.
+//! Read-aloud voices: Final Draft's `<Cast>`/`<Actors>` (see `voices.rs`). The title page: see
+//! `title.rs`.
 //!
 //! Acts, sequences and sections are Final Draft's outline paragraphs (`Type="Outline 1"`… with
 //! their `Summary`), see the `outline` module.
@@ -129,6 +137,8 @@ struct Open {
     caps: bool,
     /// A title page line's `ScriptCraftField`.
     field: Option<String>,
+    /// A header or footer line's tab stop types, in order.
+    tabs: Vec<String>,
 }
 
 /// Parse an FDX document.
@@ -146,8 +156,12 @@ pub fn parse(src: &str) -> Result<Script, FdxError> {
     let mut root_seen = false;
     let mut formats = ElementFormats::default();
     let mut cur_fmt: Option<(Element, scriptcraft_doc::ElementFormat)> = None;
-    // (locked pages, locked scene numbers, show scene numbers) when the file says.
-    let mut production: Option<(bool, bool, bool)> = None;
+    // (locked pages, locked scene numbers, show scene numbers — older files) when the file says.
+    let mut production: Option<(bool, bool, Option<bool>)> = None;
+    // `SceneNumberOptions`: numbers shown in either margin.
+    let mut scene_number_options: Option<bool> = None;
+    // `DialogueBreaks`: (MORE)/(CONT'D) at page breaks, automatic (CONT'D).
+    let mut dialogue_breaks: Option<(Option<bool>, Option<bool>)> = None;
     let mut scene_letters = false;
     let mut track_on = false;
     let mut page_read = page::Read::default();
@@ -257,10 +271,11 @@ pub fn parse(src: &str) -> Result<Script, FdxError> {
                             changes: Vec::new(),
                             caps: false,
                             field: attr("ScriptCraftField"),
+                            tabs: Vec::new(),
                         };
                         if empty {
                             if let Kind::HeaderFooter(footer) = o.kind {
-                                page_read.add(footer, &o.align, &o.text);
+                                page_read.add(footer, &o.align, &o.text, &o.tabs);
                             } else if o.kind == Kind::Beat {
                                 beat_read.line(&o.text);
                             } else if !outline_read.take(&o, paras.len()) {
@@ -285,9 +300,33 @@ pub fn parse(src: &str) -> Result<Script, FdxError> {
                     }
                     "ScriptCraftProduction" if !in_title => {
                         let yes = |k: &str| attr(k).is_some_and(|v| v.trim().eq_ignore_ascii_case("yes"));
-                        production = Some((yes("LockedPages"), yes("LockedSceneNumbers"), yes("ShowSceneNumbers")));
+                        production = Some((yes("LockedPages"), yes("LockedSceneNumbers"), page::yes(attr("ShowSceneNumbers"))));
                     }
-                    "PageLayout" => page_read.paper = attr("ScriptCraftPaper").and_then(|p| scriptcraft_doc::Paper::parse(&p)),
+                    "PageLayout" if !in_title => {
+                        if let Some(p) = attr("ScriptCraftPaper").and_then(|p| scriptcraft_doc::Paper::parse(&p)) {
+                            page_read.paper = Some(p);
+                        }
+                    }
+                    "PageSize" if stack.iter().any(|n| n == "PageLayout") => {
+                        if let Some(p) = page::paper_of(attr("Width"), attr("Height")) {
+                            page_read.paper = Some(p);
+                        }
+                    }
+                    "Tabstop" => {
+                        if let (Some(o), Some(t)) = (open.last_mut().filter(|o| matches!(o.kind, Kind::HeaderFooter(_))), attr("Type"))
+                            && o.tabs.len() < 16
+                        {
+                            o.tabs.push(t);
+                        }
+                    }
+                    "SceneNumberOptions" if !in_title => {
+                        let yes = |k: &str| attr(k).is_some_and(|v| v.trim().eq_ignore_ascii_case("yes"));
+                        scene_number_options = Some(yes("ShowNumbersOnLeft") || yes("ShowNumbersOnRight"));
+                    }
+                    "DialogueBreaks" if !in_title => {
+                        dialogue_breaks =
+                            Some((page::yes(attr("BottomOfPage")).or(page::yes(attr("TopOfNext"))), page::yes(attr("AutomaticCharacterContinueds"))));
+                    }
                     "HeaderAndFooter" if !in_title => {
                         page_read.seen = true;
                         page_read.header_visible = page::yes(attr("HeaderVisible"));
@@ -306,14 +345,25 @@ pub fn parse(src: &str) -> Result<Script, FdxError> {
                     "Revisions" if !in_title => {
                         rev_read.seen = true;
                         rev_read.active_id = attr("ActiveSet").and_then(|v| v.trim().parse().ok());
-                        rev_read.tracking = attr("RevisionMode").map(|v| v.trim().starts_with("On"));
+                        rev_read.tracking = attr("RevisionMode").map(|v| revision::mode(&v));
                         rev_read.show_marks = page::yes(attr("ScriptCraftShowMarks"));
-                        rev_read.color_pages = page::yes(attr("ScriptCraftColorPages"));
+                        rev_read.color_pages = page::yes(attr("ShowPageColor")).or(page::yes(attr("ScriptCraftColorPages")));
                     }
                     "ScriptCraftVoices" if !in_title => voices_read.narrator(attr("Narrator")),
                     "Voice" if stack.iter().any(|n| n == "ScriptCraftVoices") => voices_read.add(attr("Character"), attr("Name")),
+                    "Narrator" if stack.iter().any(|n| n == "Cast") => voices_read.cast_narrator(attr("Actor")),
+                    "Member" if stack.iter().any(|n| n == "Cast") => voices_read.member(attr("Actor"), attr("Character")),
+                    "Actor" if stack.iter().any(|n| n == "Actors") => voices_read.actor(attr("Name"), attr("MacVoice")),
                     "Revision" if stack.iter().any(|n| n == "Revisions") => {
-                        rev_read.add(attr("ID"), attr("Name"), attr("Color"), attr("Mark"), attr("ScriptCraftDate"));
+                        rev_read.add(revision::SetIn {
+                            id: attr("ID"),
+                            name: attr("Name"),
+                            color: attr("Color"),
+                            page_color: attr("PageColor"),
+                            mark: attr("Mark"),
+                            sc_name: attr("ScriptCraftName"),
+                            sc_date: attr("ScriptCraftDate"),
+                        });
                     }
                     "SceneProperties" => {
                         let color = attr("Color").and_then(|c| parse_color(&c));
@@ -324,8 +374,15 @@ pub fn parse(src: &str) -> Result<Script, FdxError> {
                         }
                     }
                     "ScriptNote" => {
-                        let (start, len) = attr("Range").and_then(|r| parse_range(&r)).unwrap_or((0, 0));
-                        let color = attr("Color").or_else(|| attr("MarkerColor")).and_then(|c| parse_color(&c));
+                        // Final Draft anchors a note at its place among the text runs and gives
+                        // no range: it covers the rest of the paragraph. ScriptCraft adds `Range`.
+                        let here = open.last().filter(|o| o.kind == Kind::Body).map_or(0, |o| o.text.chars().count());
+                        let (start, len) = attr("Range").and_then(|r| parse_range(&r)).unwrap_or((here, usize::MAX));
+                        // Final Draft's default marker colour is black: our default note colour.
+                        let color = attr("Color")
+                            .or_else(|| attr("MarkerColor"))
+                            .filter(|c| c.trim_start_matches('#').chars().any(|x| x != '0'))
+                            .and_then(|c| parse_color(&c));
                         let author = attr("Author").or_else(|| attr("Writer")).unwrap_or_default();
                         if let Some(o) = open.last_mut().filter(|o| o.kind == Kind::Body) {
                             let n = NoteIn { start, len, color, author, text: String::new() };
@@ -421,7 +478,7 @@ pub fn parse(src: &str) -> Result<Script, FdxError> {
                     "Paragraph" => {
                         if let Some(o) = open.pop() {
                             if let Kind::HeaderFooter(footer) = o.kind {
-                                page_read.add(footer, &o.align, &o.text);
+                                page_read.add(footer, &o.align, &o.text, &o.tabs);
                             } else if o.kind == Kind::Beat {
                                 beat_read.line(&o.text);
                             } else if !outline_read.take(&o, paras.len()) {
@@ -478,8 +535,23 @@ pub fn parse(src: &str) -> Result<Script, FdxError> {
     s.settings.elements = formats;
     s.settings.scene_letters = scene_letters;
     s.settings.track.on = track_on;
+    // Final Draft shows a scene's number whenever it has one, in the margins its options say.
+    if let Some(show) = scene_number_options {
+        s.settings.show_scene_numbers = show && s.paras.iter().any(|p| p.scene_number.is_some());
+    }
     if let Some((pages, numbers, show)) = production {
-        (s.settings.pages_locked, s.settings.scene_numbers_locked, s.settings.show_scene_numbers) = (pages, numbers, show);
+        (s.settings.pages_locked, s.settings.scene_numbers_locked) = (pages, numbers);
+        if let Some(show) = show {
+            s.settings.show_scene_numbers = show;
+        }
+    }
+    if let Some((more, auto)) = dialogue_breaks {
+        if let Some(b) = more {
+            s.settings.more_contd = b;
+        }
+        if let Some(b) = auto {
+            s.settings.auto_contd = b;
+        }
     }
     page_read.apply(&mut s.settings.page);
     rev_read.apply(&mut s);
@@ -623,11 +695,16 @@ fn finish(o: Open, open: &mut [Open], paras: &mut Vec<Para>, title_read: &mut ti
                 p.tags = o.tags;
             }
             let at = |chars: usize| p.text.char_indices().nth(chars).map_or(p.text.len(), |(b, _)| b);
+            let chars = p.text.chars().count();
             p.notes = o
                 .notes
                 .iter()
                 .filter(|n| !n.text.trim().is_empty())
-                .map(|n| Note::new(at(n.start), at(n.start.saturating_add(n.len)), &n.text, n.color, &n.author))
+                .map(|n| {
+                    // A Final Draft note (no range) after all the text covers the whole paragraph.
+                    let start = if n.len == usize::MAX && n.start >= chars { 0 } else { n.start };
+                    Note::new(at(start), at(start.saturating_add(n.len)), &n.text, n.color, &n.author)
+                })
                 .collect();
             p.tagged = o.tagged.iter().map(|(s, l, c)| Tagged { start: at(*s), end: at(s.saturating_add(*l)), category: c.clone() }).collect();
             p.alternates = o.alts;
@@ -701,24 +778,45 @@ fn para_xml_with(out: &mut String, indent: &str, p: &Para, beat_links: Option<St
         }
         out.push_str(&format!("{indent}  </SceneProperties>\n"));
     }
-    for (t, st, rev) in revision::runs(p) {
-        let rev = rev.map(|r| format!(" RevisionID=\"{r}\"")).unwrap_or_default();
-        out.push_str(&format!("{indent}  <Text{rev}{}>{}</Text>\n", style_attr(st), esc(t)));
-    }
+    // Text runs, with each script note placed where it starts (as Final Draft writes them).
     let chars = |b: usize| p.text.get(..b).map_or(0, |t| t.chars().count());
-    for n in &p.notes {
-        out.push_str(&format!(
-            "{indent}  <ScriptNote Range=\"{},{}\" Color=\"{}\" Author=\"{}\">\n",
-            chars(n.start),
-            chars(n.end).saturating_sub(chars(n.start)),
-            color_attr(n.color),
-            esc(&n.author)
-        ));
-        for line in n.text.lines() {
-            out.push_str(&format!("{indent}    <Paragraph>\n{indent}      <Text>{}</Text>\n{indent}    </Paragraph>\n", esc(line)));
+    let mut notes: Vec<(usize, &Note)> = p.notes.iter().enumerate().collect();
+    notes.sort_by_key(|(_, n)| n.start);
+    let mut next_note = 0;
+    let emit_notes = |out: &mut String, upto: usize, next_note: &mut usize| {
+        while let Some((i, n)) = notes.get(*next_note).filter(|(_, n)| n.start <= upto) {
+            out.push_str(&format!(
+                "{indent}  <ScriptNote ID=\"{}\" Author=\"{}\" Color=\"{}\" Name=\"\" Type=\"\" Range=\"{},{}\">\n",
+                i + 1,
+                esc(&n.author),
+                color_attr(n.color),
+                chars(n.start),
+                chars(n.end).saturating_sub(chars(n.start)),
+            ));
+            for line in n.text.lines() {
+                out.push_str(&format!("{indent}    <Paragraph>\n{indent}      <Text>{}</Text>\n{indent}    </Paragraph>\n", esc(line)));
+            }
+            out.push_str(&format!("{indent}  </ScriptNote>\n"));
+            *next_note += 1;
         }
-        out.push_str(&format!("{indent}  </ScriptNote>\n"));
+    };
+    let mut at = 0usize;
+    for (t, st, rev) in revision::runs(p) {
+        // Final Draft numbers sets from 1.
+        let rev = rev.map(|r| format!(" RevisionID=\"{}\"", u32::from(r) + 1)).unwrap_or_default();
+        // Split the run where notes start inside it.
+        let mut cuts: Vec<usize> =
+            notes.iter().map(|(_, n)| n.start).filter(|&b| b > at && b < at + t.len() && t.is_char_boundary(b - at)).map(|b| b - at).collect();
+        cuts.dedup();
+        let mut from = 0;
+        for cut in cuts.into_iter().chain(std::iter::once(t.len())) {
+            emit_notes(out, at + from, &mut next_note);
+            out.push_str(&format!("{indent}  <Text{rev}{}>{}</Text>\n", style_attr(st), esc(t.get(from..cut).unwrap_or(""))));
+            from = cut;
+        }
+        at += t.len();
     }
+    emit_notes(out, usize::MAX, &mut next_note);
     for t in &p.tagged {
         out.push_str(&format!(
             "{indent}  <ScriptCraftTag Range=\"{},{}\" Category=\"{}\"/>\n",
@@ -776,15 +874,25 @@ pub fn write(s: &Script) -> String {
     out.push_str("  </Content>\n");
     beats::write(&mut out, s);
     let st = &s.settings;
-    if st.pages_locked || st.scene_numbers_locked || st.show_scene_numbers {
-        let yn = |b: bool| if b { "Yes" } else { "No" };
+    let yn = |b: bool| if b { "Yes" } else { "No" };
+    if st.pages_locked || st.scene_numbers_locked {
         out.push_str(&format!(
-            "  <ScriptCraftProduction LockedPages=\"{}\" LockedSceneNumbers=\"{}\" ShowSceneNumbers=\"{}\"/>\n",
+            "  <ScriptCraftProduction LockedPages=\"{}\" LockedSceneNumbers=\"{}\"/>\n",
             yn(st.pages_locked),
             yn(st.scene_numbers_locked),
-            yn(st.show_scene_numbers)
         ));
     }
+    // Final Draft's (MORE)/(CONT'D) and scene number options. ScriptCraft has no scene
+    // (CONTINUED) and prints numbers in both margins or neither.
+    let more = yn(st.more_contd);
+    out.push_str(&format!(
+        "  <MoresAndContinueds>\n    <DialogueBreaks AutomaticCharacterContinueds=\"{}\" BottomOfPage=\"{more}\" DialogueBottom=\"(MORE)\" DialogueTop=\"(CONT&apos;D)\" TopOfNext=\"{more}\"/>\n    <SceneBreaks ContinuedNumber=\"No\" SceneBottom=\"(CONTINUED)\" SceneBottomOfPage=\"No\" SceneTop=\"CONTINUED:\" SceneTopOfNext=\"No\"/>\n  </MoresAndContinueds>\n",
+        yn(st.auto_contd)
+    ));
+    let show = yn(st.show_scene_numbers);
+    out.push_str(&format!(
+        "  <SceneNumberOptions LeftLocation=\"0.75\" NumberScheme=\"1A\" RightLocation=\"7.38\" ShowNumbersOnLeft=\"{show}\" ShowNumbersOnRight=\"{show}\"/>\n"
+    ));
     for e in Element::ALL {
         let f = s.settings.elements.get(e);
         let caps = if f.uppercase { " Style=\"AllCaps\"" } else { "" };
@@ -828,6 +936,9 @@ mod annot_tests;
 #[cfg(test)]
 #[path = "board_tests.rs"]
 mod board_tests;
+#[cfg(test)]
+#[path = "compat_tests.rs"]
+mod compat_tests;
 #[cfg(test)]
 #[path = "v04_tests.rs"]
 mod v04_tests;

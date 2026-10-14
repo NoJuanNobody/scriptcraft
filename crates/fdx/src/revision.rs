@@ -1,6 +1,15 @@
-//! Revisions in FDX: `<Revisions ActiveSet RevisionMode>` holding one `<Revision ID Name Color
-//! Mark>` per set, and a `RevisionID` attribute on each revised `<Text>` run. The set's date and
-//! the show-marks / coloured-pages options are ScriptCraft-only attributes.
+//! Revisions in FDX, in Final Draft's form (see `docs/fdx-format.md`): `<Revisions ActiveSet
+//! RevisionMode="Yes|No" ShowPageColor="Yes|No">` holding one `<Revision ID Name Color PageColor
+//! Mark FullRevision Style>` per set, and `RevisionID` on each `<Text>` run.
+//!
+//! Final Draft numbers sets from 1 and writes `RevisionID="0"` on unrevised text; `Color` is the
+//! revised text's colour and `PageColor` the page tint; `Name` is the whole label
+//! (`Blue Rev. (10/12/26)`). ScriptCraft writes set `i` as `ID="i+1"` and keeps its exact name
+//! and date in `ScriptCraftName` / `ScriptCraftDate`; the show-marks option stays
+//! ScriptCraft-only (`ScriptCraftShowMarks`).
+//!
+//! Older ScriptCraft files (sets from `ID="0"`, the tint in `Color`, `RevisionMode="On…"`,
+//! `ScriptCraftColorPages`) still read.
 
 use scriptcraft_doc::revision::{RevisionSet, Revisions, parse_color};
 use scriptcraft_doc::{Para, RevMark, Script, Style};
@@ -42,22 +51,53 @@ pub(crate) fn write(out: &mut String, s: &Script) {
     }
     let yn = |b: bool| if b { "Yes" } else { "No" };
     out.push_str(&format!(
-        "  <Revisions ActiveSet=\"{}\" RevisionMode=\"{}\" ShowAllMarks=\"No\" ShowAllSets=\"No\" ScriptCraftShowMarks=\"{}\" ScriptCraftColorPages=\"{}\">\n",
-        r.active,
-        if r.tracking { "On" } else { "Off" },
+        "  <Revisions ActiveSet=\"{}\" RevisionMode=\"{}\" ShowAllMarks=\"No\" ShowAllSets=\"No\" ShowPageColor=\"{}\" ScriptCraftShowMarks=\"{}\">\n",
+        r.active + 1,
+        yn(r.tracking),
+        yn(r.color_pages),
         yn(r.show_marks),
-        yn(r.color_pages)
     ));
     for (i, st) in r.sets.iter().enumerate() {
         let [cr, cg, cb] = st.color;
         out.push_str(&format!(
-            "    <Revision Color=\"#{cr:02X}{cr:02X}{cg:02X}{cg:02X}{cb:02X}{cb:02X}\" FullRevision=\"No\" ID=\"{i}\" Mark=\"{}\" Name=\"{}\" ScriptCraftDate=\"{}\"/>\n",
+            "    <Revision Color=\"#000000000000\" FullRevision=\"No\" ID=\"{}\" Mark=\"{}\" Name=\"{}\" PageColor=\"#{cr:02X}{cr:02X}{cg:02X}{cg:02X}{cb:02X}{cb:02X}\" Style=\"\" ScriptCraftName=\"{}\" ScriptCraftDate=\"{}\"/>\n",
+            i + 1,
             esc(&st.mark),
+            esc(&fd_name(st)),
             esc(&st.name),
             esc(&st.date)
         ));
     }
     out.push_str("  </Revisions>\n");
+}
+
+/// Final Draft's set name: the whole label, the date in parentheses (`Blue Rev. (10/12/26)`).
+fn fd_name(st: &RevisionSet) -> String {
+    let d = st.date.trim();
+    if d.is_empty() { format!("{} Rev.", st.name.trim()) } else { format!("{} Rev. ({d})", st.name.trim()) }
+}
+
+/// A Final Draft set name → (name, date): `Blue Rev. (10/12/26)` → (`Blue`, `10/12/26`). The
+/// template placeholder `(mm/dd/yy)` is no date.
+fn split_fd_name(n: &str) -> (String, String) {
+    let mut name = n.trim();
+    let mut date = "";
+    if let Some(open) = name.rfind('(')
+        && name.ends_with(')')
+    {
+        date = name.get(open + 1..name.len() - 1).unwrap_or("").trim();
+        name = name.get(..open).unwrap_or("").trim_end();
+        if date.chars().all(|c| c.is_ascii_alphabetic() || c == '/') {
+            date = "";
+        }
+    }
+    for suffix in [" Rev.", " Rev", " Revision"] {
+        if let Some(n) = name.strip_suffix(suffix) {
+            name = n.trim_end();
+            break;
+        }
+    }
+    (name.to_string(), date.to_string())
 }
 
 /// What was read from `<Revisions>`.
@@ -72,18 +112,51 @@ pub(crate) struct Read {
     pub sets: Vec<(u32, RevisionSet)>,
 }
 
+/// One `<Revision>`'s attributes.
+#[derive(Default)]
+pub(crate) struct SetIn {
+    pub id: Option<String>,
+    pub name: Option<String>,
+    pub color: Option<String>,
+    pub page_color: Option<String>,
+    pub mark: Option<String>,
+    pub sc_name: Option<String>,
+    pub sc_date: Option<String>,
+}
+
+/// `RevisionMode`: Final Draft's `Yes`/`No`, older ScriptCraft files' `On`/`Off…`.
+pub(crate) fn mode(v: &str) -> bool {
+    let v = v.trim();
+    v.eq_ignore_ascii_case("yes") || v.starts_with("On")
+}
+
 impl Read {
-    pub fn add(&mut self, id: Option<String>, name: Option<String>, color: Option<String>, mark: Option<String>, date: Option<String>) {
+    pub fn add(&mut self, a: SetIn) {
         if self.sets.len() >= scriptcraft_doc::revision::MAX_SETS {
             return;
         }
-        let id = id.and_then(|v| v.trim().parse::<u32>().ok()).unwrap_or(self.sets.len() as u32);
-        let mut st = RevisionSet::new(name.as_deref().unwrap_or("Revision"), color.and_then(|c| parse_color(&c)).unwrap_or([0xff, 0xff, 0xff]));
-        if let Some(m) = mark {
+        let id = a.id.and_then(|v| v.trim().parse::<u32>().ok()).unwrap_or(self.sets.len() as u32 + 1);
+        // The page tint: Final Draft's `PageColor`, or `Color` in older ScriptCraft files.
+        let tint = a.page_color.or(a.color).and_then(|c| parse_color(&c)).unwrap_or([0xff, 0xff, 0xff]);
+        let (name, date) = match a.sc_name {
+            Some(n) => (n, a.sc_date.unwrap_or_default()),
+            None => {
+                let (n, d) = split_fd_name(a.name.as_deref().unwrap_or("Revision"));
+                (n, a.sc_date.unwrap_or(d))
+            }
+        };
+        let mut st = RevisionSet::new(&name, tint);
+        if let Some(m) = a.mark {
             st.mark = m;
         }
-        st.date = date.unwrap_or_default();
+        st.date = date;
         self.sets.push((id, st));
+    }
+
+    /// Final Draft's `RevisionID="0"` is unrevised text, unless the file has a set 0 (older
+    /// ScriptCraft files numbered sets from 0).
+    pub fn zero_is_unrevised(&self) -> bool {
+        self.seen && !self.sets.iter().any(|(id, _)| *id == 0)
     }
 
     fn index_of(&self, id: u32) -> Option<usize> {
@@ -92,10 +165,14 @@ impl Read {
 
     /// Turn the `RevisionID`s read into the marks (stored raw) into set indices.
     pub fn remap(&self, paras: &mut [Para]) {
-        if self.sets.is_empty() {
-            return;
-        }
+        let zero_none = self.zero_is_unrevised() || self.sets.is_empty();
         for p in paras {
+            if zero_none {
+                p.revs.retain(|m| m.level != 0);
+            }
+            if self.sets.is_empty() {
+                continue;
+            }
             for m in &mut p.revs {
                 m.level = self.index_of(u32::from(m.level)).unwrap_or(0).min(usize::from(u8::MAX)) as u8;
             }
@@ -155,8 +232,10 @@ mod tests {
         r.color_pages = true;
         r.sets[2].date = "10/12/26".into();
         let xml = crate::write(&s);
-        assert!(xml.contains("RevisionID=\"2\""), "{xml}");
-        assert!(xml.contains("<Revision Color=\"#F8F8D3D3DCDC\""));
+        assert!(xml.contains("RevisionID=\"3\""), "set 2 is Final Draft's ID 3: {xml}");
+        assert!(xml.contains("PageColor=\"#F8F8D3D3DCDC\""));
+        assert!(xml.contains("RevisionMode=\"Yes\"") && xml.contains("ShowPageColor=\"Yes\""));
+        assert!(xml.contains("Name=\"Pink Rev. (10/12/26)\""), "{xml}");
         let back = crate::parse(&xml).unwrap();
         assert_eq!(back.paras, s.paras, "text, styles and marks");
         assert_eq!(back.settings.revision, s.settings.revision);
