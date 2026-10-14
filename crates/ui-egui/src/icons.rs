@@ -22,6 +22,8 @@ pub enum Icon {
     Title,
     Undo,
     Redo,
+    Beats,
+    Split,
 }
 
 /// Draw `icon` in `r` with colour `c`.
@@ -124,6 +126,20 @@ pub fn paint(ui: &Ui, icon: Icon, r: Rect, c: Color32) {
         }
         Icon::Numbers => {
             p.text(at(0.5, 0.52), egui::Align2::CENTER_CENTER, "#", egui::FontId::proportional(0.62 * r.height()), c);
+        }
+        Icon::Beats => {
+            // Loose cards joined by a thread.
+            p.line_segment([at(0.3, 0.32), at(0.68, 0.66)], Stroke::new(1.0, c));
+            for (x, y, w, h) in [(0.1, 0.18, 0.38, 0.28), (0.5, 0.54, 0.38, 0.28)] {
+                p.rect_stroke(Rect::from_min_size(at(x, y), vec2(w * r.width(), h * r.height())), 1.5, s, StrokeKind::Middle);
+            }
+            p.circle_filled(at(0.74, 0.27), 0.07 * r.height(), c);
+        }
+        Icon::Split => {
+            p.rect_stroke(page(0.14, 0.2, 0.86, 0.8), 2.0, s, StrokeKind::Middle);
+            p.line_segment([at(0.5, 0.2), at(0.5, 0.8)], s);
+            lines(0.22, 0.42, &[0.36, 0.5, 0.64]);
+            lines(0.58, 0.78, &[0.36, 0.5]);
         }
         Icon::Undo | Icon::Redo => {
             let flip = if icon == Icon::Redo { -1.0 } else { 1.0 };

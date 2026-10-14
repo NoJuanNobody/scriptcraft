@@ -10,8 +10,8 @@ use egui::{Align2, Color32, FontId, Id, Rect, RichText, Sense, Stroke, Ui, pos2,
 use scriptcraft_doc::{CardColor, StructureKind, StructurePoint};
 use serde_json::{Value, json};
 
+use crate::ScriptApp;
 use crate::chrome::elide;
-use crate::{ScriptApp, View};
 
 const ROW_H: f32 = 34.0;
 const POINT_H: f32 = 44.0;
@@ -254,7 +254,7 @@ pub fn show(app: &mut ScriptApp, ui: &mut Ui) {
     for (id, p) in actions {
         app.run(id, p);
         if id == "scene.goto" {
-            app.view = View::Page;
+            crate::split::show_page(app);
         }
     }
 }
@@ -330,7 +330,7 @@ pub fn nav_points(app: &mut ScriptApp, ui: &mut Ui, points: &[StructurePoint], f
         );
         if resp.clicked() {
             app.run("structure.goto", json!({"index": first + k}));
-            app.view = View::Page;
+            crate::split::show_page(app);
         }
     }
 }

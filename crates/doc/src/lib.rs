@@ -7,6 +7,7 @@
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 mod annot;
+mod beats;
 mod element;
 mod format;
 pub mod page_setup;
@@ -19,6 +20,10 @@ mod text;
 pub use annot::{
     Alternate, MAX_ALTERNATES, MAX_NOTES, MAX_TAGGED, Note, NoteRef, TAG_CATEGORIES, Tagged, alternate_from_runs, category_rgb, clean_author,
     clean_category, clean_note,
+};
+pub use beats::{
+    BEAT_H, BEAT_MAX, BEAT_MIN, BEAT_W, BOARD_EXTENT, Beat, BeatBoard, MAX_BEAT_TEXT, MAX_BEAT_TITLE, MAX_BEATS, MAX_BOOKMARK_CHARS, beat_key,
+    clean_beat_text, clean_beat_title, clean_bookmark,
 };
 pub use element::Element;
 pub use format::{Align, ElementFormat, ElementFormats};
@@ -95,6 +100,12 @@ pub struct Para {
     /// (scene headings only); see [`structure`].
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub structure: Vec<StructurePoint>,
+    /// A named bookmark on this paragraph (FDX `Bookmark`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bookmark: Option<String>,
+    /// Beat-board beats linked to this scene (scene headings only): beat ids.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub beats: Vec<u32>,
 }
 
 /// Index-card colours.
@@ -192,6 +203,8 @@ impl Para {
             alternates: Vec::new(),
             revs: Vec::new(),
             structure: Vec::new(),
+            bookmark: None,
+            beats: Vec::new(),
         }
     }
 
@@ -420,6 +433,9 @@ pub struct Script {
     /// Structure points after the last scene (e.g. an act with no scenes yet).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub structure_tail: Vec<StructurePoint>,
+    /// The beat board.
+    #[serde(default, skip_serializing_if = "BeatBoard::is_empty")]
+    pub board: BeatBoard,
 }
 
 impl Default for Script {
@@ -436,12 +452,14 @@ impl Script {
             paras: vec![Para::new(Element::SceneHeading, "")],
             settings: Settings::default(),
             structure_tail: Vec::new(),
+            board: BeatBoard::default(),
         }
     }
 
     /// A script from paragraphs (an empty list gets one empty Action).
     pub fn from_paras(paras: Vec<Para>) -> Result<Self, DocError> {
-        let mut s = Script { title: TitlePage::default(), paras, settings: Settings::default(), structure_tail: Vec::new() };
+        let mut s =
+            Script { title: TitlePage::default(), paras, settings: Settings::default(), structure_tail: Vec::new(), board: BeatBoard::default() };
         s.normalize()?;
         Ok(s)
     }
@@ -498,6 +516,7 @@ impl Script {
         }
         self.normalize_production();
         self.fix_structure();
+        self.normalize_boards();
         Ok(())
     }
 
@@ -641,10 +660,12 @@ impl Script {
         let end = b.para.min(self.paras.len().saturating_sub(1));
         if a.para < end {
             // Structure points of removed paragraphs stay: they move to the next heading.
-            let kept: Vec<StructurePoint> = self.paras.drain(a.para + 1..=end).flat_map(|p| p.structure).collect();
+            let gone: Vec<Para> = self.paras.drain(a.para + 1..=end).collect();
+            let kept: Vec<StructurePoint> = gone.iter().flat_map(|p| p.structure.iter().cloned()).collect();
             if let Some(p) = self.paras.get_mut(a.para) {
                 p.structure.extend(kept);
             }
+            self.inherit_anchors(a.para, &gone);
             self.fix_structure();
         }
         a
@@ -665,11 +686,16 @@ impl Script {
         p.spans = style::compress(&p.text, &st);
         let moved = p.marks_split(pos.off);
         // Splitting at the very start moves the whole text down: its structure points go too.
-        let structure = if pos.off == 0 && !tail.is_empty() { std::mem::take(&mut p.structure) } else { Vec::new() };
+        // So do its bookmark and beat links, which belong to the text.
+        let whole = pos.off == 0 && !tail.is_empty();
+        let structure = if whole { std::mem::take(&mut p.structure) } else { Vec::new() };
+        let (bookmark, beats) = if whole { (p.bookmark.take(), std::mem::take(&mut p.beats)) } else { (None, Vec::new()) };
         let mut next = Para::new(element, "");
         next.set_text_styled(&tail, &tail_st, caps);
         next.marks_append(moved);
         next.structure = structure;
+        next.bookmark = bookmark;
+        next.beats = beats;
         self.paras.insert(pos.para + 1, next);
         Ok(Pos::new(pos.para + 1, 0))
     }
@@ -842,3 +868,6 @@ pub fn heading_parts(h: &str) -> (String, String, String) {
 mod structure_tests;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+#[path = "v04_tests.rs"]
+mod v04_tests;

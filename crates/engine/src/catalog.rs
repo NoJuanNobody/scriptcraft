@@ -139,7 +139,13 @@ pub const FEATURES: &[Feature] = &[
     f("Structure", "Reorder scenes", Done, &["scene.move"], "drag index cards"),
     f("Structure", "Index card colours and tags", Done, &["scene.setColor", "scene.setTags"], "kept in FDX and Fountain"),
     f("Structure", "Go to page", Done, &["caret.gotoPage"], ""),
-    f("Structure", "Beat Board", Missing, &[], ""),
+    f(
+        "Structure",
+        "Beat Board",
+        Done,
+        &["beat.add", "beat.edit", "beat.move", "beat.delete", "beat.list", "beat.link", "beat.goto", "beat.toScene", "ui.view.beats"],
+        "free canvas of cards (pan, zoom, drag, resize); link a beat to a scene; FDX ListItems + DisplayBoard",
+    ),
     f(
         "Structure",
         "Outline Editor (structure points)",
@@ -148,8 +154,20 @@ pub const FEATURES: &[Feature] = &[
         "acts, sequences and sections; drag scenes under them; kept in FDX (Outline paragraphs) and Fountain (# sections)",
     ),
     f("Structure", "Story Map", Done, &["storymap.get", "ui.toggleStoryMap"], "scenes and structure scaled to pages; click to go there"),
-    f("Structure", "Bookmarks", Missing, &[], ""),
-    f("Structure", "Split screen / multiple views", Missing, &[], ""),
+    f(
+        "Structure",
+        "Bookmarks",
+        Done,
+        &["bookmark.add", "bookmark.remove", "bookmark.rename", "bookmark.list", "bookmark.goto", "bookmark.next", "bookmark.previous"],
+        "navigator tab; FDX Bookmark attribute",
+    ),
+    f(
+        "Structure",
+        "Split screen / multiple views",
+        Done,
+        &["ui.split", "ui.splitView", "ui.focusPane"],
+        "two panes, side by side or stacked, each with its own view and scroll; one caret",
+    ),
     // Production
     f("Production", "Character report", Done, &["report.characters", "ui.view.reports"], ""),
     f("Production", "Scene report (page, length in eighths, cast)", Done, &["report.scenes", "ui.view.reports"], ""),

@@ -9,8 +9,8 @@ use egui::{Align2, Color32, FontId, Id, Rect, RichText, Sense, Stroke, Ui, pos2,
 use scriptcraft_doc::StructureKind;
 use serde_json::json;
 
+use crate::ScriptApp;
 use crate::chrome::elide;
-use crate::{ScriptApp, View};
 
 /// Height of the strip, points.
 pub const HEIGHT: f32 = 118.0;
@@ -115,6 +115,6 @@ pub fn strip(app: &mut ScriptApp, ui: &mut Ui) {
     p.text(r.right_bottom(), Align2::RIGHT_BOTTOM, format!("{} pages", map.pages as usize), FontId::proportional(9.5), Color32::from_gray(140));
     if let Some((id, v)) = go {
         app.run(id, v);
-        app.view = View::Page;
+        crate::split::show_page(app);
     }
 }

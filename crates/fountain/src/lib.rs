@@ -12,6 +12,9 @@
 //! index card instead), boneyard (`/* … */`, removed), page breaks (`===`, ignored) and lyrics
 //! (`~`, imported as Action).
 //!
+//! ScriptCraft's beat board, bookmarks and beat links travel in one boneyard block at the end
+//! (`/* ScriptCraft board: {…} */`, see `board.rs`), which other Fountain apps ignore.
+//!
 //! Script notes are written back as `[[…]]` lines before their paragraph. Production tags and
 //! alternate lines have no Fountain form: only the active line is written.
 //!
@@ -19,6 +22,7 @@
 //! styled text is written back with markers (literal `*` and `_` are escaped).
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
+mod board;
 mod emphasis;
 
 use scriptcraft_doc::{Element, MAX_PARAS, Note, Para, Script, StructureKind, StructurePoint, TitlePage};
@@ -39,6 +43,8 @@ pub fn parse(src: &str) -> Script {
         cut -= 1;
     }
     let src = src.get(..cut).unwrap_or("").replace("\r\n", "\n").replace('\r', "\n").replace([NOTE_OPEN, NOTE_CLOSE, NOTE_LINE], "");
+    // ScriptCraft's beat board and bookmarks, in a boneyard block at the end.
+    let (src, board_meta) = board::extract(&src);
     // Index-card colour and tags travel as notes on their own line: `[[color: blue]]`,
     // `[[tags: chase, night]]`. They are kept (marked) before other notes are removed.
     let src = strip_between(&src, "/*", "*/")
@@ -222,6 +228,9 @@ pub fn parse(src: &str) -> Script {
     let mut s = Script::from_paras(paras).unwrap_or_default();
     s.structure_tail.extend(tail);
     s.title = title;
+    if let Some(m) = board_meta {
+        board::apply(m, &mut s);
+    }
     s
 }
 
@@ -560,6 +569,7 @@ pub fn write(s: &Script) -> String {
         prev = Some(p.element);
     }
     structure_lines(&mut out, &s.structure_tail);
+    board::write(&mut out, s);
     out
 }
 
@@ -606,3 +616,10 @@ mod tests;
 #[cfg(test)]
 #[path = "annot_tests.rs"]
 mod annot_tests;
+
+#[cfg(test)]
+#[path = "board_tests.rs"]
+mod board_tests;
+#[cfg(test)]
+#[path = "v04_tests.rs"]
+mod v04_tests;

@@ -33,10 +33,11 @@ pub fn dispatch_shortcut(app: &mut ScriptApp, key: Key, m: Modifiers) -> bool {
 
 /// Shortcuts that work wherever the keyboard focus is (when the page view does not have it).
 pub fn global_shortcuts(app: &mut ScriptApp, ctx: &egui::Context) {
-    let page_focused = ctx.memory(|m| m.has_focus(crate::canvas::canvas_id()));
-    if page_focused && app.view == View::Page {
+    // A page view with the keyboard handles its own keys.
+    if crate::split::page_has_keys(app, ctx) {
         return;
     }
+    let page_focused = (0..2).any(|i| ctx.memory(|m| m.has_focus(crate::canvas::canvas_id_for(i))));
     let keys: Vec<(Key, Modifiers)> = ctx.input(|i| {
         i.events
             .iter()
@@ -160,12 +161,16 @@ pub fn menu_bar(app: &mut ScriptApp, ui: &mut Ui) {
                 item(app, ui, "Select All", "select.all", "Mod+A");
                 ui.separator();
                 item(app, ui, "Find and Replace…", "ui.find", "Mod+F");
+                ui.separator();
+                crate::bookmarks::menu(app, ui);
             });
             ui.menu_button("View", |ui| {
-                check(app, ui, "Page View", app.view == View::Page, "ui.view.page", json!({}));
-                check(app, ui, "Index Cards", app.view == View::Cards, "ui.view.cards", json!({}));
-                check(app, ui, "Reports", app.view == View::Reports, "ui.view.reports", json!({}));
-                check(app, ui, "Outline", app.view == View::Outline, "ui.view.outline", json!({}));
+                let v = crate::split::active_view(app);
+                check(app, ui, "Page View", v == View::Page, "ui.view.page", json!({}));
+                check(app, ui, "Index Cards", v == View::Cards, "ui.view.cards", json!({}));
+                check(app, ui, "Reports", v == View::Reports, "ui.view.reports", json!({}));
+                check(app, ui, "Outline", v == View::Outline, "ui.view.outline", json!({}));
+                check(app, ui, "Beat Board", v == View::BeatBoard, "ui.view.beats", json!({}));
                 check(app, ui, "Story Map", app.story_map, "ui.toggleStoryMap", json!({}));
                 ui.menu_button("Add Structure Point", |ui| {
                     for k in scriptcraft_doc::StructureKind::ALL {
@@ -176,6 +181,32 @@ pub fn menu_bar(app: &mut ScriptApp, ui: &mut Ui) {
                     }
                 });
                 check(app, ui, "Speed View (no page breaks)", app.session.speed, "ui.view.speed", json!({}));
+                ui.separator();
+                ui.menu_button("Split Screen", |ui| {
+                    use crate::split::SplitMode;
+                    for (label, mode) in [("One Pane", SplitMode::Off), ("Side by Side", SplitMode::SideBySide), ("Stacked", SplitMode::Stacked)] {
+                        if ui.radio(app.split.mode == mode, label).clicked() {
+                            app.run("ui.split", json!({"mode": mode.id()}));
+                            ui.close();
+                        }
+                    }
+                    if app.split.on() {
+                        ui.separator();
+                        ui.label(RichText::new("Second pane").strong());
+                        for (label, v) in [
+                            ("Page View", View::Page),
+                            ("Index Cards", View::Cards),
+                            ("Reports", View::Reports),
+                            ("Outline", View::Outline),
+                            ("Beat Board", View::BeatBoard),
+                        ] {
+                            if ui.radio(app.split.second == v, label).clicked() {
+                                app.run("ui.splitView", json!({"pane": 1, "view": v.id()}));
+                                ui.close();
+                            }
+                        }
+                    }
+                });
                 ui.separator();
                 check(app, ui, "Navigator", app.navigator, "ui.toggleNavigator", json!({}));
                 check(app, ui, "Scene Numbers", app.session.script.settings.show_scene_numbers, "view.toggleSceneNumbers", json!({}));
@@ -377,13 +408,17 @@ pub fn toolbar(app: &mut ScriptApp, ui: &mut Ui) {
                     (Icon::Cards, "Index cards", "ui.view.cards", View::Cards),
                     (Icon::Reports, "Reports", "ui.view.reports", View::Reports),
                     (Icon::Outline, "Outline", "ui.view.outline", View::Outline),
+                    (Icon::Beats, "Beat board", "ui.view.beats", View::BeatBoard),
                 ] {
-                    if icons::button(ui, icon, tip, app.view == v).clicked() {
+                    if icons::button(ui, icon, tip, crate::split::active_view(app) == v).clicked() {
                         app.run(id, json!({}));
                     }
                 }
                 if icons::button(ui, Icon::StoryMap, "Story map", app.story_map).clicked() {
                     app.run("ui.toggleStoryMap", json!({}));
+                }
+                if icons::button(ui, Icon::Split, "Split screen", app.split.on()).clicked() {
+                    app.run("ui.split", json!({}));
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     let (icon, tip) = if app.dark { (Icon::Sun, "Light mode") } else { (Icon::Moon, "Dark mode") };
@@ -505,7 +540,7 @@ pub fn navigator(app: &mut ScriptApp, ui: &mut Ui) {
             });
             ui.add_space(4.0);
             ui.horizontal(|ui| {
-                for (i, name) in ["Scenes", "Characters", "Notes"].iter().enumerate() {
+                for (i, name) in ["Scenes", "Characters", "Notes", "Bookmarks"].iter().enumerate() {
                     if ui.selectable_label(app.nav_tab == i, *name).clicked() {
                         app.nav_tab = i;
                     }
@@ -582,7 +617,7 @@ pub fn navigator(app: &mut ScriptApp, ui: &mut Ui) {
                             .inner;
                         if resp.clicked() {
                             app.run("scene.goto", json!({"index": sc.index}));
-                            app.view = View::Page;
+                            crate::split::show_page(app);
                         }
                     }
                     if let Some(&n) = first_point.get(&None) {
@@ -591,6 +626,8 @@ pub fn navigator(app: &mut ScriptApp, ui: &mut Ui) {
                     }
                 } else if app.nav_tab == 2 {
                     crate::annotations::notes_tab(app, ui);
+                } else if app.nav_tab == 3 {
+                    crate::bookmarks::tab(app, ui);
                 } else {
                     let chars = scriptcraft_engine::reports::characters(&app.session.script, &l);
                     for c in chars {
