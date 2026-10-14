@@ -46,14 +46,13 @@ mod beats;
 mod outline;
 mod page;
 mod revision;
+mod title;
 mod track;
 mod voices;
 
 use quick_xml::Reader;
 use quick_xml::events::Event;
-use scriptcraft_doc::{
-    Align, Alternate, CardColor, Element, ElementFormats, MAX_PARA_BYTES, MAX_PARAS, Note, Para, Script, Style, Tagged, TitlePage,
-};
+use scriptcraft_doc::{Align, Alternate, CardColor, Element, ElementFormats, MAX_PARA_BYTES, MAX_PARAS, Note, Para, Script, Style, Tagged};
 
 /// Largest input we parse, bytes.
 pub const MAX_INPUT: usize = 128 << 20;
@@ -81,6 +80,8 @@ enum Kind {
     Note,
     /// A line of a beat-board card (`ListItem Type="Beat"`).
     Beat,
+    /// Read and dropped (the title page's own header and footer).
+    Skip,
 }
 
 /// A note read so far: character range, colour, author, text.
@@ -124,6 +125,10 @@ struct Open {
     beats: Vec<u32>,
     /// Tracked changes (character offsets until the paragraph is built).
     changes: Vec<scriptcraft_doc::Change>,
+    /// The current `<Text>` is `AllCaps` (title page lines are uppercased).
+    caps: bool,
+    /// A title page line's `ScriptCraftField`.
+    field: Option<String>,
 }
 
 /// Parse an FDX document.
@@ -135,7 +140,7 @@ pub fn parse(src: &str) -> Result<Script, FdxError> {
     let mut stack: Vec<String> = Vec::new();
     let mut open: Vec<Open> = Vec::new();
     let mut paras: Vec<Para> = Vec::new();
-    let mut title_lines: Vec<(String, String)> = Vec::new();
+    let mut title_read = title::Read::default();
     // Characters seen in the current DualDialogue (the second and later are `dual`).
     let mut dual_chars: Option<usize> = None;
     let mut root_seen = false;
@@ -209,7 +214,9 @@ pub fn parse(src: &str) -> Result<Script, FdxError> {
                         }
                     }
                     "Paragraph" => {
-                        let kind = if stack.iter().any(|n| n == "ListItem") {
+                        let kind = if in_title && stack.iter().any(|n| n == "HeaderAndFooter") {
+                            Kind::Skip
+                        } else if stack.iter().any(|n| n == "ListItem") {
                             Kind::Beat
                         } else if stack.iter().any(|n| n == "ScriptNote") {
                             Kind::Note
@@ -248,6 +255,8 @@ pub fn parse(src: &str) -> Result<Script, FdxError> {
                             bookmark: attr("Bookmark"),
                             beats: attr("ScriptCraftBeats").map(|v| beat_read.links(&v)).unwrap_or_default(),
                             changes: Vec::new(),
+                            caps: false,
+                            field: attr("ScriptCraftField"),
                         };
                         if empty {
                             if let Kind::HeaderFooter(footer) = o.kind {
@@ -255,7 +264,7 @@ pub fn parse(src: &str) -> Result<Script, FdxError> {
                             } else if o.kind == Kind::Beat {
                                 beat_read.line(&o.text);
                             } else if !outline_read.take(&o, paras.len()) {
-                                finish(o, &mut open, &mut paras, &mut title_lines, &mut dual_chars);
+                                finish(o, &mut open, &mut paras, &mut title_read, &mut dual_chars);
                             }
                         } else {
                             open.push(o);
@@ -279,7 +288,7 @@ pub fn parse(src: &str) -> Result<Script, FdxError> {
                         production = Some((yes("LockedPages"), yes("LockedSceneNumbers"), yes("ShowSceneNumbers")));
                     }
                     "PageLayout" => page_read.paper = attr("ScriptCraftPaper").and_then(|p| scriptcraft_doc::Paper::parse(&p)),
-                    "HeaderAndFooter" => {
+                    "HeaderAndFooter" if !in_title => {
                         page_read.seen = true;
                         page_read.header_visible = page::yes(attr("HeaderVisible"));
                         page_read.footer_visible = page::yes(attr("FooterVisible"));
@@ -352,11 +361,13 @@ pub fn parse(src: &str) -> Result<Script, FdxError> {
                     }
                     "Text" => {
                         let st = attr("Style").map(|v| parse_style(&v)).unwrap_or_default();
+                        let caps = attr("Style").is_some_and(|v| v.split('+').any(|x| x.trim() == "AllCaps"));
                         let rev = attr("RevisionID").and_then(|v| v.trim().parse::<u32>().ok());
                         if let Some(o) = open.last_mut() {
                             o.in_text = !empty;
                             o.style = st;
                             o.rev = rev;
+                            o.caps = caps;
                         }
                     }
                     "DualDialogue" => {
@@ -414,7 +425,7 @@ pub fn parse(src: &str) -> Result<Script, FdxError> {
                             } else if o.kind == Kind::Beat {
                                 beat_read.line(&o.text);
                             } else if !outline_read.take(&o, paras.len()) {
-                                finish(o, &mut open, &mut paras, &mut title_lines, &mut dual_chars);
+                                finish(o, &mut open, &mut paras, &mut title_read, &mut dual_chars);
                             }
                         }
                     }
@@ -475,11 +486,18 @@ pub fn parse(src: &str) -> Result<Script, FdxError> {
     beat_read.apply(&mut s);
     voices_read.apply(&mut s);
     s.normalize().map_err(|_| FdxError::TooLarge)?;
-    s.title = title_from_lines(&title_lines);
+    s.title = title_read.apply();
     Ok(s)
 }
 
 fn push_text(o: &mut Open, s: &str) {
+    let upper;
+    let s = if o.caps && o.kind == Kind::Title {
+        upper = s.to_uppercase();
+        upper.as_str()
+    } else {
+        s
+    };
     if let Some(runs) = o.alt.as_mut() {
         if runs.iter().map(|(t, _)| t.len()).sum::<usize>() + s.len() <= MAX_PARA_BYTES {
             match runs.last_mut() {
@@ -558,7 +576,7 @@ fn style_attr(st: Style) -> String {
     if parts.is_empty() { String::new() } else { format!(" Style=\"{}\"", parts.join("+")) }
 }
 
-fn finish(o: Open, open: &mut [Open], paras: &mut Vec<Para>, title_lines: &mut Vec<(String, String)>, dual_chars: &mut Option<usize>) {
+fn finish(o: Open, open: &mut [Open], paras: &mut Vec<Para>, title_read: &mut title::Read, dual_chars: &mut Option<usize>) {
     match o.kind {
         Kind::Summary => {
             if let Some(parent) = open.iter_mut().rev().find(|p| p.kind == Kind::Body) {
@@ -571,7 +589,10 @@ fn finish(o: Open, open: &mut [Open], paras: &mut Vec<Para>, title_lines: &mut V
                 }
             }
         }
-        Kind::Title => title_lines.push((o.align, o.text)),
+        Kind::Title => {
+            let runs = if o.runs.is_empty() { vec![(o.text, Style::PLAIN)] } else { o.runs };
+            title_read.add(&o.align, &runs, o.field);
+        }
         Kind::Note => {
             if let Some(n) = open.iter_mut().rev().find(|p| p.kind == Kind::Body).and_then(|p| p.note.as_mut()) {
                 if !n.text.is_empty() {
@@ -580,7 +601,7 @@ fn finish(o: Open, open: &mut [Open], paras: &mut Vec<Para>, title_lines: &mut V
                 n.text.push_str(o.text.trim());
             }
         }
-        Kind::HeaderFooter(_) | Kind::Beat => {}
+        Kind::HeaderFooter(_) | Kind::Beat | Kind::Skip => {}
         Kind::Body => {
             if o.wrapper && o.text.trim().is_empty() {
                 return;
@@ -621,61 +642,6 @@ fn finish(o: Open, open: &mut [Open], paras: &mut Vec<Para>, title_lines: &mut V
             paras.push(p);
         }
     }
-}
-
-fn is_credit(l: &str) -> bool {
-    let l = l.trim().to_lowercase();
-    l == "by"
-        || l.ends_with(" by")
-        || l.starts_with("written by")
-        || l.starts_with("screenplay by")
-        || l.starts_with("teleplay by")
-        || l.starts_with("story by")
-}
-
-/// Map free-form title-page paragraphs onto fields: the first centred line is the title, a
-/// "written by" line the credit, the next centred line the author, later centred lines the
-/// source; left-aligned lines are the contact block, right-aligned ones the draft date.
-fn title_from_lines(lines: &[(String, String)]) -> TitlePage {
-    let mut t = TitlePage::default();
-    let add = |slot: &mut String, v: &str| {
-        if !slot.is_empty() {
-            slot.push('\n');
-        }
-        slot.push_str(v);
-    };
-    let mut stage = 0; // 0 title, 1 credit, 2 author, 3 source
-    for (align, text) in lines {
-        let v = text.trim();
-        if v.is_empty() {
-            continue;
-        }
-        match align.as_str() {
-            "Right" => add(&mut t.draft_date, v),
-            "Left" | "Full" | "" if stage > 0 || align == "Left" => add(&mut t.contact, v),
-            _ => match stage {
-                0 => {
-                    if is_credit(v) {
-                        t.credit = v.to_string();
-                        stage = 2;
-                    } else {
-                        add(&mut t.title, v);
-                        stage = 1;
-                    }
-                }
-                1 if is_credit(v) => {
-                    t.credit = v.to_string();
-                    stage = 2;
-                }
-                1 | 2 => {
-                    add(&mut t.author, v);
-                    stage = 3;
-                }
-                _ => add(&mut t.source, v),
-            },
-        }
-    }
-    t
 }
 
 /// XML-escape text (and drop characters XML 1.0 forbids).
@@ -845,40 +811,7 @@ pub fn write(s: &Script) -> String {
     track::write_root(&mut out, s);
     revision::write(&mut out, s);
     voices::write(&mut out, s);
-    let t = &s.title;
-    if !t.is_empty() {
-        out.push_str("  <TitlePage>\n    <Content>\n");
-        let mut line = |align: &str, text: &str| {
-            out.push_str(&format!(
-                "      <Paragraph Alignment=\"{align}\" Type=\"Title Page\">\n        <Text>{}</Text>\n      </Paragraph>\n",
-                esc(text)
-            ));
-        };
-        for _ in 0..12 {
-            line("Center", "");
-        }
-        let centered: [&str; 4] = [&t.title, &t.credit, &t.author, &t.source];
-        for (k, v) in centered.iter().enumerate() {
-            for l in v.lines().filter(|l| !l.trim().is_empty()) {
-                line("Center", l.trim());
-            }
-            if k == 0 || k == 2 {
-                line("Center", "");
-            }
-        }
-        for _ in 0..16 {
-            line("Center", "");
-        }
-        for v in [&t.contact, &t.copyright, &t.notes] {
-            for l in v.lines().filter(|l| !l.trim().is_empty()) {
-                line("Left", l.trim());
-            }
-        }
-        for l in t.draft_date.lines().filter(|l| !l.trim().is_empty()) {
-            line("Right", l.trim());
-        }
-        out.push_str("    </Content>\n  </TitlePage>\n");
-    }
+    title::write(&mut out, &s.title, s.settings.page.paper);
     out.push_str("</FinalDraft>\n");
     out
 }
