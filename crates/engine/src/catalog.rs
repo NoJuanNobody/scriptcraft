@@ -140,8 +140,14 @@ pub const FEATURES: &[Feature] = &[
     f("Structure", "Index card colours and tags", Done, &["scene.setColor", "scene.setTags"], "kept in FDX and Fountain"),
     f("Structure", "Go to page", Done, &["caret.gotoPage"], ""),
     f("Structure", "Beat Board", Missing, &[], ""),
-    f("Structure", "Outline Editor (structure points)", Missing, &[], ""),
-    f("Structure", "Story Map", Missing, &[], ""),
+    f(
+        "Structure",
+        "Outline Editor (structure points)",
+        Done,
+        &["structure.add", "structure.edit", "structure.delete", "structure.list", "outline.list", "outline.move", "ui.view.outline"],
+        "acts, sequences and sections; drag scenes under them; kept in FDX (Outline paragraphs) and Fountain (# sections)",
+    ),
+    f("Structure", "Story Map", Done, &["storymap.get", "ui.toggleStoryMap"], "scenes and structure scaled to pages; click to go there"),
     f("Structure", "Bookmarks", Missing, &[], ""),
     f("Structure", "Split screen / multiple views", Missing, &[], ""),
     // Production

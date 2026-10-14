@@ -5,7 +5,8 @@
 //! and forced `.`), scene numbers (`#12A#`), action (forced `!`), characters (forced `@`, with
 //! extensions), dual dialogue (`^`), parentheticals, dialogue, transitions (natural `… TO:` and
 //! forced `>`), centered text (`>…<`, imported as Action), synopses (`=`, which become the scene's
-//! index-card summary), sections (`#`, skipped), notes (`[[…]]`, which become script notes: one
+//! index-card summary), sections (`#` act, `##` sequence, `###` and deeper section: the structure points, with a
+//! following `=` synopsis as their summary), notes (`[[…]]`, which become script notes: one
 //! inside a line is anchored where it stood, one on its own line to the start of the next
 //! paragraph; ScriptCraft's `[[color: …]]` and `[[tags: …]]` card notes under a heading set the
 //! index card instead), boneyard (`/* … */`, removed), page breaks (`===`, ignored) and lyrics
@@ -20,7 +21,7 @@
 
 mod emphasis;
 
-use scriptcraft_doc::{Element, MAX_PARAS, Note, Para, Script, TitlePage};
+use scriptcraft_doc::{Element, MAX_PARAS, Note, Para, Script, StructureKind, StructurePoint, TitlePage};
 
 /// Marks where an inline note stood (private-use characters; removed from input first).
 const NOTE_OPEN: char = '\u{E000}';
@@ -73,6 +74,10 @@ pub fn parse(src: &str) -> Script {
     let mut paras: Vec<Para> = Vec::new();
     let mut prev_blank = true;
     let mut in_dialogue = false;
+    // Structure points: (the paragraph count when read, the point). A section's synopsis and
+    // colour follow it until other content does.
+    let mut sections: Vec<(usize, StructurePoint)> = Vec::new();
+    let mut section_open = false;
     while let Some(raw) = lines.get(i) {
         if paras.len() >= MAX_PARAS {
             break;
@@ -85,6 +90,12 @@ pub fn parse(src: &str) -> Script {
             continue;
         }
         if let Some(meta) = line.strip_prefix('\u{1}') {
+            if section_open && let Some(c) = meta.strip_prefix("color:") {
+                if let Some((_, sp)) = sections.last_mut() {
+                    sp.color = scriptcraft_doc::CardColor::parse(c);
+                }
+                continue;
+            }
             if let Some(h) = paras.iter_mut().rev().find(|p| p.element == Element::SceneHeading) {
                 if let Some(c) = meta.strip_prefix("color:") {
                     h.color = scriptcraft_doc::CardColor::parse(c);
@@ -102,6 +113,7 @@ pub fn parse(src: &str) -> Script {
             continue;
         }
         let was_blank = std::mem::replace(&mut prev_blank, false);
+        let after_section = std::mem::replace(&mut section_open, false);
         if in_dialogue {
             if line.starts_with('(') && raw.trim_start().ends_with(')') {
                 paras.push(Para::new(Element::Parenthetical, line));
@@ -140,6 +152,14 @@ pub fn parse(src: &str) -> Script {
                 continue; // page break
             }
             let syn = line.trim_start_matches('=').trim();
+            if after_section && let Some((_, sp)) = sections.last_mut() {
+                if !sp.summary.is_empty() {
+                    sp.summary.push(' ');
+                }
+                sp.summary.push_str(syn);
+                section_open = true;
+                continue;
+            }
             if let Some(h) = paras.iter_mut().rev().find(|p| p.element == Element::SceneHeading) {
                 if !h.summary.is_empty() {
                     h.summary.push(' ');
@@ -149,7 +169,13 @@ pub fn parse(src: &str) -> Script {
             continue;
         }
         if line.starts_with('#') {
-            continue; // section
+            let depth = line.chars().take_while(|c| *c == '#').count();
+            let title = line.get(depth..).unwrap_or("").trim();
+            if sections.len() < scriptcraft_doc::MAX_STRUCTURE {
+                sections.push((paras.len(), StructurePoint::new(StructureKind::from_level(depth), title, "", None)));
+            }
+            section_open = true;
+            continue;
         }
         if let Some(rest) = line.strip_prefix('~') {
             push_action(&mut paras, rest.trim(), was_blank);
@@ -184,7 +210,17 @@ pub fn parse(src: &str) -> Script {
             p.notes.push(Note::new(0, 0, text, None, ""));
         }
     }
+    // A section belongs before the paragraph read after it (normalizing moves it onto the next
+    // scene heading); sections after the last paragraph close the outline.
+    let mut tail = Vec::new();
+    for (at, sp) in sections {
+        match paras.get_mut(at) {
+            Some(p) => p.structure.push(sp),
+            None => tail.push(sp),
+        }
+    }
     let mut s = Script::from_paras(paras).unwrap_or_default();
+    s.structure_tail.extend(tail);
     s.title = title;
     s
 }
@@ -438,6 +474,7 @@ pub fn write(s: &Script) -> String {
     }
     let mut prev: Option<Element> = None;
     for p in &s.paras {
+        structure_lines(&mut out, &p.structure);
         let encoded = emphasis::write(p);
         let text = encoded.trim();
         if text.is_empty() && p.summary.is_empty() {
@@ -522,7 +559,27 @@ pub fn write(s: &Script) -> String {
         }
         prev = Some(p.element);
     }
+    structure_lines(&mut out, &s.structure_tail);
     out
+}
+
+/// Structure points as Fountain sections: `#` per level, then the summary as a synopsis and the
+/// colour as a `[[color: …]]` note.
+fn structure_lines(out: &mut String, points: &[StructurePoint]) {
+    for sp in points {
+        blank(out);
+        out.push_str(&"#".repeat(sp.kind.level()));
+        out.push(' ');
+        out.push_str(sp.title.trim());
+        out.push('\n');
+        if !sp.summary.trim().is_empty() {
+            out.push('\n');
+            out.push_str(&format!("= {}\n", sp.summary.trim()));
+        }
+        if let Some(c) = sp.color {
+            out.push_str(&format!("\n[[color: {}]]\n", c.id()));
+        }
+    }
 }
 
 /// Action that would read back as another element (or a forcing mark) gets `!`.
@@ -541,6 +598,8 @@ fn blank(out: &mut String) {
     }
 }
 
+#[cfg(test)]
+mod structure_tests;
 #[cfg(test)]
 mod tests;
 

@@ -34,11 +34,15 @@
 //! `<ScriptCraftTag Range="start,length" Category="Props"/>` and
 //! `<ScriptCraftAlternate><Text>…</Text></ScriptCraftAlternate>`.
 //!
+//! Acts, sequences and sections are Final Draft's outline paragraphs (`Type="Outline 1"`… with
+//! their `Summary`), see the `outline` module.
+//!
 //! `<ElementSettings Type="…">` carry each element's indents and spacing (`ParagraphSpec`),
 //! capitals (`FontSpec Style="AllCaps"`) and Enter target (`Behavior ReturnKey`). ScriptCraft's
 //! Tab targets have no FDX equivalent and are not written.
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
+mod outline;
 mod page;
 mod revision;
 
@@ -130,6 +134,7 @@ pub fn parse(src: &str) -> Result<Script, FdxError> {
     let mut production: Option<(bool, bool, bool)> = None;
     let mut page_read = page::Read::default();
     let mut rev_read = revision::Read::default();
+    let mut outline_read = outline::Read::default();
     loop {
         let ev = r.read_event().map_err(|e| FdxError::Xml(e.to_string()))?;
         let empty = matches!(ev, Event::Empty(_));
@@ -203,7 +208,8 @@ pub fn parse(src: &str) -> Result<Script, FdxError> {
                             runs: Vec::new(),
                             style: Style::PLAIN,
                             summary: String::new(),
-                            color: None,
+                            // Outline paragraphs' colour (scene headings take theirs from SceneProperties).
+                            color: attr("ScriptCraftColor").and_then(|c| parse_color(&c)),
                             tags: Vec::new(),
                             omitted: attr("ScriptCraftOmitted").is_some_and(|v| v.trim().eq_ignore_ascii_case("yes")),
                             page_lock: attr("ScriptCraftLockedPages").map(|v| locked_labels(&v)).unwrap_or_default(),
@@ -220,7 +226,7 @@ pub fn parse(src: &str) -> Result<Script, FdxError> {
                         if empty {
                             if let Kind::HeaderFooter(footer) = o.kind {
                                 page_read.add(footer, &o.align, &o.text);
-                            } else {
+                            } else if !outline_read.take(&o, paras.len()) {
                                 finish(o, &mut open, &mut paras, &mut title_lines, &mut dual_chars);
                             }
                         } else {
@@ -349,7 +355,7 @@ pub fn parse(src: &str) -> Result<Script, FdxError> {
                         if let Some(o) = open.pop() {
                             if let Kind::HeaderFooter(footer) = o.kind {
                                 page_read.add(footer, &o.align, &o.text);
-                            } else {
+                            } else if !outline_read.take(&o, paras.len()) {
                                 finish(o, &mut open, &mut paras, &mut title_lines, &mut dual_chars);
                             }
                         }
@@ -396,9 +402,10 @@ pub fn parse(src: &str) -> Result<Script, FdxError> {
         return Err(FdxError::NotFdx(String::new()));
     }
     rev_read.remap(&mut paras);
+    let tail = outline_read.apply(&mut paras);
     // Settings first: normalizing drops page locks unless pages are locked, and clamps revision
     // marks to the sets read.
-    let mut s = Script { paras, ..Script::default() };
+    let mut s = Script { paras, structure_tail: tail, ..Script::default() };
     s.settings.elements = formats;
     if let Some((pages, numbers, show)) = production {
         (s.settings.pages_locked, s.settings.scene_numbers_locked, s.settings.show_scene_numbers) = (pages, numbers, show);
@@ -718,9 +725,11 @@ pub fn write(s: &Script) -> String {
                 continue;
             }
         }
+        outline::write_points(&mut out, "    ", &p.structure);
         para_xml(&mut out, "    ", p);
         i += 1;
     }
+    outline::write_points(&mut out, "    ", &s.structure_tail);
     out.push_str("  </Content>\n");
     let st = &s.settings;
     if st.pages_locked || st.scene_numbers_locked || st.show_scene_numbers {
@@ -745,6 +754,9 @@ pub fn write(s: &Script) -> String {
             rk = f.enter.name(),
             k = e.index() + 1,
         ));
+    }
+    if s.structure_count() > 0 {
+        outline::write_settings(&mut out);
     }
     page::write(&mut out, &s.settings.page);
     revision::write(&mut out, s);
@@ -786,6 +798,8 @@ pub fn write(s: &Script) -> String {
     out
 }
 
+#[cfg(test)]
+mod structure_tests;
 #[cfg(test)]
 mod tests;
 

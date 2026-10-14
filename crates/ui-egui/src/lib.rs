@@ -11,9 +11,11 @@ pub mod cards;
 mod chrome;
 pub mod control;
 pub mod icons;
+pub mod outline;
 pub mod persist;
 pub mod production;
 mod reports;
+pub mod storymap;
 pub mod theme;
 
 use std::sync::mpsc::Receiver;
@@ -41,6 +43,8 @@ pub enum View {
     Page,
     Cards,
     Reports,
+    /// Acts, sequences and sections with their scenes.
+    Outline,
 }
 
 impl View {
@@ -49,6 +53,7 @@ impl View {
             View::Page => "page",
             View::Cards => "cards",
             View::Reports => "reports",
+            View::Outline => "outline",
         }
     }
 }
@@ -58,6 +63,8 @@ pub const UI_COMMANDS: &[(&str, &str, &str, &str)] = &[
     ("ui.view.page", "Page View", "View", "Mod+Alt+1"),
     ("ui.view.cards", "Index Cards", "View", "Mod+Alt+2"),
     ("ui.view.reports", "Reports", "View", "Mod+Alt+3"),
+    ("ui.view.outline", "Outline", "View", "Mod+Alt+5"),
+    ("ui.toggleStoryMap", "Story Map", "View", "Mod+Alt+M"),
     ("ui.toggleNavigator", "Navigator", "View", "Mod+Alt+N"),
     ("ui.theme.toggle", "Dark Mode", "View", "Mod+Alt+D"),
     ("ui.theme.dark", "Dark Theme", "View", ""),
@@ -108,6 +115,8 @@ pub struct ScriptApp {
     pub alt_window: bool,
     /// Highlight production-tagged items on the page.
     pub show_tags: bool,
+    /// Show the story map strip at the bottom of the window.
+    pub story_map: bool,
     /// The custom category field of the Tag Selection As menu.
     pub custom_category: String,
     pub canvas: canvas::CanvasState,
@@ -190,6 +199,7 @@ impl ScriptApp {
             note_editor: None,
             alt_window: false,
             show_tags: false,
+            story_map: false,
             custom_category: String::new(),
             canvas: canvas::CanvasState::default(),
             find: None,
@@ -480,6 +490,8 @@ impl ScriptApp {
             }
             "ui.view.cards" => self.view = View::Cards,
             "ui.view.reports" => self.view = View::Reports,
+            "ui.view.outline" => self.view = View::Outline,
+            "ui.toggleStoryMap" => self.story_map = p.get("on").and_then(Value::as_bool).unwrap_or(!self.story_map),
             "ui.toggleNavigator" => self.navigator = !self.navigator,
             "ui.theme.toggle" => {
                 self.dark = !self.dark;
@@ -772,11 +784,15 @@ impl ScriptApp {
         if self.navigator {
             chrome::navigator(self, ui);
         }
+        if self.story_map {
+            storymap::panel(self, ui);
+        }
         let t = self.tokens();
         egui::CentralPanel::default().frame(egui::Frame::NONE.fill(t.desk)).show(ui, |ui| match self.view {
             View::Page => canvas::show(self, ui),
             View::Cards => cards::show(self, ui),
             View::Reports => reports::show(self, ui),
+            View::Outline => outline::show(self, ui),
         });
         self.dialog_buttons.clear();
         chrome::dialogs(self, &ctx);

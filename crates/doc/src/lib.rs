@@ -12,6 +12,7 @@ mod format;
 pub mod page_setup;
 mod production;
 pub mod revision;
+mod structure;
 mod style;
 mod text;
 
@@ -24,6 +25,7 @@ pub use format::{Align, ElementFormat, ElementFormats};
 pub use page_setup::{HeaderFooter, PageSetup, Paper};
 pub use production::{expand_page_label, next_label};
 pub use revision::{RevMark, RevisionSet, Revisions};
+pub use structure::{MAX_STRUCTURE, OutlineItem, PointSlot, StructureKind, StructurePoint};
 pub use style::{Flag, Span, Style};
 pub use text::{next_boundary, prev_boundary, word_left, word_right};
 
@@ -89,6 +91,10 @@ pub struct Para {
     /// Revised text (byte ranges of `text` and their revision set).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub revs: Vec<RevMark>,
+    /// Structure points (acts, sequences, sections) that start just before this paragraph
+    /// (scene headings only); see [`structure`].
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub structure: Vec<StructurePoint>,
 }
 
 /// Index-card colours.
@@ -185,6 +191,7 @@ impl Para {
             tagged: Vec::new(),
             alternates: Vec::new(),
             revs: Vec::new(),
+            structure: Vec::new(),
         }
     }
 
@@ -410,6 +417,9 @@ pub struct Script {
     pub paras: Vec<Para>,
     #[serde(default)]
     pub settings: Settings,
+    /// Structure points after the last scene (e.g. an act with no scenes yet).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub structure_tail: Vec<StructurePoint>,
 }
 
 impl Default for Script {
@@ -421,12 +431,17 @@ impl Default for Script {
 impl Script {
     /// A blank script: one empty scene heading.
     pub fn new() -> Self {
-        Script { title: TitlePage::default(), paras: vec![Para::new(Element::SceneHeading, "")], settings: Settings::default() }
+        Script {
+            title: TitlePage::default(),
+            paras: vec![Para::new(Element::SceneHeading, "")],
+            settings: Settings::default(),
+            structure_tail: Vec::new(),
+        }
     }
 
     /// A script from paragraphs (an empty list gets one empty Action).
     pub fn from_paras(paras: Vec<Para>) -> Result<Self, DocError> {
-        let mut s = Script { title: TitlePage::default(), paras, settings: Settings::default() };
+        let mut s = Script { title: TitlePage::default(), paras, settings: Settings::default(), structure_tail: Vec::new() };
         s.normalize()?;
         Ok(s)
     }
@@ -482,6 +497,7 @@ impl Script {
             }
         }
         self.normalize_production();
+        self.fix_structure();
         Ok(())
     }
 
@@ -624,7 +640,12 @@ impl Script {
         }
         let end = b.para.min(self.paras.len().saturating_sub(1));
         if a.para < end {
-            self.paras.drain(a.para + 1..=end);
+            // Structure points of removed paragraphs stay: they move to the next heading.
+            let kept: Vec<StructurePoint> = self.paras.drain(a.para + 1..=end).flat_map(|p| p.structure).collect();
+            if let Some(p) = self.paras.get_mut(a.para) {
+                p.structure.extend(kept);
+            }
+            self.fix_structure();
         }
         a
     }
@@ -643,9 +664,12 @@ impl Script {
         let tail = p.text.split_off(pos.off);
         p.spans = style::compress(&p.text, &st);
         let moved = p.marks_split(pos.off);
+        // Splitting at the very start moves the whole text down: its structure points go too.
+        let structure = if pos.off == 0 && !tail.is_empty() { std::mem::take(&mut p.structure) } else { Vec::new() };
         let mut next = Para::new(element, "");
         next.set_text_styled(&tail, &tail_st, caps);
         next.marks_append(moved);
+        next.structure = structure;
         self.paras.insert(pos.para + 1, next);
         Ok(Pos::new(pos.para + 1, 0))
     }
@@ -665,6 +689,9 @@ impl Script {
         }
         if element != Element::Character {
             p.dual = false;
+        }
+        if element != Element::SceneHeading && !p.structure.is_empty() {
+            self.fix_structure();
         }
         Ok(())
     }
@@ -699,23 +726,25 @@ impl Script {
     /// Move scene `from` (heading through the paragraph before the next heading) so it becomes
     /// scene `to`. Returns the new paragraph index of the moved heading.
     pub fn move_scene(&mut self, from: usize, to: usize) -> Result<usize, DocError> {
-        let scenes = self.scenes();
-        let src = scenes.get(from).ok_or(DocError::NoScene(from))?;
-        if to >= scenes.len() {
+        let n = self.scenes().len();
+        if from >= n {
+            return Err(DocError::NoScene(from));
+        }
+        if to >= n {
             return Err(DocError::NoScene(to));
         }
-        if from == to {
-            return Ok(src.para);
+        if from != to {
+            // Structure points stay where they are: the scene joins the group of the scene it
+            // lands next to.
+            let order = self.outline();
+            let src = order.iter().position(|i| *i == OutlineItem::Scene(from)).ok_or(DocError::NoScene(from))?;
+            let mut rest = order.clone();
+            rest.remove(src);
+            let at = rest.iter().position(|i| *i == OutlineItem::Scene(to)).ok_or(DocError::NoScene(to))?;
+            let dest = if to < from { at } else { at + 1 };
+            self.move_outline_item(src, dest.min(order.len().saturating_sub(1)));
         }
-        let block: Vec<Para> = self.paras.drain(src.para..src.end).collect();
-        let n = block.len();
-        // Where the target scene starts once the block is gone.
-        let at = if to < from { scenes.get(to).map_or(0, |s| s.para) } else { scenes.get(to).map_or(self.paras.len(), |s| s.end.saturating_sub(n)) };
-        let at = at.min(self.paras.len());
-        for (i, p) in block.into_iter().enumerate() {
-            self.paras.insert(at + i, p);
-        }
-        Ok(at)
+        self.scenes().get(to).map(|s| s.para).ok_or(DocError::NoScene(to))
     }
 
     /// Character names in order of first appearance (cue extensions removed).
@@ -809,5 +838,7 @@ pub fn heading_parts(h: &str) -> (String, String, String) {
     (prefix.to_string(), loc.trim().to_string(), time.trim().to_string())
 }
 
+#[cfg(test)]
+mod structure_tests;
 #[cfg(test)]
 mod tests;

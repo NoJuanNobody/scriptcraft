@@ -15,6 +15,7 @@ pub mod reports;
 pub mod sample;
 mod session;
 pub mod smarttype;
+pub mod storymap;
 pub mod typing;
 
 use std::collections::HashMap;
@@ -157,5 +158,7 @@ pub mod p {
 mod tests;
 #[cfg(test)]
 mod tests_annot;
+#[cfg(test)]
+mod tests_structure;
 #[cfg(test)]
 mod tests_typing;

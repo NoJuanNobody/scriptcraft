@@ -165,6 +165,16 @@ pub fn menu_bar(app: &mut ScriptApp, ui: &mut Ui) {
                 check(app, ui, "Page View", app.view == View::Page, "ui.view.page", json!({}));
                 check(app, ui, "Index Cards", app.view == View::Cards, "ui.view.cards", json!({}));
                 check(app, ui, "Reports", app.view == View::Reports, "ui.view.reports", json!({}));
+                check(app, ui, "Outline", app.view == View::Outline, "ui.view.outline", json!({}));
+                check(app, ui, "Story Map", app.story_map, "ui.toggleStoryMap", json!({}));
+                ui.menu_button("Add Structure Point", |ui| {
+                    for k in scriptcraft_doc::StructureKind::ALL {
+                        if ui.button(format!("{} Before This Scene", k.label())).clicked() {
+                            app.run("structure.add", json!({"kind": k.id()}));
+                            ui.close();
+                        }
+                    }
+                });
                 check(app, ui, "Speed View (no page breaks)", app.session.speed, "ui.view.speed", json!({}));
                 ui.separator();
                 check(app, ui, "Navigator", app.navigator, "ui.toggleNavigator", json!({}));
@@ -366,10 +376,14 @@ pub fn toolbar(app: &mut ScriptApp, ui: &mut Ui) {
                     (Icon::Page, "Page view", "ui.view.page", View::Page),
                     (Icon::Cards, "Index cards", "ui.view.cards", View::Cards),
                     (Icon::Reports, "Reports", "ui.view.reports", View::Reports),
+                    (Icon::Outline, "Outline", "ui.view.outline", View::Outline),
                 ] {
                     if icons::button(ui, icon, tip, app.view == v).clicked() {
                         app.run(id, json!({}));
                     }
+                }
+                if icons::button(ui, Icon::StoryMap, "Story map", app.story_map).clicked() {
+                    app.run("ui.toggleStoryMap", json!({}));
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     let (icon, tip) = if app.dark { (Icon::Sun, "Light mode") } else { (Icon::Moon, "Dark mode") };
@@ -506,7 +520,16 @@ pub fn navigator(app: &mut ScriptApp, ui: &mut Ui) {
                     if scenes.is_empty() {
                         ui.label(RichText::new("No scenes yet. Start a paragraph with INT. or EXT.").color(t.text_soft));
                     }
+                    // Structure points before each scene: (heading paragraph → reading-order index of its first point).
+                    let mut first_point = std::collections::HashMap::new();
+                    for (n, (slot, _)) in app.session.script.structure_points().iter().enumerate() {
+                        first_point.entry(slot.para).or_insert(n);
+                    }
                     for sc in scenes {
+                        if let Some(&n) = first_point.get(&Some(sc.para)) {
+                            let pts = app.session.script.para(sc.para).map(|p| p.structure.clone()).unwrap_or_default();
+                            crate::outline::nav_points(app, ui, &pts, n);
+                        }
                         let on = cur == Some(sc.index);
                         let num = sc.number.clone().unwrap_or_else(|| (sc.index + 1).to_string());
                         let resp = ui
@@ -561,6 +584,10 @@ pub fn navigator(app: &mut ScriptApp, ui: &mut Ui) {
                             app.run("scene.goto", json!({"index": sc.index}));
                             app.view = View::Page;
                         }
+                    }
+                    if let Some(&n) = first_point.get(&None) {
+                        let pts = app.session.script.structure_tail.clone();
+                        crate::outline::nav_points(app, ui, &pts, n);
                     }
                 } else if app.nav_tab == 2 {
                     crate::annotations::notes_tab(app, ui);
