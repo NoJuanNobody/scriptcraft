@@ -200,6 +200,31 @@ impl Session {
         self.typing_open = false;
     }
 
+    /// Undo steps recorded so far.
+    pub(crate) fn history_len(&self) -> usize {
+        self.history.len()
+    }
+
+    /// Merge the undo steps recorded since `from` into one (the oldest), named `label`.
+    pub(crate) fn squash_history(&mut self, from: usize, label: &'static str) {
+        if self.history.len() > from {
+            self.history.truncate(from + 1);
+            if let Some(s) = self.history.last_mut() {
+                s.label = label;
+            }
+        }
+    }
+
+    /// Go back to the state before the steps recorded since `from`, dropping them (no redo).
+    pub(crate) fn rollback_history(&mut self, from: usize) {
+        if let Some(snap) = self.history.get(from).cloned() {
+            self.history.truncate(from);
+            self.script = snap.script;
+            self.sel = snap.sel;
+            self.after_change();
+        }
+    }
+
     pub fn undo(&mut self) -> bool {
         let Some(snap) = self.history.pop() else { return false };
         let cur = Snapshot { script: std::mem::replace(&mut self.script, snap.script), sel: self.sel, label: snap.label };
@@ -234,6 +259,8 @@ impl Session {
             return Err(CmdError::Disabled(format!("{id}: {why}")));
         }
         let history_cmd = matches!(id, "edit.undo" | "edit.redo");
+        // Dictation runs other commands and merges their undo steps into one itself.
+        let self_managed = id == "dictation.insert";
         let typing = id == "text.insert";
         // Consecutive typing is one undo step; anything else in between ends it.
         let coalesce = typing && self.typing_open;
@@ -249,7 +276,7 @@ impl Session {
         if id.starts_with("text.") || id.starts_with("element.") {
             self.suggest_dismissed = false;
         }
-        let before = (spec.mutates && !history_cmd).then(|| (self.script.clone(), self.sel));
+        let before = (spec.mutates && !history_cmd && !self_managed).then(|| (self.script.clone(), self.sel));
         let result = catch_unwind(AssertUnwindSafe(|| (spec.run)(self, params)));
         let result = match result {
             Ok(r) => r,
@@ -257,7 +284,7 @@ impl Session {
         };
         self.clamp_selection();
         let Some((old, old_sel)) = before else {
-            if history_cmd {
+            if history_cmd || self_managed {
                 self.typing_open = false;
             }
             return result;

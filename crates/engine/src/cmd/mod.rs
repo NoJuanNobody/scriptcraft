@@ -16,6 +16,7 @@ pub mod report;
 pub mod revision;
 pub mod scene;
 pub mod smart;
+pub mod speech;
 pub mod spell;
 pub mod structure;
 pub mod tags;
@@ -51,6 +52,7 @@ pub fn registry() -> Registry {
     v.extend(structure::specs());
     v.extend(boards::specs());
     v.extend(collab::specs());
+    v.extend(speech::specs());
     Registry::new(v)
 }
 

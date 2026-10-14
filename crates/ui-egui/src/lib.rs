@@ -18,6 +18,7 @@ pub mod outline;
 pub mod persist;
 pub mod production;
 mod reports;
+pub mod speech;
 pub mod split;
 pub mod storymap;
 pub mod theme;
@@ -123,6 +124,8 @@ pub const UI_COMMANDS: &[(&str, &str, &str, &str)] = &[
     ("ui.breakdown", "Breakdown Report", "Tools", ""),
     ("ui.exportBreakdown", "Export Breakdown (CSV)…", "Tools", ""),
     ("ui.collaborate", "Collaborate…", "File", ""),
+    ("ui.readAloud", "Read Aloud…", "Tools", ""),
+    ("ui.dictation", "Dictation…", "Tools", ""),
 ];
 
 /// The application state.
@@ -193,6 +196,13 @@ pub struct ScriptApp {
     pub host: Option<Box<dyn FileHost>>,
     /// Files delivered by the host or dropped on the window.
     pub inbox: Inbox,
+    /// Text to speech (and speech to text) from the host: system voices natively, the browser's
+    /// speech synthesis on the web; `None` in tests and headless runs.
+    pub speaker: Option<Box<dyn speech::SpeechHost>>,
+    /// Read Aloud: the window and what is being read.
+    pub read_aloud: speech::ReadAloud,
+    /// The Dictation window.
+    pub dictation: speech::Dictation,
     /// Buttons of the open modal dialog this frame (label, screen rect), for `ui.inspect`.
     pub dialog_buttons: Vec<(String, egui::Rect)>,
     /// An open/new waiting for the user to save or discard unsaved changes.
@@ -264,6 +274,9 @@ impl ScriptApp {
             dialog_buttons: Vec::new(),
             host: None,
             inbox: Inbox::default(),
+            speaker: None,
+            read_aloud: speech::ReadAloud::default(),
+            dictation: speech::Dictation::default(),
             status: None,
             control: None,
             synthetic: Vec::new(),
@@ -493,7 +506,12 @@ impl ScriptApp {
             split::with_focused_canvas(self, |app| app.ui_command(id, &params))
         } else if id.starts_with("ui.") {
             self.ui_command(id, &params)
+        } else if let Some(r) = speech::command(self, id, &params) {
+            r
         } else {
+            if matches!(id, "file.open" | "file.load" | "file.new" | "file.sample" | "file.revert") {
+                speech::stop(self);
+            }
             self.session.run(id, &params)
         };
         match &r {
@@ -660,6 +678,11 @@ impl ScriptApp {
             "ui.toggleTags" => self.show_tags = p.get("on").and_then(Value::as_bool).unwrap_or(!self.show_tags),
             "ui.breakdown" => split::set_view(self, View::Reports),
             "ui.collaborate" => collab_ui::toggle(self, p),
+            "ui.readAloud" => self.read_aloud.window = p.get("open").and_then(Value::as_bool).unwrap_or(!self.read_aloud.window),
+            "ui.dictation" => {
+                self.dictation.window = p.get("open").and_then(Value::as_bool).unwrap_or(!self.dictation.window);
+                self.dictation.focus = self.dictation.window;
+            }
             "ui.exportBreakdown" if self.host.is_some() && path.is_none() => return self.host_save("csv"),
             "ui.exportBreakdown" => {
                 let stem = self.session.path.as_ref().and_then(|p| p.file_stem()).and_then(|s| s.to_str()).unwrap_or("Untitled").to_string();
@@ -810,6 +833,7 @@ impl ScriptApp {
         #[cfg(not(target_arch = "wasm32"))]
         self.tick_prefs(ctx);
         self.drain_inbox(ctx);
+        speech::tick(self, ctx);
         if let Some((_, t)) = &mut self.status
             && *t == 0.0
         {
@@ -905,5 +929,6 @@ impl ScriptApp {
         annotations::dialogs(self, &ctx);
         beatboard::dialog(self, &ctx);
         collab_ui::window(self, &ctx);
+        speech::windows(self, &ctx);
     }
 }

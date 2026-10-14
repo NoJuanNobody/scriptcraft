@@ -16,6 +16,7 @@ pub mod revision;
 mod structure;
 mod style;
 mod text;
+pub mod voices;
 
 pub use annot::{
     Alternate, MAX_ALTERNATES, MAX_NOTES, MAX_TAGGED, Note, NoteRef, TAG_CATEGORIES, Tagged, alternate_from_runs, category_rgb, clean_author,
@@ -33,6 +34,7 @@ pub use revision::{RevMark, RevisionSet, Revisions};
 pub use structure::{MAX_STRUCTURE, OutlineItem, PointSlot, StructureKind, StructurePoint};
 pub use style::{Flag, Span, Style};
 pub use text::{next_boundary, prev_boundary, word_left, word_right};
+pub use voices::Voices;
 
 use serde::{Deserialize, Serialize};
 
@@ -374,6 +376,9 @@ pub struct Settings {
     /// Revision sets, the active one and revision mode.
     #[serde(skip_serializing_if = "Revisions::is_default")]
     pub revision: Revisions,
+    /// Read-aloud voices: the narrator's and each character's.
+    #[serde(skip_serializing_if = "Voices::is_default")]
+    pub voices: Voices,
 }
 
 impl Default for Settings {
@@ -388,6 +393,7 @@ impl Default for Settings {
             scene_numbers_locked: false,
             page: PageSetup::default(),
             revision: Revisions::default(),
+            voices: Voices::default(),
         }
     }
 }
@@ -480,6 +486,7 @@ impl Script {
         self.settings.page.header.clean();
         self.settings.page.footer.clean();
         self.settings.revision.normalize();
+        self.settings.voices.normalize();
         let top_level = (self.settings.revision.sets.len().saturating_sub(1)).min(usize::from(u8::MAX)) as u8;
         let caps = Element::ALL.map(|e| self.upper(e));
         for p in &mut self.paras {

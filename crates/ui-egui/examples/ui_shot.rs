@@ -6,7 +6,7 @@
 //!
 //! The script is JSON lines: control-channel requests (`{"method": …, "params": …}`, see
 //! `docs/control-protocol.md`), `{"shot": "/abs/out.png"}` to save the window as PNG, or
-//! `{"steps": n}` to run extra frames. The window is 1440×900 points at 2× and opens the sample
+//! `{"steps": n}` to run extra frames, `{"speaker": "silent"}` for a silent speech engine. The window is 1440×900 points at 2× and opens the sample
 //! script unless the first line is `{"empty": true}`; `{"width": w, "height": h}` resizes it.
 
 use scriptcraft_engine::Session;
@@ -24,6 +24,12 @@ fn main() {
     let mut app = ScriptApp::new(session).with_control(rx);
     app.dialogs = false;
     app.canvas.blink = false;
+    // `{"speaker": "silent"}` anywhere: a silent speech engine with a few voices (Read Aloud).
+    if lines.iter().any(|l| l.get("speaker").is_some()) {
+        let mut s = scriptcraft_ui_egui::speech::SilentSpeaker::new(&["Samantha", "Daniel", "Karen", "Moira", "Tessa", "Fred", "Rishi"]);
+        s.frames_per_line = 40;
+        app.speaker = Some(Box::new(s));
+    }
     let w = lines.iter().find_map(|l| l.get("width").and_then(|v| v.as_f64())).unwrap_or(1440.0) as f32;
     let h = lines.iter().find_map(|l| l.get("height").and_then(|v| v.as_f64())).unwrap_or(900.0) as f32;
     let mut harness =

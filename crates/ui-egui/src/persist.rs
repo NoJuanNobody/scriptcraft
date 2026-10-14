@@ -45,6 +45,7 @@ pub struct Prefs {
     pub appearance: Appearance,
     pub editing: Editing,
     pub files: Files,
+    pub speech: Speech,
 }
 
 /// `[appearance]`
@@ -98,6 +99,26 @@ impl Default for Files {
     }
 }
 
+/// `[speech]`: reading aloud.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Speech {
+    /// Words per minute (80 to 400).
+    pub rate: u32,
+    /// The narrator's voice for scripts that don't choose one ("" = automatic).
+    pub narrator_voice: String,
+    /// Read scene headings, parentheticals and transitions.
+    pub read_headings: bool,
+    pub read_parentheticals: bool,
+    pub read_transitions: bool,
+}
+
+impl Default for Speech {
+    fn default() -> Self {
+        Speech { rate: 180, narrator_voice: String::new(), read_headings: true, read_parentheticals: false, read_transitions: false }
+    }
+}
+
 impl craft_settings::Settings for Prefs {
     const APP_ID: &'static str = scriptcraft_control_key::APP_ID;
     const SCHEMA_VERSION: u32 = 1;
@@ -119,6 +140,8 @@ impl Prefs {
         self.files.recent.truncate(MAX_RECENT);
         self.files.autosave_seconds = self.files.autosave_seconds.min(3600);
         self.files.backups_kept = self.files.backups_kept.min(100);
+        self.speech.rate = self.speech.rate.clamp(80, 400);
+        self.speech.narrator_voice = scriptcraft_doc::voices::clean_voice_name(&self.speech.narrator_voice).unwrap_or_default();
         self
     }
 }
@@ -157,6 +180,7 @@ pub fn parse_legacy_prefs(bytes: &[u8]) -> Result<Prefs, String> {
             autosave_seconds: old.autosave_secs.unwrap_or(d.files.autosave_seconds),
             backups_kept: old.backups.unwrap_or(d.files.backups_kept),
         },
+        speech: d.speech,
     }
     .sanitized())
 }

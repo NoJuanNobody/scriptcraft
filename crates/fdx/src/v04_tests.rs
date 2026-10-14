@@ -15,6 +15,8 @@ fn v04() -> Script {
     let id = s.board.add("Turn", "It turns.", None, 10.0, 20.0).unwrap_or(0);
     s.link_beat(id, Some(1)).ok();
     s.set_bookmark(2, Some("B mark")).ok();
+    s.settings.voices.narrator = Some("Samantha".into());
+    s.settings.voices.cast.insert("ADA".into(), "Moira".into());
     s
 }
 
@@ -28,6 +30,8 @@ fn structure_beats_and_bookmarks_round_trip_together() {
         assert_eq!(a.bookmark, b.bookmark);
         assert_eq!(a.beats.len(), b.beats.len());
     }
+    assert_eq!(back.settings.voices, s.settings.voices);
+    assert_ne!(back.settings.voices, Default::default());
     assert_eq!(back.board.beats.len(), 1);
     assert_eq!(back.board.beats[0].title, "Turn");
     assert_eq!(back.beat_scene(back.board.beats[0].id), Some(1));

@@ -11,11 +11,13 @@ pub mod breakdown;
 pub mod catalog;
 pub mod cmd;
 pub mod collab;
+pub mod dictation;
 pub mod io;
 pub mod reports;
 pub mod sample;
 mod session;
 pub mod smarttype;
+pub mod speech;
 pub mod storymap;
 pub mod typing;
 

@@ -348,6 +348,7 @@ fn paint_page(ui: &Ui, app: &ScriptApp, l: &Layout, i: usize, pr: Rect, bad: &[(
         {
             p.rect_filled(cols_rect(pr, z, line, c0, c1), 0.0, t.selection);
         }
+        crate::speech::paint_reading(app, p, line, pr, z);
         crate::annotations::paint_behind(app, p, line, pr, z);
         crate::annotations::paint_margin(app, p, line, pr, z);
         crate::outline::paint_marker(app, p, line, pr, z);
