@@ -10,11 +10,13 @@ pub mod b64;
 pub mod breakdown;
 pub mod catalog;
 pub mod cmd;
+pub mod dictation;
 pub mod io;
 pub mod reports;
 pub mod sample;
 mod session;
 pub mod smarttype;
+pub mod speech;
 pub mod typing;
 
 use std::collections::HashMap;

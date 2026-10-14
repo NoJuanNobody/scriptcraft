@@ -108,8 +108,20 @@ pub const FEATURES: &[Feature] = &[
         "only the active line prints and exports as script text; alternates kept in FDX (ScriptCraft-only)",
     ),
     f("Writing", "Format Assistant", Missing, &[], ""),
-    f("Writing", "Speech-to-script (dictation)", Missing, &[], ""),
-    f("Writing", "Read script aloud (text to speech, cast voices)", Missing, &[], ""),
+    f(
+        "Writing",
+        "Speech-to-script (dictation)",
+        Done,
+        &["dictation.insert", "ui.dictation"],
+        "spoken element commands and punctuation; browser speech recognition, OS dictation into the Dictation box, whisper.cpp audio files",
+    ),
+    f(
+        "Writing",
+        "Read script aloud (text to speech, cast voices)",
+        Done,
+        &["speech.play", "speech.pause", "speech.stop", "speech.plan", "speech.setVoice", "speech.cast", "speech.voices", "ui.readAloud"],
+        "offline system voices (macOS say, Windows SAPI, espeak-ng), browser speech synthesis; a voice per character, saved with the script",
+    ),
     f(
         "Writing",
         "Element settings (indents, spacing, alignment, capitals, Enter/Tab)",

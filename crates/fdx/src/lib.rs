@@ -32,7 +32,7 @@
 //! they annotate, holding the note's text as paragraphs (ranges count characters). Production tags
 //! and alternate lines have no FDX form we know of and use ScriptCraft-only elements:
 //! `<ScriptCraftTag Range="start,length" Category="Props"/>` and
-//! `<ScriptCraftAlternate><Text>…</Text></ScriptCraftAlternate>`.
+//! `<ScriptCraftAlternate><Text>…</Text></ScriptCraftAlternate>`. Read-aloud voices: `<ScriptCraftVoices>` (see `voices.rs`).
 //!
 //! `<ElementSettings Type="…">` carry each element's indents and spacing (`ParagraphSpec`),
 //! capitals (`FontSpec Style="AllCaps"`) and Enter target (`Behavior ReturnKey`). ScriptCraft's
@@ -41,6 +41,7 @@
 
 mod page;
 mod revision;
+mod voices;
 
 use quick_xml::Reader;
 use quick_xml::events::Event;
@@ -130,6 +131,7 @@ pub fn parse(src: &str) -> Result<Script, FdxError> {
     let mut production: Option<(bool, bool, bool)> = None;
     let mut page_read = page::Read::default();
     let mut rev_read = revision::Read::default();
+    let mut voices_read = voices::Read::default();
     loop {
         let ev = r.read_event().map_err(|e| FdxError::Xml(e.to_string()))?;
         let empty = matches!(ev, Event::Empty(_));
@@ -254,6 +256,8 @@ pub fn parse(src: &str) -> Result<Script, FdxError> {
                         rev_read.show_marks = page::yes(attr("ScriptCraftShowMarks"));
                         rev_read.color_pages = page::yes(attr("ScriptCraftColorPages"));
                     }
+                    "ScriptCraftVoices" if !in_title => voices_read.narrator(attr("Narrator")),
+                    "Voice" if stack.iter().any(|n| n == "ScriptCraftVoices") => voices_read.add(attr("Character"), attr("Name")),
                     "Revision" if stack.iter().any(|n| n == "Revisions") => {
                         rev_read.add(attr("ID"), attr("Name"), attr("Color"), attr("Mark"), attr("ScriptCraftDate"));
                     }
@@ -405,6 +409,7 @@ pub fn parse(src: &str) -> Result<Script, FdxError> {
     }
     page_read.apply(&mut s.settings.page);
     rev_read.apply(&mut s);
+    voices_read.apply(&mut s);
     s.normalize().map_err(|_| FdxError::TooLarge)?;
     s.title = title_from_lines(&title_lines);
     Ok(s)
@@ -748,6 +753,7 @@ pub fn write(s: &Script) -> String {
     }
     page::write(&mut out, &s.settings.page);
     revision::write(&mut out, s);
+    voices::write(&mut out, s);
     let t = &s.title;
     if !t.is_empty() {
         out.push_str("  <TitlePage>\n    <Content>\n");

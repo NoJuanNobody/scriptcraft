@@ -217,6 +217,16 @@ pub fn menu_bar(app: &mut ScriptApp, ui: &mut Ui) {
                 item(app, ui, "Next Misspelling", "spell.next", "Mod+;");
                 check(app, ui, "Check Spelling as You Type", app.spelling, "ui.toggleSpelling", json!({}));
                 crate::annotations::tools_menu(app, ui);
+                ui.separator();
+                ui.menu_button("Read Aloud", |ui| {
+                    item(app, ui, "Read Aloud…", "ui.readAloud", "");
+                    let state = app.read_aloud.state;
+                    let label = if state == crate::speech::ReadState::Paused { "Resume Reading" } else { "Read from Caret" };
+                    item(app, ui, label, "speech.play", "");
+                    item(app, ui, "Pause Reading", "speech.pause", "");
+                    item(app, ui, "Stop Reading", "speech.stop", "");
+                });
+                item(app, ui, "Dictation…", "ui.dictation", "");
             });
             ui.menu_button("Help", |ui| {
                 item(app, ui, "About ScriptCraft", "ui.about", "");
