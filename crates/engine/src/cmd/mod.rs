@@ -2,6 +2,7 @@
 
 pub mod alternates;
 pub mod caret;
+pub mod compare;
 pub mod edit;
 pub mod element;
 pub mod file;
@@ -19,6 +20,7 @@ pub mod tags;
 pub mod template;
 pub mod text;
 pub mod title;
+pub mod track;
 
 use scriptcraft_doc::Pos;
 use serde_json::{Value, json};
@@ -47,6 +49,8 @@ pub fn registry() -> Registry {
     v.extend(print::specs());
     v.extend(revision::specs());
     v.extend(template::specs());
+    v.extend(track::specs());
+    v.extend(compare::specs());
     Registry::new(v)
 }
 

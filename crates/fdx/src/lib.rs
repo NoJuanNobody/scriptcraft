@@ -41,6 +41,7 @@
 
 mod page;
 mod revision;
+mod track;
 
 use quick_xml::Reader;
 use quick_xml::events::Event;
@@ -109,6 +110,8 @@ struct Open {
     rev: Option<u32>,
     /// Revised byte ranges (levels are raw revision IDs until remapped).
     revs: Vec<scriptcraft_doc::RevMark>,
+    /// Tracked changes (character offsets until the paragraph is built).
+    changes: Vec<scriptcraft_doc::Change>,
 }
 
 /// Parse an FDX document.
@@ -129,6 +132,7 @@ pub fn parse(src: &str) -> Result<Script, FdxError> {
     // (locked pages, locked scene numbers, show scene numbers) when the file says.
     let mut production: Option<(bool, bool, bool)> = None;
     let mut scene_letters = false;
+    let mut track_on = false;
     let mut page_read = page::Read::default();
     let mut rev_read = revision::Read::default();
     loop {
@@ -223,6 +227,7 @@ pub fn parse(src: &str) -> Result<Script, FdxError> {
                             alts: Vec::new(),
                             rev: None,
                             revs: Vec::new(),
+                            changes: Vec::new(),
                         };
                         if empty {
                             if let Kind::HeaderFooter(footer) = o.kind {
@@ -287,6 +292,17 @@ pub fn parse(src: &str) -> Result<Script, FdxError> {
                                 o.note = Some(n);
                             }
                         }
+                    }
+                    "ScriptCraftChange" => {
+                        if let Some(o) = open.last_mut().filter(|o| o.kind == Kind::Body)
+                            && let Some(c) = track::read(&attr)
+                            && o.changes.len() < scriptcraft_doc::track::MAX_CHANGES
+                        {
+                            o.changes.push(c);
+                        }
+                    }
+                    "ScriptCraftTrackChanges" if !in_title => {
+                        track_on = attr("On").is_some_and(|v| v.trim().eq_ignore_ascii_case("yes"));
                     }
                     "ScriptCraftTag" => {
                         if let (Some((start, len)), Some(cat)) = (attr("Range").and_then(|r| parse_range(&r)), attr("Category"))
@@ -411,6 +427,7 @@ pub fn parse(src: &str) -> Result<Script, FdxError> {
     let mut s = Script { paras, ..Script::default() };
     s.settings.elements = formats;
     s.settings.scene_letters = scene_letters;
+    s.settings.track.on = track_on;
     if let Some((pages, numbers, show)) = production {
         (s.settings.pages_locked, s.settings.scene_numbers_locked, s.settings.show_scene_numbers) = (pages, numbers, show);
     }
@@ -550,6 +567,7 @@ fn finish(o: Open, open: &mut [Open], paras: &mut Vec<Para>, title_lines: &mut V
                 .collect();
             p.tagged = o.tagged.iter().map(|(s, l, c)| Tagged { start: at(*s), end: at(s.saturating_add(*l)), category: c.clone() }).collect();
             p.alternates = o.alts;
+            p.changes = track::to_bytes(&p, o.changes);
             p.fix_marks();
             if element == Element::Character
                 && let Some(n) = dual_chars.as_mut()
@@ -697,6 +715,7 @@ fn para_xml(out: &mut String, indent: &str, p: &Para) {
         }
         out.push_str(&format!("{indent}  </ScriptCraftAlternate>\n"));
     }
+    track::write_para(out, indent, p);
     out.push_str(&format!("{indent}</Paragraph>\n"));
 }
 
@@ -763,6 +782,7 @@ pub fn write(s: &Script) -> String {
         out.push_str("  <ScriptCraftFormat SceneLetters=\"Yes\"/>\n");
     }
     page::write(&mut out, &s.settings.page);
+    track::write_root(&mut out, s);
     revision::write(&mut out, s);
     let t = &s.title;
     if !t.is_empty() {

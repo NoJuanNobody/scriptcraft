@@ -10,7 +10,7 @@ mod canvas;
 pub mod cards;
 mod chrome;
 pub mod control;
-mod drafts;
+pub mod drafts;
 pub mod icons;
 pub mod persist;
 pub mod production;
@@ -93,6 +93,9 @@ pub const UI_COMMANDS: &[(&str, &str, &str, &str)] = &[
     ("ui.toggleTags", "Highlight Tagged Items", "Tools", ""),
     ("ui.breakdown", "Breakdown Report", "Tools", ""),
     ("ui.exportBreakdown", "Export Breakdown (CSV)…", "Tools", ""),
+    ("ui.trackChanges", "Show Changes…", "Tools › Track Changes", ""),
+    ("ui.compare", "Compare with Draft…", "Tools", ""),
+    ("ui.compareWindow", "Compare Drafts Window", "Tools", ""),
 ];
 
 /// The application state.
@@ -117,6 +120,8 @@ pub struct ScriptApp {
     pub element_dialog: bool,
     /// Page Setup, Print and Revisions dialogs.
     pub production: production::Dialogs,
+    /// Track Changes and Compare Drafts windows.
+    pub drafts: drafts::DraftsUi,
     /// The index card being dragged.
     pub card_drag: Option<usize>,
     /// Screen rectangles of the index cards last drawn (for demos and agents).
@@ -197,6 +202,7 @@ impl ScriptApp {
             title_dialog: false,
             element_dialog: false,
             production: production::Dialogs::default(),
+            drafts: drafts::DraftsUi::default(),
             card_drag: None,
             card_rects: Vec::new(),
             tag_edit: None,
@@ -520,6 +526,7 @@ impl ScriptApp {
             "ui.elementSettings" => self.element_dialog = !self.element_dialog,
             "ui.pageSetup" => self.production.page_setup = !self.production.page_setup,
             "ui.revisions" => self.production.revisions = !self.production.revisions,
+            "ui.trackChanges" | "ui.compare" | "ui.compareWindow" => return drafts::command(self, id, p),
             "ui.print" => production::toggle_print(self),
             "ui.printNow" => return production::print_now(self, p),
             "ui.about" => self.about = true,
@@ -628,7 +635,12 @@ impl ScriptApp {
         let mut files = std::mem::take(&mut *self.inbox.lock().unwrap_or_else(|e| e.into_inner()));
         files.extend(dropped);
         for (name, bytes) in files {
-            let _ = self.execute("file.load", json!({"name": name, "data": scriptcraft_engine::b64::encode(&bytes)}));
+            let data = scriptcraft_engine::b64::encode(&bytes);
+            if std::mem::take(&mut self.drafts.compare_pending) {
+                let _ = drafts::run_compare(self, json!({"name": name, "data": data}));
+                continue;
+            }
+            let _ = self.execute("file.load", json!({"name": name, "data": data}));
         }
     }
 
@@ -782,5 +794,6 @@ impl ScriptApp {
         self.dialog_buttons.clear();
         chrome::dialogs(self, &ctx);
         annotations::dialogs(self, &ctx);
+        drafts::dialogs(self, &ctx);
     }
 }

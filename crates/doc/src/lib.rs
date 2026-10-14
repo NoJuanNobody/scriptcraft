@@ -15,6 +15,7 @@ pub mod revision;
 mod style;
 pub mod template;
 mod text;
+pub mod track;
 
 pub use annot::{
     Alternate, MAX_ALTERNATES, MAX_NOTES, MAX_TAGGED, Note, NoteRef, TAG_CATEGORIES, Tagged, alternate_from_runs, category_rgb, clean_author,
@@ -28,6 +29,7 @@ pub use revision::{RevMark, RevisionSet, Revisions};
 pub use style::{Flag, Span, Style};
 pub use template::Template;
 pub use text::{next_boundary, prev_boundary, word_left, word_right};
+pub use track::{Change, ChangeKind, TrackSettings};
 
 use serde::{Deserialize, Serialize};
 
@@ -91,6 +93,9 @@ pub struct Para {
     /// Revised text (byte ranges of `text` and their revision set).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub revs: Vec<RevMark>,
+    /// Tracked changes awaiting accept or reject (see [`track`]).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub changes: Vec<Change>,
 }
 
 /// Index-card colours.
@@ -187,6 +192,7 @@ impl Para {
             tagged: Vec::new(),
             alternates: Vec::new(),
             revs: Vec::new(),
+            changes: Vec::new(),
         }
     }
 
@@ -359,6 +365,9 @@ pub struct Settings {
     /// Number Scenes uses letters (A, B … Z, AA, BB …), as multi-camera scripts do.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub scene_letters: bool,
+    /// Track changes.
+    #[serde(skip_serializing_if = "TrackSettings::is_default")]
+    pub track: TrackSettings,
 }
 
 impl Default for Settings {
@@ -374,6 +383,7 @@ impl Default for Settings {
             page: PageSetup::default(),
             revision: Revisions::default(),
             scene_letters: false,
+            track: TrackSettings::default(),
         }
     }
 }
@@ -488,6 +498,9 @@ impl Script {
             }
         }
         self.normalize_production();
+        if self.paras.iter().any(|p| !p.changes.is_empty()) {
+            track::fix_all(self);
+        }
         Ok(())
     }
 

@@ -342,6 +342,7 @@ fn paint_page(ui: &Ui, app: &ScriptApp, l: &Layout, i: usize, pr: Rect, bad: &[(
         }
         crate::annotations::paint_behind(app, p, line, pr, z);
         crate::annotations::paint_margin(app, p, line, pr, z);
+        crate::drafts::paint_changes(app, p, line, pr, z);
         let color = match line.kind {
             LineKind::Header | LineKind::Footer | LineKind::More | LineKind::Contd | LineKind::SceneNumber => t.ink_soft,
             _ => t.ink,

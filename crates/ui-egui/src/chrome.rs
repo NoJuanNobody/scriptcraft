@@ -219,6 +219,7 @@ pub fn menu_bar(app: &mut ScriptApp, ui: &mut Ui) {
                 item(app, ui, "Next Misspelling", "spell.next", "Mod+;");
                 check(app, ui, "Check Spelling as You Type", app.spelling, "ui.toggleSpelling", json!({}));
                 crate::annotations::tools_menu(app, ui);
+                crate::drafts::tools_menu(app, ui);
             });
             ui.menu_button("Help", |ui| {
                 item(app, ui, "About ScriptCraft", "ui.about", "");

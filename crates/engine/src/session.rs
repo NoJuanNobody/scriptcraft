@@ -75,6 +75,8 @@ pub struct Session {
     /// Counts changes to the script (anything that drops the layout cache), for caches keyed
     /// on the script's state.
     revision: u64,
+    /// Who is writing: the author of tracked changes (the app sets it from its preferences).
+    pub author: String,
 }
 
 impl Session {
@@ -99,6 +101,7 @@ impl Session {
             speed: false,
             speed_layout: None,
             revision: 0,
+            author: String::new(),
         };
         let _ = s.script.normalize();
         s
@@ -247,6 +250,12 @@ impl Session {
             Ok(_) if self.script != old => {
                 // Revision marks follow the edit; in revision mode the edit is marked.
                 scriptcraft_doc::revision::mark_changes(&old, &mut self.script);
+                // Tracked changes follow the edit; with track changes on, the edit is recorded
+                // (track.* commands resolve changes themselves).
+                if !id.starts_with("track.") {
+                    let author = self.script.settings.track.on.then(|| self.author.clone());
+                    scriptcraft_doc::track::follow(&old, &mut self.script, author.as_deref());
+                }
                 let _ = self.script.normalize();
                 self.clamp_selection();
                 if !coalesce {

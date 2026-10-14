@@ -10,6 +10,7 @@ pub mod b64;
 pub mod breakdown;
 pub mod catalog;
 pub mod cmd;
+pub mod compare;
 pub mod io;
 pub mod reports;
 pub mod sample;
