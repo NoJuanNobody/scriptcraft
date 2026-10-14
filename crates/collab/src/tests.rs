@@ -541,3 +541,32 @@ fn structure_bookmarks_and_beats_sync_while_the_other_types() {
     let storm = d.board.beats.iter().find(|b| b.title == "Storm").unwrap().id;
     assert_eq!(d.beat_scene(storm), Some(0));
 }
+
+#[test]
+fn tracked_changes_sync_with_their_authors() {
+    use scriptcraft_doc::{ChangeKind, track};
+    let mut sim = Sim::new(sample(), 2);
+    // Each peer records its own edit as a tracked change (as the engine does with track on).
+    for (i, (pos, text, who)) in [(Pos::new(1, 0), "Then ", "Ana"), (Pos::new(4, 0), "Slowly, ", "Bo")].into_iter().enumerate() {
+        let old = sim.local(i).clone();
+        sim.local(i).insert_text(pos, text).unwrap();
+        let mut new = sim.local(i).clone();
+        track::follow(&old, &mut new, Some(who));
+        *sim.local(i) = new;
+    }
+    // And peer 0 deletes a word in a paragraph nobody else touches.
+    let old = sim.local(0).clone();
+    sim.local(0).delete_range(Pos::new(5, 0), Pos::new(5, 7));
+    let mut new = sim.local(0).clone();
+    track::follow(&old, &mut new, Some("Ana"));
+    *sim.local(0) = new;
+    sim.client_tick(0, 0);
+    sim.client_tick(1, 0);
+    sim.settle();
+    let d = sim.host.doc();
+    let all: Vec<(usize, ChangeKind, String)> =
+        d.paras.iter().enumerate().flat_map(|(i, p)| p.changes.iter().map(move |c| (i, c.kind, c.author.clone()))).collect();
+    assert!(all.contains(&(1, ChangeKind::Insert, "Ana".into())), "{all:?}");
+    assert!(all.contains(&(4, ChangeKind::Insert, "Bo".into())), "{all:?}");
+    assert!(all.contains(&(5, ChangeKind::Delete, "Ana".into())), "{all:?}");
+}

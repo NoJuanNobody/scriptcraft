@@ -13,6 +13,7 @@ pub mod cards;
 mod chrome;
 pub mod collab_ui;
 pub mod control;
+pub mod drafts;
 pub mod icons;
 pub mod outline;
 pub mod persist;
@@ -126,6 +127,9 @@ pub const UI_COMMANDS: &[(&str, &str, &str, &str)] = &[
     ("ui.collaborate", "Collaborate…", "File", ""),
     ("ui.readAloud", "Read Aloud…", "Tools", ""),
     ("ui.dictation", "Dictation…", "Tools", ""),
+    ("ui.trackChanges", "Show Changes…", "Tools › Track Changes", ""),
+    ("ui.compare", "Compare with Draft…", "Tools", ""),
+    ("ui.compareWindow", "Compare Drafts Window", "Tools", ""),
 ];
 
 /// The application state.
@@ -160,6 +164,8 @@ pub struct ScriptApp {
     pub production: production::Dialogs,
     /// The Collaborate window (real-time collaboration).
     pub collab: collab_ui::CollabDialog,
+    /// Track Changes and Compare Drafts windows.
+    pub drafts: drafts::DraftsUi,
     /// The index card being dragged.
     pub card_drag: Option<usize>,
     /// Screen rectangles of the index cards last drawn (for demos and agents).
@@ -252,6 +258,7 @@ impl ScriptApp {
             element_dialog: false,
             production: production::Dialogs::default(),
             collab: collab_ui::CollabDialog::default(),
+            drafts: drafts::DraftsUi::default(),
             card_drag: None,
             card_rects: Vec::new(),
             tag_edit: None,
@@ -493,7 +500,7 @@ impl ScriptApp {
         // Replacing a script with unsaved changes asks first (interactive windows only).
         if self.dialogs
             && self.session.dirty
-            && matches!(id, "file.new" | "file.sample" | "file.open" | "ui.open" | "ui.openRecent")
+            && matches!(id, "file.new" | "file.sample" | "file.open" | "ui.open" | "ui.openRecent" | "template.new")
             && self.confirm_replace.is_none()
         {
             self.confirm_replace = Some((id.to_string(), params));
@@ -658,6 +665,7 @@ impl ScriptApp {
             "ui.elementSettings" => self.element_dialog = !self.element_dialog,
             "ui.pageSetup" => self.production.page_setup = !self.production.page_setup,
             "ui.revisions" => self.production.revisions = !self.production.revisions,
+            "ui.trackChanges" | "ui.compare" | "ui.compareWindow" => return drafts::command(self, id, p),
             "ui.print" => production::toggle_print(self),
             "ui.printNow" => return production::print_now(self, p),
             "ui.about" => self.about = true,
@@ -772,7 +780,12 @@ impl ScriptApp {
         let mut files = std::mem::take(&mut *self.inbox.lock().unwrap_or_else(|e| e.into_inner()));
         files.extend(dropped);
         for (name, bytes) in files {
-            let _ = self.execute("file.load", json!({"name": name, "data": scriptcraft_engine::b64::encode(&bytes)}));
+            let data = scriptcraft_engine::b64::encode(&bytes);
+            if std::mem::take(&mut self.drafts.compare_pending) {
+                let _ = drafts::run_compare(self, json!({"name": name, "data": data}));
+                continue;
+            }
+            let _ = self.execute("file.load", json!({"name": name, "data": data}));
         }
     }
 
@@ -930,5 +943,6 @@ impl ScriptApp {
         beatboard::dialog(self, &ctx);
         collab_ui::window(self, &ctx);
         speech::windows(self, &ctx);
+        drafts::dialogs(self, &ctx);
     }
 }

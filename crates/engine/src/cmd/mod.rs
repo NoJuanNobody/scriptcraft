@@ -4,6 +4,7 @@ pub mod alternates;
 pub mod boards;
 pub mod caret;
 pub mod collab;
+pub mod compare;
 pub mod edit;
 pub mod element;
 pub mod file;
@@ -20,8 +21,10 @@ pub mod speech;
 pub mod spell;
 pub mod structure;
 pub mod tags;
+pub mod template;
 pub mod text;
 pub mod title;
+pub mod track;
 
 use scriptcraft_doc::Pos;
 use serde_json::{Value, json};
@@ -53,6 +56,9 @@ pub fn registry() -> Registry {
     v.extend(boards::specs());
     v.extend(collab::specs());
     v.extend(speech::specs());
+    v.extend(template::specs());
+    v.extend(track::specs());
+    v.extend(compare::specs());
     Registry::new(v)
 }
 

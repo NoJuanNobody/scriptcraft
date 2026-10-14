@@ -52,7 +52,23 @@ pub struct ElementFormat {
     pub tab: Element,
     /// The element an empty paragraph (or one with the caret mid-text) becomes on Tab.
     pub tab_empty: Element,
+    /// Line spacing: 1 = single, 2 = a blank line between lines (multi-camera dialogue).
+    #[serde(default = "one", skip_serializing_if = "is_one")]
+    pub spacing: u8,
+    /// Each paragraph of this element starts a new page (multi-camera scenes, act breaks).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub new_page: bool,
 }
+
+fn one() -> u8 {
+    1
+}
+fn is_one(v: &u8) -> bool {
+    *v == 1
+}
+
+/// Most line spacing kept.
+pub const MAX_SPACING: u8 = 3;
 
 /// Limits for hostile values.
 pub const MIN_INCH: f32 = 0.0;
@@ -83,7 +99,7 @@ impl ElementFormat {
             Shot => (Action, Action, Action),
             General => (General, Character, Action),
         };
-        ElementFormat { left, right, before, align, uppercase: e.uppercase(), enter, tab, tab_empty }
+        ElementFormat { left, right, before, align, uppercase: e.uppercase(), enter, tab, tab_empty, spacing: 1, new_page: false }
     }
 
     /// Clamp to sane values (hostile files and parameters).
@@ -92,6 +108,7 @@ impl ElementFormat {
         self.left = fin(self.left, 1.5).clamp(MIN_INCH, MAX_INCH - 0.5);
         self.right = fin(self.right, 7.5).clamp(self.left + 0.5, MAX_INCH);
         self.before = self.before.min(MAX_BEFORE);
+        self.spacing = self.spacing.clamp(1, MAX_SPACING);
         self
     }
 }

@@ -15,7 +15,9 @@ mod production;
 pub mod revision;
 mod structure;
 mod style;
+pub mod template;
 mod text;
+pub mod track;
 pub mod voices;
 
 pub use annot::{
@@ -33,7 +35,9 @@ pub use production::{expand_page_label, next_label};
 pub use revision::{RevMark, RevisionSet, Revisions};
 pub use structure::{MAX_STRUCTURE, OutlineItem, PointSlot, StructureKind, StructurePoint};
 pub use style::{Flag, Span, Style};
+pub use template::Template;
 pub use text::{next_boundary, prev_boundary, word_left, word_right};
+pub use track::{Change, ChangeKind, TrackSettings};
 pub use voices::Voices;
 
 use serde::{Deserialize, Serialize};
@@ -108,6 +112,9 @@ pub struct Para {
     /// Beat-board beats linked to this scene (scene headings only): beat ids.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub beats: Vec<u32>,
+    /// Tracked changes awaiting accept or reject (see [`track`]).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub changes: Vec<Change>,
 }
 
 /// Index-card colours.
@@ -207,6 +214,7 @@ impl Para {
             structure: Vec::new(),
             bookmark: None,
             beats: Vec::new(),
+            changes: Vec::new(),
         }
     }
 
@@ -379,6 +387,12 @@ pub struct Settings {
     /// Read-aloud voices: the narrator's and each character's.
     #[serde(skip_serializing_if = "Voices::is_default")]
     pub voices: Voices,
+    /// Number Scenes uses letters (A, B … Z, AA, BB …), as multi-camera scripts do.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub scene_letters: bool,
+    /// Track changes.
+    #[serde(skip_serializing_if = "TrackSettings::is_default")]
+    pub track: TrackSettings,
 }
 
 impl Default for Settings {
@@ -394,6 +408,8 @@ impl Default for Settings {
             page: PageSetup::default(),
             revision: Revisions::default(),
             voices: Voices::default(),
+            scene_letters: false,
+            track: TrackSettings::default(),
         }
     }
 }
@@ -524,6 +540,9 @@ impl Script {
         self.normalize_production();
         self.fix_structure();
         self.normalize_boards();
+        if self.paras.iter().any(|p| !p.changes.is_empty()) {
+            track::fix_all(self);
+        }
         Ok(())
     }
 
@@ -815,11 +834,12 @@ impl Script {
 
     /// Renumber every scene 1, 2, 3…
     pub fn number_scenes(&mut self) {
+        let letters = self.settings.scene_letters;
         let mut n = 0usize;
         for p in &mut self.paras {
             if p.element == Element::SceneHeading {
                 n += 1;
-                p.scene_number = Some(n.to_string());
+                p.scene_number = Some(if letters { template::scene_letter(n) } else { n.to_string() });
             }
         }
     }

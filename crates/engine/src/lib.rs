@@ -11,6 +11,7 @@ pub mod breakdown;
 pub mod catalog;
 pub mod cmd;
 pub mod collab;
+pub mod compare;
 pub mod dictation;
 pub mod io;
 pub mod reports;

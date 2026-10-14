@@ -113,6 +113,7 @@ pub fn menu_bar(app: &mut ScriptApp, ui: &mut Ui) {
         egui::MenuBar::new().ui(ui, |ui| {
             ui.menu_button("File", |ui| {
                 item(app, ui, "New Script", "file.new", "Mod+N");
+                crate::drafts::new_menu(app, ui);
                 item(app, ui, "Open…", "ui.open", "Mod+O");
                 ui.menu_button("Open Recent", |ui| {
                     let recent = app.prefs.files.recent.clone();
@@ -230,6 +231,7 @@ pub fn menu_bar(app: &mut ScriptApp, ui: &mut Ui) {
                 }
                 ui.separator();
                 item(app, ui, "Element Settings…", "ui.elementSettings", "");
+                crate::drafts::apply_menu(app, ui);
                 check(app, ui, "Element List on Enter in an Empty Paragraph", app.enter_picker, "ui.toggleEnterPicker", json!({}));
                 ui.separator();
                 item(app, ui, "Bold", "format.bold", "Mod+B");
@@ -270,6 +272,7 @@ pub fn menu_bar(app: &mut ScriptApp, ui: &mut Ui) {
                     item(app, ui, "Stop Reading", "speech.stop", "");
                 });
                 item(app, ui, "Dictation…", "ui.dictation", "");
+                crate::drafts::tools_menu(app, ui);
             });
             ui.menu_button("Help", |ui| {
                 item(app, ui, "About ScriptCraft", "ui.about", "");
@@ -714,8 +717,20 @@ pub fn dialogs(app: &mut ScriptApp, ctx: &egui::Context) {
             .show(ctx, |ui| {
                 ui.label(RichText::new("Indents in inches from the left edge of the paper; space before in blank lines.").size(11.5));
                 ui.add_space(6.0);
-                egui::Grid::new("elements").num_columns(9).spacing([10.0, 6.0]).striped(true).show(ui, |ui| {
-                    for h in ["Element", "Left", "Right", "Before", "Align", "Caps", "Enter goes to", "Tab goes to", "Tab when empty"] {
+                egui::Grid::new("elements").num_columns(11).spacing([10.0, 6.0]).striped(true).show(ui, |ui| {
+                    for h in [
+                        "Element",
+                        "Left",
+                        "Right",
+                        "Before",
+                        "Spacing",
+                        "Align",
+                        "Caps",
+                        "New page",
+                        "Enter goes to",
+                        "Tab goes to",
+                        "Tab when empty",
+                    ] {
                         ui.label(RichText::new(h).strong());
                     }
                     ui.end_row();
@@ -724,6 +739,7 @@ pub fn dialogs(app: &mut ScriptApp, ctx: &egui::Context) {
                         let id = e.id();
                         ui.label(e.name());
                         let (mut l, mut r, mut b, mut caps) = (f.left, f.right, f.before, f.uppercase);
+                        let (mut sp, mut np) = (f.spacing, f.new_page);
                         if ui.add(egui::DragValue::new(&mut l).speed(0.05).range(0.0..=8.0).fixed_decimals(2)).changed() {
                             changes.push(json!({"element": id, "left": l}));
                         }
@@ -732,6 +748,9 @@ pub fn dialogs(app: &mut ScriptApp, ctx: &egui::Context) {
                         }
                         if ui.add(egui::DragValue::new(&mut b).range(0..=6)).changed() {
                             changes.push(json!({"element": id, "before": b}));
+                        }
+                        if ui.add(egui::DragValue::new(&mut sp).range(1..=3)).on_hover_text("1 = single, 2 = double-spaced").changed() {
+                            changes.push(json!({"element": id, "spacing": sp}));
                         }
                         egui::ComboBox::from_id_salt(("align", id)).width(70.0).selected_text(f.align.name()).show_ui(ui, |ui| {
                             for a in [scriptcraft_doc::Align::Left, scriptcraft_doc::Align::Center, scriptcraft_doc::Align::Right] {
@@ -742,6 +761,9 @@ pub fn dialogs(app: &mut ScriptApp, ctx: &egui::Context) {
                         });
                         if ui.checkbox(&mut caps, "").changed() {
                             changes.push(json!({"element": id, "uppercase": caps}));
+                        }
+                        if ui.checkbox(&mut np, "").on_hover_text("Start each paragraph of this element on a new page").changed() {
+                            changes.push(json!({"element": id, "newPage": np}));
                         }
                         for (key, cur) in [("enter", f.enter), ("tab", f.tab), ("tabEmpty", f.tab_empty)] {
                             egui::ComboBox::from_id_salt((key, id)).width(110.0).selected_text(cur.name()).show_ui(ui, |ui| {

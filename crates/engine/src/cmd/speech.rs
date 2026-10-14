@@ -371,4 +371,21 @@ mod tests {
         assert!(s.run("speech.play", &json!({})).is_err());
         assert_eq!(s.run("speech.status", &json!({})).unwrap()["available"], false);
     }
+
+    #[test]
+    fn a_dictated_phrase_is_one_tracked_insertion() {
+        let mut s = empty();
+        s.author = "Ana".into();
+        s.run("track.toggle", &json!({"on": true})).unwrap();
+        s.run("dictation.insert", &json!({"text": "rain on the window period the kettle ticks"})).unwrap();
+        let l = s.run("track.list", &json!({})).unwrap();
+        let ch = l["changes"].as_array().unwrap();
+        assert_eq!(ch.len(), 1, "{l}");
+        assert_eq!(ch[0]["kind"], "insert");
+        assert_eq!(ch[0]["author"], "Ana");
+        assert_eq!(ch[0]["text"], "Rain on the window. The kettle ticks");
+        // "Undo that" takes the phrase and its change back.
+        s.run("dictation.insert", &json!({"text": "undo that"})).unwrap();
+        assert!(s.script.paras.iter().all(|p| p.changes.is_empty() && p.text.is_empty()));
+    }
 }
