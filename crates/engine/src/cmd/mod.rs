@@ -16,6 +16,7 @@ pub mod scene;
 pub mod smart;
 pub mod spell;
 pub mod tags;
+pub mod template;
 pub mod text;
 pub mod title;
 
@@ -45,6 +46,7 @@ pub fn registry() -> Registry {
     v.extend(page::specs());
     v.extend(print::specs());
     v.extend(revision::specs());
+    v.extend(template::specs());
     Registry::new(v)
 }
 

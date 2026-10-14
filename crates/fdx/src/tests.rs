@@ -141,3 +141,14 @@ fn production_locks_round_trip() {
     assert_eq!(back.paras[0].page_lock, vec!["x".to_string(), "1-2".to_string()]);
     assert!(!back.paras[0].omitted, "only headings are omitted");
 }
+
+#[test]
+fn template_formats_round_trip() {
+    let (s, _) = scriptcraft_doc::Template::TvMultiCamera.script(None, None);
+    let xml = write(&s);
+    assert!(xml.contains("Spacing=\"2\"") && xml.contains("StartsNewPage=\"Yes\"") && xml.contains("<ScriptCraftFormat SceneLetters=\"Yes\"/>"));
+    let back = parse(&xml).unwrap();
+    assert_eq!(back.settings.elements, s.settings.elements);
+    assert!(back.settings.scene_letters);
+    assert_eq!(back.paras, s.paras);
+}

@@ -10,6 +10,7 @@ mod canvas;
 pub mod cards;
 mod chrome;
 pub mod control;
+mod drafts;
 pub mod icons;
 pub mod persist;
 pub mod production;
@@ -434,7 +435,7 @@ impl ScriptApp {
         // Replacing a script with unsaved changes asks first (interactive windows only).
         if self.dialogs
             && self.session.dirty
-            && matches!(id, "file.new" | "file.sample" | "file.open" | "ui.open" | "ui.openRecent")
+            && matches!(id, "file.new" | "file.sample" | "file.open" | "ui.open" | "ui.openRecent" | "template.new")
             && self.confirm_replace.is_none()
         {
             self.confirm_replace = Some((id.to_string(), params));

@@ -117,7 +117,13 @@ pub const FEATURES: &[Feature] = &[
         &["settings.elements", "settings.element", "settings.resetElements", "ui.elementSettings"],
         "kept in FDX ElementSettings (Tab targets ScriptCraft-only); font is always Courier 12",
     ),
-    f("Writing", "Templates (TV, stage play, multi-camera)", Missing, &[], "feature-film format only"),
+    f(
+        "Writing",
+        "Templates (TV, stage play, multi-camera)",
+        Done,
+        &["template.new", "template.apply", "template.list", "template.current"],
+        "feature, TV single-camera (teaser + acts), multi-camera (double-spaced dialogue, capitals, scene letters, a page per scene), stage play; ScriptCraft's own",
+    ),
     // Pagination
     f("Pagination", "Industry pagination (Letter, Courier 12, 6 lines/inch, 54 lines)", Done, &["document.layout"], ""),
     f("Pagination", "(MORE) / (CONT'D) across dialogue page breaks", Done, &["settings.set"], ""),

@@ -17,7 +17,7 @@ pub fn specs() -> Vec<CommandSpec> {
         CommandSpec::new("view.speed", "Speed View", "View", speed).params(r#"{"on": bool (default: toggle)}"#).pure(),
         CommandSpec::new("settings.elements", "Element Settings", "Format › Elements", elements).pure(),
         CommandSpec::new("settings.element", "Change Element Settings", "Format › Elements", set_element).params(
-            r#"{"element": string, "left": inches, "right": inches, "before": lines, "align": "left"|"center"|"right", "uppercase": bool, "enter": element, "tab": element, "tabEmpty": element}"#,
+            r#"{"element": string, "left": inches, "right": inches, "before": lines, "align": "left"|"center"|"right", "uppercase": bool, "enter": element, "tab": element, "tabEmpty": element, "spacing": 1-3, "newPage": bool}"#,
         ),
         CommandSpec::new("settings.resetElements", "Reset Element Settings", "Format › Elements", reset_elements),
     ]
@@ -84,7 +84,7 @@ fn elements(s: &mut Session, _: &Value) -> CmdResult {
             .map(|e| {
                 let x = f.get(*e);
                 json!({"element": e.id(), "name": e.name(), "left": x.left, "right": x.right, "before": x.before, "align": x.align,
-                       "uppercase": x.uppercase, "enter": x.enter.id(), "tab": x.tab.id(), "tabEmpty": x.tab_empty.id()})
+                       "uppercase": x.uppercase, "enter": x.enter.id(), "tab": x.tab.id(), "tabEmpty": x.tab_empty.id(), "spacing": x.spacing, "newPage": x.new_page})
             })
             .collect(),
     ))
@@ -124,6 +124,12 @@ fn set_element(s: &mut Session, v: &Value) -> CmdResult {
     }
     if let Some(x) = el("tabEmpty")? {
         f.tab_empty = x;
+    }
+    if let Some(x) = p::usize(v, "spacing") {
+        f.spacing = x.min(usize::from(u8::MAX)) as u8;
+    }
+    if let Some(b) = p::bool(v, "newPage") {
+        f.new_page = b;
     }
     s.script.settings.elements.set(e, f);
     elements(s, v)

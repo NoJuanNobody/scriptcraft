@@ -13,6 +13,7 @@ pub mod page_setup;
 mod production;
 pub mod revision;
 mod style;
+pub mod template;
 mod text;
 
 pub use annot::{
@@ -25,6 +26,7 @@ pub use page_setup::{HeaderFooter, PageSetup, Paper};
 pub use production::{expand_page_label, next_label};
 pub use revision::{RevMark, RevisionSet, Revisions};
 pub use style::{Flag, Span, Style};
+pub use template::Template;
 pub use text::{next_boundary, prev_boundary, word_left, word_right};
 
 use serde::{Deserialize, Serialize};
@@ -354,6 +356,9 @@ pub struct Settings {
     /// Revision sets, the active one and revision mode.
     #[serde(skip_serializing_if = "Revisions::is_default")]
     pub revision: Revisions,
+    /// Number Scenes uses letters (A, B … Z, AA, BB …), as multi-camera scripts do.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub scene_letters: bool,
 }
 
 impl Default for Settings {
@@ -368,6 +373,7 @@ impl Default for Settings {
             scene_numbers_locked: false,
             page: PageSetup::default(),
             revision: Revisions::default(),
+            scene_letters: false,
         }
     }
 }
@@ -753,11 +759,12 @@ impl Script {
 
     /// Renumber every scene 1, 2, 3…
     pub fn number_scenes(&mut self) {
+        let letters = self.settings.scene_letters;
         let mut n = 0usize;
         for p in &mut self.paras {
             if p.element == Element::SceneHeading {
                 n += 1;
-                p.scene_number = Some(n.to_string());
+                p.scene_number = Some(if letters { template::scene_letter(n) } else { n.to_string() });
             }
         }
     }
