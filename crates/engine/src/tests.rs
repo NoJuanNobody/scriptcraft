@@ -342,3 +342,10 @@ fn load_and_export_data() {
     assert!(t.run("file.load", &json!({"name": "z.fdx", "data": "!!"})).is_err());
     assert!(t.run("document.export", &json!({"format": "docx"})).is_err());
 }
+
+#[test]
+fn sample_shot_comes_from_its_fountain_note() {
+    let s = crate::sample::script();
+    let shots: Vec<&str> = s.paras.iter().filter(|p| p.element == scriptcraft_doc::Element::Shot).map(|p| p.text.as_str()).collect();
+    assert_eq!(shots, vec!["CLOSE ON THE BAROMETER"]);
+}

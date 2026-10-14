@@ -258,7 +258,13 @@ pub const FEATURES: &[Feature] = &[
     ),
     // Files
     f("Files", "Final Draft XML (.fdx) open and save", Done, &["file.open", "file.save", "file.exportFdx"], "bold, italic, underline kept"),
-    f("Files", "Fountain open and save", Done, &["file.open", "file.save", "file.exportFountain"], "Shot and General become Action"),
+    f(
+        "Files",
+        "Fountain open and save",
+        Done,
+        &["file.open", "file.save", "file.exportFountain"],
+        "Shot and General kept with a `[[shot]]` / `[[general]]` note; other apps read them as action",
+    ),
     f("Files", "PDF export", Done, &["file.exportPdf"], "embedded Courier Prime, selectable text"),
     f(
         "Files",
