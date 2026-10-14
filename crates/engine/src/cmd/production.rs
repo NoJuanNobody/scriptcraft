@@ -180,6 +180,19 @@ mod tests {
     }
 
     #[test]
+    fn go_to_a_page_that_only_continues_a_paragraph() {
+        // One long action paragraph over several pages: no paragraph starts on page 2 or 3.
+        let text = (0..400).map(|i| format!("Word{i} goes on.")).collect::<Vec<_>>().join(" ");
+        let mut s = Session::new(Script::from_paras(vec![Para::new(Element::Action, text)]).unwrap());
+        let lay = s.layout();
+        assert!(lay.pages.len() >= 3);
+        let start3 = lay.pages[2].lines.iter().find(|x| x.kind == scriptcraft_layout::LineKind::Body).unwrap().start;
+        s.run("caret.gotoPage", &json!({"page": 3})).unwrap();
+        assert_eq!(s.sel.focus, Pos::new(0, start3));
+        assert_eq!(s.layout().caret(s.sel.focus).map(|c| c.page), Some(2));
+    }
+
+    #[test]
     fn locking_keeps_the_layout() {
         let mut s = Session::new(long_script());
         let before = s.layout();

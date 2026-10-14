@@ -1,6 +1,7 @@
 //! Caret movement and selection (none of these change the script).
 
 use scriptcraft_doc::{Pos, next_boundary, prev_boundary, word_left, word_right};
+use scriptcraft_layout::LineKind;
 use serde_json::Value;
 
 use super::{parse_pos, sel_result};
@@ -159,8 +160,13 @@ fn goto_page(s: &mut Session, v: &Value) -> CmdResult {
         let page = p::req_usize(v, "page")?;
         l.pages.iter().position(|pg| pg.number == Some(page)).ok_or_else(|| CmdError::Params(format!("no page {page}")))?
     };
-    let para = l.para_page.iter().position(|&pi| pi >= idx).unwrap_or(0);
-    go(s, &Value::Null, Pos::new(para, 0))
+    // The page's first line of script text, which may continue a paragraph from the page before.
+    let first = l.pages.get(idx).and_then(|pg| pg.lines.iter().find(|ln| ln.kind == LineKind::Body && ln.para.is_some()));
+    let at = match first {
+        Some(ln) => s.script.clamp(Pos::new(ln.para.unwrap_or(0), ln.start)),
+        None => Pos::new(l.para_page.iter().position(|&pi| pi >= idx).unwrap_or(0), 0),
+    };
+    go(s, &Value::Null, at)
 }
 
 fn all(s: &mut Session, _: &Value) -> CmdResult {
