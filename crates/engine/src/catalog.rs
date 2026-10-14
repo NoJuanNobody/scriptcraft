@@ -213,7 +213,13 @@ pub const FEATURES: &[Feature] = &[
     ),
     f("Production", "Track changes / compare scripts", Missing, &[], ""),
     f("Production", "Watermarks", Missing, &[], ""),
-    f("Production", "Collaboration (real time)", Missing, &[], ""),
+    f(
+        "Production",
+        "Collaboration (real time)",
+        Done,
+        &["collab.host", "collab.join", "collab.leave", "collab.status", "collab.peers", "ui.collaborate"],
+        "host or join with a session key over the local network; live merge of everyone's typing; others' carets and names on the page; desktop only",
+    ),
     // Files
     f("Files", "Final Draft XML (.fdx) open and save", Done, &["file.open", "file.save", "file.exportFdx"], "bold, italic, underline kept"),
     f("Files", "Fountain open and save", Done, &["file.open", "file.save", "file.exportFountain"], "Shot and General become Action"),

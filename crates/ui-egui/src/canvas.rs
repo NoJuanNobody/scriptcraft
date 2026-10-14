@@ -299,14 +299,14 @@ pub fn key_command(app: &mut ScriptApp, key: Key, m: Modifiers) {
 }
 
 /// Screen rect of a line's columns `[c0, c1)` on page rect `pr`.
-fn cols_rect(pr: Rect, z: f32, l: &Line, c0: usize, c1: usize) -> Rect {
+pub(crate) fn cols_rect(pr: Rect, z: f32, l: &Line, c0: usize, c1: usize) -> Rect {
     let x0 = pr.left() + (l.x + c0 as f32 * CHAR_W) * z;
     let x1 = pr.left() + (l.x + c1 as f32 * CHAR_W) * z;
     Rect::from_min_max(pos2(x0, pr.top() + l.y * z), pos2(x1, pr.top() + (l.y + LINE_H) * z))
 }
 
 /// Selected column range of a body line, if any.
-fn selected_cols(l: &Line, a: Pos, b: Pos) -> Option<(usize, usize)> {
+pub(crate) fn selected_cols(l: &Line, a: Pos, b: Pos) -> Option<(usize, usize)> {
     let para = l.para?;
     if para < a.para || para > b.para || a == b {
         return None;
@@ -455,6 +455,7 @@ pub fn show(app: &mut ScriptApp, ui: &mut Ui) {
                 paint_page(ui, app, &layout, i, *pr, &bad);
             }
         }
+        crate::collab_ui::paint_peers(app, ui, &layout, &rects);
         // Caret.
         let caret = layout.caret(app.session.sel.focus).and_then(|c| {
             let pr = rects.get(c.page)?;

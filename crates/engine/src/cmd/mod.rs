@@ -3,6 +3,7 @@
 pub mod alternates;
 pub mod boards;
 pub mod caret;
+pub mod collab;
 pub mod edit;
 pub mod element;
 pub mod file;
@@ -49,6 +50,7 @@ pub fn registry() -> Registry {
     v.extend(revision::specs());
     v.extend(structure::specs());
     v.extend(boards::specs());
+    v.extend(collab::specs());
     Registry::new(v)
 }
 
