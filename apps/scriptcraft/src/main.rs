@@ -11,6 +11,7 @@
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 mod control_server;
+mod printing;
 mod tts;
 
 use scriptcraft_engine::Session;
@@ -170,6 +171,8 @@ fn main() -> eframe::Result<()> {
             app = app.with_folders(folders);
             // Read aloud with the system's voices (and whisper.cpp dictation when installed).
             app.speaker = tts::detect().map(|s| Box::new(s) as Box<dyn scriptcraft_ui_egui::speech::SpeechHost>);
+            // Print to the system's printers (CUPS, or the Windows print action).
+            app.printer = printing::detect().map(|p| Box::new(p) as Box<dyn scriptcraft_ui_egui::printing::PrintHost>);
             let mut key_file = None;
             if let Some(port) = control_port
                 && let Some((rx, kf)) = control_server::start(port, cc.egui_ctx.clone(), data.as_deref())

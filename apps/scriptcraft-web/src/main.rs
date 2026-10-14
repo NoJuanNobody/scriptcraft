@@ -65,6 +65,83 @@ mod web {
         Ok(())
     }
 
+    /// Printing in the browser: the PDF loads in a hidden frame and the browser's own print window
+    /// opens on it, where the printer and copies are chosen. If the frame can't print (some
+    /// browsers block printing PDFs in frames), the PDF opens in a new tab instead.
+    struct BrowserPrint {
+        done: Rc<RefCell<Vec<Result<String, String>>>>,
+        /// The frame and object URL of the last job, removed when the next one starts.
+        last: Option<(web_sys::HtmlIFrameElement, String)>,
+        _onload: Option<Closure<dyn FnMut()>>,
+    }
+
+    impl BrowserPrint {
+        fn new() -> Self {
+            BrowserPrint { done: Rc::default(), last: None, _onload: None }
+        }
+
+        fn clear(&mut self) {
+            if let Some((frame, url)) = self.last.take() {
+                frame.remove();
+                let _ = web_sys::Url::revoke_object_url(&url);
+            }
+            self._onload = None;
+        }
+    }
+
+    impl scriptcraft_ui_egui::printing::PrintHost for BrowserPrint {
+        fn engine(&self) -> String {
+            "browser print window".into()
+        }
+        fn printers(&mut self, _refresh: bool) -> Result<Vec<scriptcraft_ui_egui::printing::Printer>, String> {
+            Ok(Vec::new())
+        }
+        fn chooses_in_dialog(&self) -> bool {
+            true
+        }
+        fn send(&mut self, job: scriptcraft_ui_egui::printing::PrintJob) -> Result<(), String> {
+            self.clear();
+            let fail = |_: JsValue| String::from("the browser could not prepare the pages");
+            let window = web_sys::window().ok_or("no window")?;
+            let document = window.document().ok_or("no document")?;
+            let body = document.body().ok_or("no page body")?;
+            let parts = js_sys::Array::of1(&js_sys::Uint8Array::from(job.pdf.as_slice()));
+            let opts = web_sys::BlobPropertyBag::new();
+            opts.set_type("application/pdf");
+            let blob = web_sys::Blob::new_with_u8_array_sequence_and_options(&parts, &opts).map_err(fail)?;
+            let url = web_sys::Url::create_object_url_with_blob(&blob).map_err(fail)?;
+            let frame: web_sys::HtmlIFrameElement =
+                document.create_element("iframe").map_err(fail)?.dyn_into().map_err(|_| String::from("no frame"))?;
+            let _ = frame.set_attribute("style", "position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden");
+            let _ = frame.set_attribute("aria-hidden", "true");
+            let done = self.done.clone();
+            let (f2, u2, name, pages) = (frame.clone(), url.clone(), job.name.clone(), job.pages);
+            let onload = Closure::<dyn FnMut()>::new(move || {
+                let printed = f2.content_window().map(|w| w.focus().and_then(|()| w.print()));
+                let msg = match printed {
+                    Some(Ok(())) => Ok(format!("Opened the print window for {name} ({pages} pages)")),
+                    _ => match web_sys::window().map(|w| w.open_with_url_and_target(&u2, "_blank")) {
+                        Some(Ok(_)) => Ok(format!("Opened {name} in a new tab; print it from there")),
+                        _ => Err("the browser blocked printing; use Download PDF".to_string()),
+                    },
+                };
+                done.borrow_mut().push(msg);
+            });
+            frame.set_onload(Some(onload.as_ref().unchecked_ref()));
+            frame.set_src(&url);
+            body.append_child(&frame).map_err(fail)?;
+            self._onload = Some(onload);
+            self.last = Some((frame, url));
+            Ok(())
+        }
+        fn finished(&mut self) -> Vec<Result<String, String>> {
+            std::mem::take(&mut *self.done.borrow_mut())
+        }
+        fn cleanup(&mut self) {
+            self.clear();
+        }
+    }
+
     /// Speech in the browser: speech synthesis reads aloud; speech recognition (where the browser
     /// has it, e.g. Chrome, Edge and Safari) dictates. The browser decides which voices exist and
     /// whether recognition runs on the device or a service of the browser's vendor.
@@ -241,6 +318,7 @@ mod web {
                         app.dark = cc.egui_ctx.system_theme() == Some(egui::Theme::Dark);
                         app.host = Some(Box::new(BrowserFiles { ctx: cc.egui_ctx.clone() }));
                         app.speaker = Some(Box::new(BrowserSpeech::new(cc.egui_ctx.clone())));
+                        app.printer = Some(Box::new(BrowserPrint::new()));
                         Ok(Box::new(WebApp(app)))
                     }),
                 )
