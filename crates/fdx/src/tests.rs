@@ -126,12 +126,12 @@ fn production_locks_round_trip() {
     s.paras[5].page_lock = vec!["8".into()];
     let xml = write(&s);
     assert!(xml.contains("ScriptCraftOmitted=\"Yes\"") && xml.contains("ScriptCraftLockedPages=\"7,7A\""));
-    assert!(xml.contains("<ScriptCraftProduction LockedPages=\"Yes\" LockedSceneNumbers=\"Yes\" ShowSceneNumbers=\"No\"/>"));
+    assert!(xml.contains("<ScriptCraftProduction LockedPages=\"Yes\" LockedSceneNumbers=\"Yes\"/>"));
     let back = parse(&xml).unwrap();
     assert_eq!(back.paras, s.paras);
     assert!(back.settings.pages_locked && back.settings.scene_numbers_locked);
     // Without the production element, locks are off (and stray page locks are dropped).
-    let plain = xml.replace("<ScriptCraftProduction LockedPages=\"Yes\" LockedSceneNumbers=\"Yes\" ShowSceneNumbers=\"No\"/>", "");
+    let plain = xml.replace("<ScriptCraftProduction LockedPages=\"Yes\" LockedSceneNumbers=\"Yes\"/>", "");
     let back = parse(&plain).unwrap();
     assert!(!back.settings.pages_locked && back.paras.iter().all(|p| p.page_lock.is_empty()));
     assert!(back.paras[2].omitted);

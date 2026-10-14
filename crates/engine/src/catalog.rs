@@ -77,7 +77,13 @@ pub const FEATURES: &[Feature] = &[
     f("Writing", "Undo / redo", Done, &["edit.undo", "edit.redo"], ""),
     f("Writing", "Cut, copy, paste", Done, &["edit.cut", "edit.copy", "edit.paste"], "keeps elements and styles; Fountain on the clipboard"),
     f("Writing", "Find and replace", Done, &["edit.find", "edit.replace", "edit.replaceAll"], ""),
-    f("Writing", "Title page", Done, &["title.set", "title.get"], "fixed arrangement"),
+    f(
+        "Writing",
+        "Title page",
+        Done,
+        &["title.set", "title.get", "title.setLines", "title.makeFreeForm", "title.useFields"],
+        "fields in the usual arrangement, or free-form lines (kept from Final Draft files)",
+    ),
     f(
         "Writing",
         "Bold / italic / underline",
