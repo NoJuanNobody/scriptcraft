@@ -14,7 +14,10 @@ pub struct CharacterReport {
     pub words: usize,
     /// Scenes (1-based) the character speaks in.
     pub scenes: Vec<usize>,
+    /// Position of the first page among script pages, from 1.
     pub first_page: usize,
+    /// The first page as printed: `"3"`, or `"12A"` with locked pages.
+    pub first_page_label: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -26,7 +29,10 @@ pub struct SceneReport {
     pub heading: String,
     pub location: String,
     pub time: String,
+    /// Position of the scene's first page among script pages, from 1.
     pub page: usize,
+    /// The scene's first page as printed: `"3"`, or `"12A"` / `"12-13"` with locked pages.
+    pub page_label: String,
     /// Length in eighths of a page.
     pub eighths: usize,
     pub characters: Vec<String>,
@@ -57,7 +63,14 @@ pub fn characters(s: &Script, l: &Layout) -> Vec<CharacterReport> {
                 let k = match out.iter().position(|c| c.name == name) {
                     Some(k) => k,
                     None => {
-                        out.push(CharacterReport { name, speeches: 0, words: 0, scenes: Vec::new(), first_page: l.page_number_of(i) });
+                        out.push(CharacterReport {
+                            name,
+                            speeches: 0,
+                            words: 0,
+                            scenes: Vec::new(),
+                            first_page: l.page_number_of(i),
+                            first_page_label: l.page_label_of(i),
+                        });
                         out.len() - 1
                     }
                 };
@@ -119,6 +132,7 @@ pub fn scenes(s: &Script, l: &Layout) -> Vec<SceneReport> {
                 location,
                 time,
                 page: l.page_number_of(sc.para),
+                page_label: l.page_label_of(sc.para),
                 eighths,
                 characters: cast,
                 summary: sc.summary.clone(),

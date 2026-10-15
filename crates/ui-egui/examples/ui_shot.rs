@@ -6,7 +6,7 @@
 //!
 //! The script is JSON lines: control-channel requests (`{"method": …, "params": …}`, see
 //! `docs/control-protocol.md`), `{"shot": "/abs/out.png"}` to save the window as PNG, or
-//! `{"steps": n}` to run extra frames, `{"speaker": "silent"}` for a silent speech engine. The window is 1440×900 points at 2× and opens the sample
+//! `{"steps": n}` to run extra frames, `{"speaker": "silent"}` for a silent speech engine, `{"printers": [names]}` for a fake print host. The window is 1440×900 points at 2× and opens the sample
 //! script unless the first line is `{"empty": true}`; `{"width": w, "height": h}` resizes it.
 
 use scriptcraft_engine::Session;
@@ -29,6 +29,11 @@ fn main() {
         let mut s = scriptcraft_ui_egui::speech::SilentSpeaker::new(&["Samantha", "Daniel", "Karen", "Moira", "Tessa", "Fred", "Rishi"]);
         s.frames_per_line = 40;
         app.speaker = Some(Box::new(s));
+    }
+    // `{"printers": ["Office", …]}`: a fake print host with these printers (prints nothing).
+    if let Some(list) = lines.iter().find_map(|l| l.get("printers").and_then(|v| v.as_array())) {
+        let names: Vec<&str> = list.iter().filter_map(|v| v.as_str()).collect();
+        app.printer = Some(Box::new(scriptcraft_ui_egui::printing::FakePrinter::new(&names)));
     }
     let w = lines.iter().find_map(|l| l.get("width").and_then(|v| v.as_f64())).unwrap_or(1440.0) as f32;
     let h = lines.iter().find_map(|l| l.get("height").and_then(|v| v.as_f64())).unwrap_or(900.0) as f32;

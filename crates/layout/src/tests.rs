@@ -369,3 +369,70 @@ fn short_dual_dialogue_moves_whole() {
     assert_eq!(l.para_page[n - 1], l.para_page[n - 4]);
     assert_eq!(l.para_page[n - 4], 1);
 }
+
+fn named_dual_script(left_name: &str, right_name: &str) -> Script {
+    let mut v = filler();
+    v.push(p(Element::Character, left_name));
+    v.push(p(Element::Dialogue, &speech(12)));
+    let mut b = p(Element::Character, right_name);
+    b.dual = true;
+    v.push(b);
+    v.push(p(Element::Dialogue, &speech(12)));
+    s(v)
+}
+
+/// Every cue and dialogue line of a dual block stays inside its own column.
+fn assert_inside_columns(l: &Layout) {
+    for pg in &l.pages {
+        for q in pg.lines.iter().filter(|q| {
+            q.kind == LineKind::Contd
+                || (q.kind == LineKind::Body
+                    && q.x >= DUAL_COLS[0].0
+                    && q.element != Some(Element::SceneHeading)
+                    && q.element != Some(Element::Action))
+        }) {
+            let col = if q.x >= DUAL_COLS[1].0 - 0.01 { DUAL_COLS[1] } else { DUAL_COLS[0] };
+            let right = q.x + q.display().chars().count() as f32 * CHAR_W;
+            assert!(q.x >= col.0 - 0.01 && right <= col.1 + 0.01, "{:?} {:?} at x={} runs to {right} (column {col:?})", q.kind, q.display(), q.x);
+        }
+    }
+}
+
+#[test]
+fn long_dual_cue_contd_stays_in_its_column() {
+    // The case from the v0.3 tour: shifted left so it ends inside the right column.
+    let sc = named_dual_script("ADA", "COAST GUARD (V.O.)");
+    let l = layout(&sc);
+    assert!(l.pages.len() >= 2);
+    let contd: Vec<&Line> = l.pages[1].lines.iter().filter(|q| q.kind == LineKind::Contd).collect();
+    assert_eq!(contd.iter().map(|q| q.text.as_str()).collect::<Vec<_>>(), vec!["ADA (CONT'D)", "COAST GUARD (V.O.) (CONT'D)"]);
+    assert_eq!(contd[0].y, contd[1].y, "one row when both fit");
+    assert!(contd[1].x < dual_item(&sc, sc.paras.len() - 2, DUAL_COLS[1]).unwrap().cols.unwrap().0, "moved left of the cue position");
+    assert_inside_columns(&l);
+    // Short cues stay where the cue is.
+    assert!((contd[0].x - (DUAL_COLS[0].0 + inch(0.9))).abs() < 0.01);
+}
+
+#[test]
+fn very_long_dual_cue_wraps_with_contd_underneath() {
+    for (a, b) in [
+        ("THE HARBOUR MASTER OF THE NORTHERN PIER (V.O.)", "BEN"),
+        ("ADA", "THE HARBOUR MASTER OF THE NORTHERN PIER (V.O.)"),
+        ("A_NAME_WITHOUT_ANY_SPACES_AT_ALL_ANYWHERE_X", "ANOTHER EXTREMELY LONG CHARACTER NAME (O.S.) (CONT'D)"),
+    ] {
+        let sc = named_dual_script(a, b);
+        let n = sc.paras.len();
+        let l = layout(&sc);
+        assert_inside_columns(&l);
+        let contd: Vec<&Line> = l.pages[1].lines.iter().filter(|q| q.kind == LineKind::Contd).collect();
+        assert!(contd.len() >= 3, "{contd:?}");
+        // "(CONT'D)" is said once per column, and the continued dialogue starts below every cue line.
+        assert_eq!(contd.iter().filter(|q| q.text.contains("CONT'D")).count(), 2);
+        let last_cue = contd.iter().map(|q| q.y).fold(0.0f32, f32::max);
+        let first_body = l.pages[1].lines.iter().filter(|q| q.kind == LineKind::Body).map(|q| q.y).fold(f32::INFINITY, f32::min);
+        assert!(first_body > last_cue);
+        for para in n - 4..n {
+            assert_eq!(lines_of(&l, para), dual_wrapped(&sc, para), "para {para}");
+        }
+    }
+}

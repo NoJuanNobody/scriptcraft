@@ -1,9 +1,9 @@
 # ScriptCraft roadmap
 
-**Stage:** v0.4 (structure and collaboration) complete on branch `v0.4-structure` (PR #47); v0.3 production and v0.2 writing comfort done.
-**Headline numbers:** 62 of 68 Final Draft 13 catalog features implemented
-([docs/parity-checklist.md](docs/parity-checklist.md)); 185 engine commands + 51 window commands;
-~31.5k lines of Rust; 228 tests; native and browser builds; CI on Linux, macOS and Windows.
+**Stage:** v0.5 (fidelity and polish) on branch `v0.5-fidelity`, stacked on v0.4 (PR #47); #42's last items, #44 and #32 need Final Draft 13.
+**Headline numbers:** 63 of 68 Final Draft 13 catalog features implemented
+([docs/parity-checklist.md](docs/parity-checklist.md)); 191 engine commands + 52 window commands;
+~38k lines of Rust; 282 tests; native and browser builds; CI on Linux, macOS and Windows.
 
 ## v0.1 (this release)
 
@@ -42,11 +42,11 @@ All open work is tracked as [GitHub issues](https://github.com/NoJuanNobody/scri
 - [x] [#19](https://github.com/NoJuanNobody/scriptcraft/issues/19) Print dialog
 - [x] [#20](https://github.com/NoJuanNobody/scriptcraft/issues/20) Split dual dialogue across a page break
 
-Follow-ups found while testing v0.3:
+Follow-ups found while testing v0.3 (done in v0.5):
 
-- [ ] [#41](https://github.com/NoJuanNobody/scriptcraft/issues/41) Reports show counted page numbers instead of printed labels (12A) when pages are locked
-- [ ] [#43](https://github.com/NoJuanNobody/scriptcraft/issues/43) Print directly to a printer (printer list, copies), browser print, temp file cleanup
-- [ ] [#45](https://github.com/NoJuanNobody/scriptcraft/issues/45) Dual dialogue: a long cue plus (CONT'D) runs past the right column and margin after a page split
+- [x] [#41](https://github.com/NoJuanNobody/scriptcraft/issues/41) Reports show counted page numbers instead of printed labels (12A) when pages are locked
+- [x] [#43](https://github.com/NoJuanNobody/scriptcraft/issues/43) Print directly to a printer (printer list, copies), browser print, temp file cleanup
+- [x] [#45](https://github.com/NoJuanNobody/scriptcraft/issues/45) Dual dialogue: a long cue plus (CONT'D) runs past the right column and margin after a page split
 
 ## v0.4: structure and collaboration (done)
 
@@ -59,15 +59,17 @@ Follow-ups found while testing v0.3:
 - [x] [#27](https://github.com/NoJuanNobody/scriptcraft/issues/27) Read aloud with cast voices, and dictation (speech to script)
 - [x] [#28](https://github.com/NoJuanNobody/scriptcraft/issues/28) Bookmarks and split screen
 
-## File-format fidelity
+## v0.5: fidelity and polish
 
-- [ ] [#29](https://github.com/NoJuanNobody/scriptcraft/issues/29) Keep Shot and General elements in Fountain
-- [ ] [#30](https://github.com/NoJuanNobody/scriptcraft/issues/30) Keep all title page fields in FDX; support free-form title pages
-- [ ] [#31](https://github.com/NoJuanNobody/scriptcraft/issues/31) Import from Word, Celtx and PDF
-- [ ] [#42](https://github.com/NoJuanNobody/scriptcraft/issues/42) Final Draft compatibility: map revisions, locks, omitted scenes, tags, alternates and page setup to Final Draft's own FDX
+File-format fidelity:
+
+- [x] [#29](https://github.com/NoJuanNobody/scriptcraft/issues/29) Keep Shot and General elements in Fountain
+- [x] [#30](https://github.com/NoJuanNobody/scriptcraft/issues/30) Keep all title page fields in FDX; support free-form title pages
+- [x] [#31](https://github.com/NoJuanNobody/scriptcraft/issues/31) Import from Word, Celtx and PDF
+- [ ] [#42](https://github.com/NoJuanNobody/scriptcraft/issues/42) Final Draft compatibility: map revisions, locks, omitted scenes, tags, alternates and page setup to Final Draft's own FDX — Final Draft's form written wherever public files confirm it ([docs/fdx-format.md](docs/fdx-format.md)); tags, omitted scenes, alternates, locks and tracked changes wait on #44
 - [ ] [#44](https://github.com/NoJuanNobody/scriptcraft/issues/44) Get sample .fdx files from Final Draft 13 (tags, omitted scene, alternate line, locked pages)
 
-## Verification
+Verification:
 
 - [ ] [#32](https://github.com/NoJuanNobody/scriptcraft/issues/32) Check the typing flow against real Final Draft 13
 
@@ -93,3 +95,8 @@ Follow-ups found while testing v0.3:
   track changes per author with accept/reject, and Compare Drafts (also `scriptcraft-cli compare`);
   LAN real-time collaboration with presence (docs/collaboration.md); TV single-camera,
   multi-camera and stage-play templates; read aloud with a voice per character and dictation.
+- 2026-10-14 — v0.5 fidelity and polish (#29–#31, #41–#43, #45): Shot and General kept in
+  Fountain; free-form and complete FDX title pages; Final Draft's own FDX forms for revisions,
+  page setup, notes, voices and options (docs/fdx-format.md), which also fixed real Final Draft
+  files opening fully revised; import from Word, Celtx and PDF; reports with printed page labels
+  on locked pages; continued dual-dialogue cues kept in their column; printing to a printer.

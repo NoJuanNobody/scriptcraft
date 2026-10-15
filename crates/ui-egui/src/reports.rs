@@ -39,7 +39,7 @@ pub fn show(app: &mut ScriptApp, ui: &mut Ui) {
                     ui.label(c.speeches.to_string());
                     ui.label(c.words.to_string());
                     ui.label(c.scenes.iter().map(|s| s.to_string()).collect::<Vec<_>>().join(", "));
-                    ui.label(c.first_page.to_string());
+                    ui.label(&c.first_page_label);
                     ui.end_row();
                 }
             });
@@ -55,7 +55,7 @@ pub fn show(app: &mut ScriptApp, ui: &mut Ui) {
                     if ui.link(&s.heading).clicked() {
                         goto = Some(s.scene - 1);
                     }
-                    ui.label(s.page.to_string());
+                    ui.label(&s.page_label);
                     ui.label(reports::eighths_label(s.eighths));
                     ui.label(s.characters.join(", "));
                     ui.end_row();

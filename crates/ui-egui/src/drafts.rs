@@ -142,7 +142,7 @@ pub(crate) fn command(app: &mut ScriptApp, id: &str, p: &Value) -> Result<Value,
                 h.open(app.inbox.clone());
                 return Ok(json!({"pending": "choose a draft"}));
             }
-            let Some(path) = app.pick(false, "Compare with Draft", &["fdx", "fountain", "spmd", "txt"], "") else { return Ok(json!({})) };
+            let Some(path) = app.pick(false, "Compare with Draft", &scriptcraft_engine::io::OPEN_EXTENSIONS, "") else { return Ok(json!({})) };
             return run_compare(app, json!({"path": path}));
         }
         _ => {}

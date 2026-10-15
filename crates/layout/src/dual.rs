@@ -4,8 +4,14 @@
 //! line and its cue with `(CONT'D)` at the top of the next page; a column that already ended
 //! gets nothing. A block taller than a page splits as many times as it needs; no line is ever
 //! dropped.
+//!
+//! The repeated cue always stays inside its column: it sits where the cue does when it fits,
+//! moves left (never past the column's left edge) when it doesn't, and when even the whole
+//! column is too narrow the name goes on its own line(s) with `(CONT'D)` under it.
 
-use super::{Builder, Element, Item, LineKind, deco, inch, sentence_end, spec_in};
+use scriptcraft_geom::{CHAR_W, LINE_H, chars_between};
+
+use super::{Builder, Element, Item, LineKind, deco, inch, sentence_end, spec_in, wrap};
 
 /// A column's rows: (item, line) pairs in reading order.
 type Rows = Vec<(usize, usize)>;
@@ -17,6 +23,34 @@ fn rows_of(items: &[Item]) -> Rows {
 /// Where a column's cue sits (points), for `(MORE)` and `(CONT'D)`.
 fn cue_x(items: &[Item]) -> f32 {
     items.iter().find(|i| i.el == Element::Character).and_then(|i| i.cols).or_else(|| items.first().and_then(|i| i.cols)).map_or(inch(3.5), |c| c.0)
+}
+
+/// A column's left and right edges (points): the widest of its items.
+fn col_bounds(items: &[Item]) -> (f32, f32) {
+    let l = items.iter().filter_map(|i| i.cols.map(|c| c.0)).fold(f32::INFINITY, f32::min);
+    let r = items.iter().filter_map(|i| i.cols.map(|c| c.1)).fold(f32::NEG_INFINITY, f32::max);
+    if l.is_finite() && r.is_finite() && r > l { (l, r) } else { (inch(1.5), inch(4.3)) }
+}
+
+/// The lines of a continued cue `NAME (CONT'D)` for a column, as (x, text), each inside the
+/// column (see the module docs).
+pub(crate) fn contd_lines(items: &[Item], name: &str) -> Vec<(f32, String)> {
+    let full = if name.contains("CONT'D") { name.to_string() } else { format!("{name} (CONT'D)") };
+    let cue = cue_x(items);
+    let (l, r) = col_bounds(items);
+    let width = chars_between(l, r);
+    let at = |text: &str| {
+        let w = text.chars().count() as f32 * CHAR_W;
+        (cue.min(r - w)).max(l)
+    };
+    if full.chars().count() <= width {
+        return vec![(at(&full), full)];
+    }
+    let mut out: Vec<(f32, String)> = wrap(name, width).into_iter().filter_map(|(s, e)| name.get(s..e)).map(|t| (at(t), t.to_string())).collect();
+    if !name.contains("CONT'D") {
+        out.push((at("(CONT'D)"), "(CONT'D)".to_string()));
+    }
+    out
 }
 
 impl Builder<'_> {
@@ -125,19 +159,19 @@ impl Builder<'_> {
             return;
         }
         let y = self.y();
-        let mut any = false;
+        let mut used = 0usize;
         for (items, rows) in sides {
             if rows.len() <= at {
                 continue;
             }
             let Some(cue) = items.iter().find(|i| i.el == Element::Character) else { continue };
             let name = self.script.paras.get(cue.para).map_or(String::new(), |p| p.text.clone());
-            let name = if name.contains("CONT'D") { name } else { format!("{name} (CONT'D)") };
-            self.cur.push(deco(LineKind::Contd, cue_x(items), y, &name));
-            any = true;
+            let lines = contd_lines(items, &name);
+            for (k, (x, text)) in lines.iter().enumerate() {
+                self.cur.push(deco(LineKind::Contd, *x, y + k as f32 * LINE_H, text));
+            }
+            used = used.max(lines.len());
         }
-        if any {
-            self.row += 1;
-        }
+        self.row += used;
     }
 }

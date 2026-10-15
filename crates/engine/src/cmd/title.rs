@@ -1,6 +1,6 @@
 //! Title page and script settings.
 
-use scriptcraft_doc::{Align, Element, ElementFormats, TitlePage};
+use scriptcraft_doc::{Align, Element, ElementFormats, MAX_TITLE_LINES, Style, TitleLine, TitlePage};
 use serde_json::{Value, json};
 
 use crate::{CmdError, CmdResult, CommandSpec, Session, p};
@@ -9,7 +9,12 @@ pub fn specs() -> Vec<CommandSpec> {
     vec![
         CommandSpec::new("title.get", "Title Page", "Document › Title Page", get).pure(),
         CommandSpec::new("title.set", "Edit Title Page", "Document › Title Page", set)
-            .params(r#"{"field": "title"|"credit"|"author"|"source"|"draftDate"|"contact"|"copyright"|"notes", "value": string} or {"fields": {field: value}}"#),
+            .params(r#"{"field": "title"|"credit"|"author"|"source"|"draftDate"|"contact"|"copyright"|"notes", "value": string} or {"fields": {field: value}} (fields only; a free-form title page is edited with title.setLines)"#),
+        CommandSpec::new("title.setLines", "Edit Free-Form Title Page", "Document › Title Page", set_lines).params(
+            r#"{"lines": [{"align": "left"|"center"|"right", "text": string, "bold": bool, "italic": bool, "underline": bool}]} (empty: back to fields)"#,
+        ),
+        CommandSpec::new("title.makeFreeForm", "Free-Form Title Page", "Document › Title Page", make_free_form),
+        CommandSpec::new("title.useFields", "Title Page from Fields", "Document › Title Page", use_fields),
         CommandSpec::new("settings.get", "Script Settings", "Document", get_settings).pure(),
         CommandSpec::new("settings.set", "Change Script Settings", "Document", set_settings)
             .params(r#"{"sceneNumbers": bool, "moreContd": bool, "autoContd": bool, "titlePage": bool}"#),
@@ -35,13 +40,57 @@ fn set(s: &mut Session, v: &Value) -> CmdResult {
     let mut t = s.script.title.clone();
     if let Some(m) = v.get("fields").and_then(Value::as_object) {
         for (k, val) in m {
+            // `title.get`'s output can be passed back: its free-form lines are not a field.
+            if k == "lines" {
+                continue;
+            }
             set_one(&mut t, k, val)?;
         }
     } else {
         let k = p::req_str(v, "field")?;
         set_one(&mut t, k, v.get("value").unwrap_or(&Value::Null))?;
     }
+    if t != s.script.title && s.script.title.is_free_form() {
+        return Err(CmdError::Failed(
+            "the title page is free-form: edit its lines with title.setLines, or run title.useFields to edit fields".into(),
+        ));
+    }
     s.script.title = t;
+    get(s, &Value::Null)
+}
+
+/// `{"align", "text", "bold", "italic", "underline"}` → a line.
+fn line(v: &Value) -> Result<TitleLine, CmdError> {
+    let align = match p::str(v, "align") {
+        None => Align::Center,
+        Some(a) => Align::parse(a).ok_or_else(|| CmdError::Params(format!("unknown alignment `{a}`")))?,
+    };
+    let text = match v.get("text") {
+        None | Some(Value::Null) => "",
+        Some(Value::String(t)) => t.as_str(),
+        Some(_) => return Err(CmdError::Params("`text` must be a string".into())),
+    };
+    let flag = |k: &str| p::bool(v, k).unwrap_or(false);
+    Ok(TitleLine { style: Style { bold: flag("bold"), italic: flag("italic"), underline: flag("underline") }, ..TitleLine::new(align, text) })
+}
+
+fn set_lines(s: &mut Session, v: &Value) -> CmdResult {
+    let arr = v.get("lines").and_then(Value::as_array).ok_or_else(|| CmdError::Params("`lines` must be an array".into()))?;
+    if arr.len() > MAX_TITLE_LINES {
+        return Err(CmdError::Params(format!("at most {MAX_TITLE_LINES} lines")));
+    }
+    let lines = arr.iter().map(line).collect::<Result<Vec<_>, _>>()?;
+    s.script.title.set_lines(lines);
+    get(s, &Value::Null)
+}
+
+fn make_free_form(s: &mut Session, _: &Value) -> CmdResult {
+    s.script.title.make_free_form();
+    get(s, &Value::Null)
+}
+
+fn use_fields(s: &mut Session, _: &Value) -> CmdResult {
+    s.script.title.use_fields();
     get(s, &Value::Null)
 }
 
@@ -143,4 +192,49 @@ fn reset_elements(s: &mut Session, v: &Value) -> CmdResult {
 fn speed(s: &mut Session, v: &Value) -> CmdResult {
     s.speed = p::bool(v, "on").unwrap_or(!s.speed);
     Ok(json!({"speed": s.speed}))
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use crate::Session;
+
+    #[test]
+    fn free_form_title_pages_through_commands() {
+        let mut s = Session::new(scriptcraft_doc::Script::new());
+        let ok = |s: &mut Session, id: &str, v: serde_json::Value| s.run(id, &v).unwrap_or_else(|e| panic!("{id}: {e}"));
+        ok(&mut s, "title.set", json!({"fields": {"title": "NIGHT", "copyright": "(c) 2026", "notes": "Draft for Jo"}}));
+        // title.get's output can go back into title.set.
+        let got = ok(&mut s, "title.get", json!({}));
+        ok(&mut s, "title.set", json!({"fields": got}));
+        assert_eq!(s.script.title.copyright, "(c) 2026");
+        // Free-form lines.
+        let t = ok(
+            &mut s,
+            "title.setLines",
+            json!({"lines": [{"align": "left", "text": "Agent: Bo"}, {"text": ""}, {"text": "NIGHT", "underline": true}, {"align": "right", "text": "May"}]}),
+        );
+        assert_eq!(t["lines"][2], json!({"align": "center", "text": "NIGHT", "underline": true}));
+        assert_eq!(t["title"], "NIGHT");
+        assert_eq!(t["draftDate"], "May");
+        let err = s.run("title.set", &json!({"field": "title", "value": "DAY"})).unwrap_err();
+        assert!(err.to_string().contains("free-form"), "{err}");
+        // Passing title.get back unchanged is fine even when free-form.
+        let got = ok(&mut s, "title.get", json!({}));
+        ok(&mut s, "title.set", json!({"fields": got}));
+        // Hostile lines are refused or cleaned, never stored raw.
+        assert!(s.run("title.setLines", &json!({"lines": [{"align": "up"}]})).is_err());
+        assert!(s.run("title.setLines", &json!({"lines": "x"})).is_err());
+        assert!(s.run("title.setLines", &json!({"lines": vec![json!({"text": "x"}); 201]})).is_err());
+        // Back to fields, then free-form from them.
+        ok(&mut s, "title.useFields", json!({}));
+        assert!(!s.script.title.is_free_form());
+        ok(&mut s, "title.set", json!({"field": "title", "value": "DAY"}));
+        let t = ok(&mut s, "title.makeFreeForm", json!({}));
+        assert!(t["lines"].as_array().is_some_and(|l| l.iter().any(|l| l["text"] == "DAY")));
+        // Undo restores the field title page.
+        ok(&mut s, "edit.undo", json!({}));
+        assert!(!s.script.title.is_free_form());
+    }
 }

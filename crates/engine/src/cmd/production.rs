@@ -139,6 +139,60 @@ mod tests {
     }
 
     #[test]
+    fn reports_use_printed_page_labels() {
+        // Unlocked: the label is the counted number, and the CSV is unchanged.
+        let mut s = Session::new(long_script());
+        let scenes = s.run("report.scenes", &json!({})).unwrap();
+        for sc in scenes.as_array().unwrap() {
+            assert_eq!(sc["pageLabel"], json!(sc["page"].as_u64().unwrap().to_string()));
+        }
+        let chars = s.run("report.characters", &json!({})).unwrap();
+        assert!(chars.as_array().unwrap().iter().all(|c| c["firstPageLabel"] == json!(c["firstPage"].as_u64().unwrap().to_string())));
+        let csv = s.run("report.breakdownCsv", &json!({})).unwrap()["csv"].as_str().unwrap().to_string();
+        let pages: Vec<String> = scenes.as_array().unwrap().iter().map(|sc| sc["page"].as_u64().unwrap().to_string()).collect();
+        let col: Vec<String> = csv.lines().skip(1).map(|l| l.split(',').nth(3).unwrap().to_string()).collect();
+        assert_eq!(col, pages, "unlocked CSV pages are the counted numbers");
+        // Locked, with text pushed onto A pages: reports show the printed labels.
+        s.run("page.lock", &json!({})).unwrap();
+        s.sel = crate::Selection::caret(Pos::new(1, 0));
+        for k in 0..30 {
+            s.run("text.insert", &json!({"text": format!("Added beat {k}. ")})).unwrap();
+            s.run("text.enter", &json!({})).unwrap();
+        }
+        let lay = s.layout();
+        let scenes = s.run("report.scenes", &json!({})).unwrap();
+        let scenes = scenes.as_array().unwrap();
+        let on_a = scenes.iter().find(|sc| sc["pageLabel"].as_str().is_some_and(|l| l.ends_with('A'))).expect("a scene starts on an A page");
+        assert_ne!(on_a["pageLabel"], json!(on_a["page"].as_u64().unwrap().to_string()), "label differs from the count");
+        for (sc, r) in s.script.scenes().iter().zip(scenes) {
+            assert_eq!(r["pageLabel"], json!(lay.page_label_of(sc.para)));
+        }
+        let b = s.run("report.breakdown", &json!({})).unwrap();
+        assert_eq!(
+            b["scenes"].as_array().unwrap().iter().map(|x| x["pageLabel"].clone()).collect::<Vec<_>>(),
+            scenes.iter().map(|x| x["pageLabel"].clone()).collect::<Vec<_>>()
+        );
+        let csv = s.run("report.breakdownCsv", &json!({})).unwrap()["csv"].as_str().unwrap().to_string();
+        let col: Vec<&str> = csv.lines().skip(1).map(|l| l.split(',').nth(3).unwrap()).collect();
+        let want: Vec<&str> = scenes.iter().map(|x| x["pageLabel"].as_str().unwrap()).collect();
+        assert_eq!(col, want);
+        assert!(col.iter().any(|c| c.ends_with('A')));
+    }
+
+    #[test]
+    fn go_to_a_page_that_only_continues_a_paragraph() {
+        // One long action paragraph over several pages: no paragraph starts on page 2 or 3.
+        let text = (0..400).map(|i| format!("Word{i} goes on.")).collect::<Vec<_>>().join(" ");
+        let mut s = Session::new(Script::from_paras(vec![Para::new(Element::Action, text)]).unwrap());
+        let lay = s.layout();
+        assert!(lay.pages.len() >= 3);
+        let start3 = lay.pages[2].lines.iter().find(|x| x.kind == scriptcraft_layout::LineKind::Body).unwrap().start;
+        s.run("caret.gotoPage", &json!({"page": 3})).unwrap();
+        assert_eq!(s.sel.focus, Pos::new(0, start3));
+        assert_eq!(s.layout().caret(s.sel.focus).map(|c| c.page), Some(2));
+    }
+
+    #[test]
     fn locking_keeps_the_layout() {
         let mut s = Session::new(long_script());
         let before = s.layout();

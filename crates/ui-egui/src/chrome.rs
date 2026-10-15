@@ -115,6 +115,7 @@ pub fn menu_bar(app: &mut ScriptApp, ui: &mut Ui) {
                 item(app, ui, "New Script", "file.new", "Mod+N");
                 crate::drafts::new_menu(app, ui);
                 item(app, ui, "Open…", "ui.open", "Mod+O");
+                item(app, ui, "Import from Word, Celtx or PDF…", "ui.import", "");
                 ui.menu_button("Open Recent", |ui| {
                     let recent = app.prefs.files.recent.clone();
                     if recent.is_empty() {
@@ -650,7 +651,7 @@ pub fn navigator(app: &mut ScriptApp, ui: &mut Ui) {
                         ui.horizontal(|ui| {
                             ui.label(RichText::new(&c.name).strong());
                             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                ui.label(RichText::new(format!("{} lines · p.{}", c.speeches, c.first_page)).size(11.0).color(t.text_soft));
+                                ui.label(RichText::new(format!("{} lines · p.{}", c.speeches, c.first_page_label)).size(11.0).color(t.text_soft));
                             });
                         });
                     }
@@ -671,7 +672,54 @@ pub fn dialogs(app: &mut ScriptApp, ctx: &egui::Context) {
         let mut open = true;
         let mut tp: TitlePage = app.session.script.title.clone();
         let mut changed = false;
-        egui::Window::new("Title Page").open(&mut open).resizable(false).collapsible(false).default_width(420.0).show(ctx, |ui| {
+        let mut lines = tp.lines.clone();
+        let mut lines_changed = false;
+        let mut action: Option<&str> = None;
+        egui::Window::new("Title Page").open(&mut open).resizable(false).collapsible(false).default_width(480.0).show(ctx, |ui| {
+            if tp.is_free_form() {
+                ui.label(RichText::new("Free-form title page: each row is one printed line, top to bottom.").size(11.5));
+                ui.add_space(4.0);
+                let mut remove = None;
+                egui::ScrollArea::vertical().max_height(380.0).show(ui, |ui| {
+                    egui::Grid::new("tp-lines").num_columns(5).spacing([6.0, 4.0]).show(ui, |ui| {
+                        for (i, l) in lines.iter_mut().enumerate() {
+                            egui::ComboBox::from_id_salt(("tp-align", i)).width(70.0).selected_text(l.align.name()).show_ui(ui, |ui| {
+                                for a in [scriptcraft_doc::Align::Left, scriptcraft_doc::Align::Center, scriptcraft_doc::Align::Right] {
+                                    lines_changed |= ui.selectable_value(&mut l.align, a, a.name()).changed();
+                                }
+                            });
+                            lines_changed |= ui.add_sized([250.0, 22.0], egui::TextEdit::singleline(&mut l.text)).changed();
+                            ui.horizontal(|ui| {
+                                for (label, on) in [("B", &mut l.style.bold), ("I", &mut l.style.italic), ("U", &mut l.style.underline)] {
+                                    if ui.selectable_label(*on, label).clicked() {
+                                        *on = !*on;
+                                        lines_changed = true;
+                                    }
+                                }
+                            });
+                            if ui.small_button("Delete").on_hover_text("Delete this line").clicked() {
+                                remove = Some(i);
+                            }
+                            ui.end_row();
+                        }
+                    });
+                });
+                if let Some(i) = remove {
+                    lines.remove(i);
+                    lines_changed = true;
+                }
+                ui.add_space(6.0);
+                ui.horizontal(|ui| {
+                    if ui.button("Add Line").clicked() {
+                        lines.push(scriptcraft_doc::TitleLine::new(scriptcraft_doc::Align::Center, ""));
+                        lines_changed = true;
+                    }
+                    if ui.button("Use Fields Instead").on_hover_text("Lay out the title page from its fields").clicked() {
+                        action = Some("title.useFields");
+                    }
+                });
+                return;
+            }
             egui::Grid::new("tp").num_columns(2).spacing([12.0, 8.0]).show(ui, |ui| {
                 for (label, field, multi) in [
                     ("Title", "title", false),
@@ -697,10 +745,20 @@ pub fn dialogs(app: &mut ScriptApp, ctx: &egui::Context) {
                     ui.end_row();
                 }
             });
+            ui.add_space(6.0);
+            if ui.button("Free-Form Layout").on_hover_text("Edit the title page line by line").clicked() {
+                action = Some("title.makeFreeForm");
+            }
         });
         if changed {
             let fields = serde_json::to_value(&tp).unwrap_or_default();
             app.run("title.set", json!({"fields": fields}));
+        }
+        if lines_changed {
+            app.run("title.setLines", json!({"lines": lines}));
+        }
+        if let Some(id) = action {
+            app.run(id, json!({}));
         }
         app.title_dialog = open;
     }

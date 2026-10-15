@@ -17,6 +17,7 @@ pub mod drafts;
 pub mod icons;
 pub mod outline;
 pub mod persist;
+pub mod printing;
 pub mod production;
 mod reports;
 pub mod speech;
@@ -107,6 +108,7 @@ pub const UI_COMMANDS: &[(&str, &str, &str, &str)] = &[
     ("ui.revisions", "Revisions…", "Document", ""),
     ("ui.elementSettings", "Element Settings…", "Format", ""),
     ("ui.open", "Open…", "File", "Mod+O"),
+    ("ui.import", "Import…", "File", ""),
     ("ui.save", "Save", "File", "Mod+S"),
     ("ui.saveAs", "Save As…", "File", "Mod+Shift+S"),
     ("ui.print", "Print…", "File", "Mod+P"),
@@ -205,6 +207,9 @@ pub struct ScriptApp {
     /// Text to speech (and speech to text) from the host: system voices natively, the browser's
     /// speech synthesis on the web; `None` in tests and headless runs.
     pub speaker: Option<Box<dyn speech::SpeechHost>>,
+    /// Printing from the host: CUPS or the Windows print action natively, the browser's print
+    /// window on the web; `None` in tests and headless runs (File › Print then writes a PDF).
+    pub printer: Option<Box<dyn printing::PrintHost>>,
     /// Read Aloud: the window and what is being read.
     pub read_aloud: speech::ReadAloud,
     /// The Dictation window.
@@ -282,6 +287,7 @@ impl ScriptApp {
             host: None,
             inbox: Inbox::default(),
             speaker: None,
+            printer: None,
             read_aloud: speech::ReadAloud::default(),
             dictation: speech::Dictation::default(),
             status: None,
@@ -414,6 +420,7 @@ impl ScriptApp {
     /// the user chose not to save, leaves no recovery file behind.
     pub fn on_exit(&mut self) {
         self.flush_prefs();
+        printing::cleanup(self);
         if !self.session.dirty || self.quit_requested {
             self.clear_recovery();
         }
@@ -438,6 +445,7 @@ impl ScriptApp {
             let _ = persist::write_recovery(&dir, self.session.path.as_deref(), &self.session.script);
         }
         self.flush_prefs();
+        printing::cleanup(self);
     }
 
     /// Before a save over an existing file: keep the old version in the backups folder.
@@ -495,12 +503,17 @@ impl ScriptApp {
         self.status = Some((s.into(), 0.0));
     }
 
+    /// The status bar's current message, if any.
+    pub fn status_message(&self) -> Option<&str> {
+        self.status.as_ref().map(|(s, _)| s.as_str())
+    }
+
     /// Run a command: `ui.*` here, everything else in the engine. Errors go to the status bar.
     pub fn execute(&mut self, id: &str, params: Value) -> Result<Value, CmdError> {
         // Replacing a script with unsaved changes asks first (interactive windows only).
         if self.dialogs
             && self.session.dirty
-            && matches!(id, "file.new" | "file.sample" | "file.open" | "ui.open" | "ui.openRecent" | "template.new")
+            && matches!(id, "file.new" | "file.sample" | "file.open" | "file.import" | "ui.open" | "ui.import" | "ui.openRecent" | "template.new")
             && self.confirm_replace.is_none()
         {
             self.confirm_replace = Some((id.to_string(), params));
@@ -515,8 +528,10 @@ impl ScriptApp {
             self.ui_command(id, &params)
         } else if let Some(r) = speech::command(self, id, &params) {
             r
+        } else if let Some(r) = printing::command(self, id, &params) {
+            r
         } else {
-            if matches!(id, "file.open" | "file.load" | "file.new" | "file.sample" | "file.revert") {
+            if matches!(id, "file.open" | "file.load" | "file.import" | "file.new" | "file.sample" | "file.revert") {
                 speech::stop(self);
             }
             self.session.run(id, &params)
@@ -699,7 +714,7 @@ impl ScriptApp {
                 };
                 return self.session.run("file.exportBreakdown", &json!({"path": path}));
             }
-            "ui.open" if self.host.is_some() && path.is_none() => {
+            "ui.open" | "ui.import" if self.host.is_some() && path.is_none() => {
                 if let Some(h) = &self.host {
                     h.open(self.inbox.clone());
                 }
@@ -709,10 +724,17 @@ impl ScriptApp {
             "ui.exportFdx" if self.host.is_some() && path.is_none() => return self.host_save("fdx"),
             "ui.exportFountain" if self.host.is_some() && path.is_none() => return self.host_save("fountain"),
             "ui.open" => {
-                let Some(path) = path.or_else(|| self.pick(false, "Open Script", &["fountain", "fdx", "spmd", "txt"], "")) else {
+                let Some(path) = path.or_else(|| self.pick(false, "Open Script", &scriptcraft_engine::io::OPEN_EXTENSIONS, "")) else {
                     return Ok(json!({}));
                 };
                 return self.execute("file.open", json!({"path": path}));
+            }
+            "ui.import" => {
+                let Some(path) = path.or_else(|| self.pick(false, "Import from Word, Celtx or PDF", &scriptcraft_engine::io::IMPORT_EXTENSIONS, ""))
+                else {
+                    return Ok(json!({}));
+                };
+                return self.execute("file.import", json!({"path": path}));
             }
             "ui.save" => {
                 if self.session.path.is_some() && path.is_none() {
@@ -847,6 +869,7 @@ impl ScriptApp {
         self.tick_prefs(ctx);
         self.drain_inbox(ctx);
         speech::tick(self, ctx);
+        printing::tick(self, ctx);
         if let Some((_, t)) = &mut self.status
             && *t == 0.0
         {

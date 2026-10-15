@@ -80,14 +80,14 @@ Every screenshot is ScriptCraft itself, rendered offscreen by its own UI harness
 | **Pages** | Letter, Courier 12, 54 lines; Action 1.5"–7.5", Character 3.7", Dialogue 2.5"–6.0", Parenthetical 3.1"–5.6", Transition right-aligned at 7.5"; page numbers from page 2; (MORE)/(CONT'D) across dialogue breaks (split at sentence ends, never after a parenthetical); headings and cues kept with what follows; action split only with two lines each side; automatic character (CONT'D); scene numbers in both margins; title page |
 | **Structure** | Navigator (scenes with summaries, colours and pages; acts, sequences and sections; characters; bookmarks), index cards with editable summaries, colours and tags, drag to reorder scenes, go to scene/page; Outline view to rearrange scenes under acts and sequences; story map scaled to pages; beat board with beats linked to scenes |
 | **Reports** | Characters (speeches, words, scenes, first page), scenes (page, length in eighths, cast), locations (INT/EXT) |
-| **Files** | `.fdx` open/save (incl. text styles, element settings, dual dialogue, scene numbers, card summaries/colours, title page), `.fountain` open/save (the public fountain.io syntax incl. emphasis), PDF export; autosave with crash recovery, backups on save, recent files, drag-and-drop to open |
+| **Files** | `.fdx` open/save (incl. text styles, element settings, dual dialogue, scene numbers, card summaries/colours, title page, including free-form ones; Final Draft's own forms where known, see [docs/fdx-format.md](docs/fdx-format.md)), `.fountain` open/save (the public fountain.io syntax incl. emphasis; Shot and General kept), PDF export; import from Word `.docx`, Celtx and PDF; print to a printer; autosave with crash recovery, backups on save, recent files, drag-and-drop to open |
 | **Window** | Menu bar, toolbar with element picker and B/I/U, page view with page breaks or a continuous speed view, split screen with two views, blinking caret, status bar (element · page x of y · scene · words), light and dark themes, zoom (menus, Ctrl/⌘+wheel, pinch, fit width); unsaved-changes prompts on close, quit and open; runs natively and in the browser |
 | **Drafts and production** | Revision mode with coloured pages, locked pages with A/B pages, omitted scenes, headers and footers, A4, script notes, alternate lines, production tagging and breakdown reports, print; track changes per author with accept/reject; Compare Drafts; templates for feature, TV single-camera, multi-camera and stage play |
 | **Together and aloud** | Real-time collaboration on a local network with names and carets ([docs/collaboration.md](docs/collaboration.md)); read aloud with a system voice per character; dictation that turns spoken phrases into formatted script |
 | **Agents** | `scriptcraft-cli` (convert, run, report, commands, parity), MCP server (headless or bridged to the window), keyed loopback control channel, headless screenshots |
 
 The full Final Draft 13 comparison, including what's not done yet, is in
-[docs/parity-checklist.md](docs/parity-checklist.md): **62 implemented · 0 partial · 6 not yet**.
+[docs/parity-checklist.md](docs/parity-checklist.md): **63 implemented · 0 partial · 5 not yet**.
 
 ## Quick start
 
@@ -166,9 +166,9 @@ layers, parity doc up to date).
 ## Roadmap
 
 See [ROADMAP.md](ROADMAP.md); every gap is tracked as a
-[GitHub issue](https://github.com/NoJuanNobody/scriptcraft/issues) under milestones. v0.2–v0.4 are done; next up: file-format fidelity
-(Shot/General in Fountain, full FDX title pages, importing from Word, Celtx and PDF) and checking
-the typing flow against real Final Draft 13.
+[GitHub issue](https://github.com/NoJuanNobody/scriptcraft/issues) under milestones. v0.2–v0.5 are done apart from the items that need Final Draft 13 itself:
+confirming its FDX form for tags, omitted scenes, alternates and locked pages (#42, #44) and
+checking the typing flow against it (#32).
 
 ## Contributing
 

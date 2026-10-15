@@ -132,6 +132,7 @@ const LAYERS: &[(&str, u8)] = &[
     ("scriptcraft-layout", 2),
     ("scriptcraft-pdf", 3),
     ("scriptcraft-collab", 3),
+    ("scriptcraft-import", 3),
     ("scriptcraft-engine", 4),
     ("scriptcraft-mcp", 5),
     ("scriptcraft-ui-egui", 6),
