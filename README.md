@@ -1,5 +1,23 @@
 <h1 align="center">ScriptCraft</h1>
 
+<p align="center"><b>ScriptCraft is a free, open-source app for writing screenplays: you type, Enter and Tab pick the screenplay format for you, and it gives you industry-standard pages, Final Draft and Fountain files, and PDFs.</b></p>
+
+<p align="center">
+  <a href="https://nojuannobody.github.io/scriptcraft/explainer/explainer.mp4"><img src="docs/explainer/poster.png" alt="ScriptCraft explainer video: the app with a diner scene typed in, and a panel showing which screenplay element each key produced" width="720"></a>
+  <br>
+  <a href="https://nojuannobody.github.io/scriptcraft/explainer/explainer.mp4">▶ Watch the 60-second explainer</a> ·
+  <a href="https://nojuannobody.github.io/scriptcraft/explainer/">Read the one-page explainer</a>
+</p>
+
+### How it works for you
+
+1. **Open or start a script**: blank, from a template (feature, TV single-camera, multi-camera, stage play), or an existing `.fdx` / `.fountain` file.
+2. **Type with Enter and Tab**: `int. diner - night` becomes a scene heading; Enter gives Action, Tab a Character, Enter again Dialogue. Names and headings capitalise themselves and SmartType offers what you used before.
+3. **See real pages**: Letter, 12-point Courier, page numbers, (MORE) and (CONT'D) when a speech breaks across pages.
+4. **Shape the story**: the Navigator, index cards, Outline view, story map and beat board let you rearrange scenes.
+5. **Check and share**: character, scene and location reports; save as Final Draft (`.fdx`) or Fountain, or export a PDF.
+
+
 <p align="center">
   <b>Screenwriting; an open-source, clean-room take on the Final Draft workflow, built in pure Rust.</b>
 </p>
@@ -18,7 +36,7 @@
   <img alt="Runs on macOS, Windows, Linux and the web" src="https://img.shields.io/badge/runs%20on-macOS%20%C2%B7%20Windows%20%C2%B7%20Linux%20%C2%B7%20Web-3b5bdb?style=flat-square">
   <img alt="License: MIT OR Apache-2.0" src="https://img.shields.io/badge/license-MIT%20%2F%20Apache--2.0-2b47b5?style=flat-square">
   <img alt="Agent-drivable over MCP" src="https://img.shields.io/badge/agents-MCP%20%C2%B7%20CLI-3b5bdb?style=flat-square">
-  <img alt="Version 0.2 in progress" src="https://img.shields.io/badge/version-0.2%20(in%20progress)-6f8cff?style=flat-square">
+  <img alt="Version 0.4 done" src="https://img.shields.io/badge/version-0.4%20(done)-6f8cff?style=flat-square">
 </p>
 
 <br>
@@ -65,8 +83,8 @@ Every screenshot is ScriptCraft itself, rendered offscreen by its own UI harness
 - **Your files.** Opens and saves Final Draft XML (.fdx) and Fountain (.fountain) with bold,
   italic and underline intact; exports PDF with embedded, selectable Courier Prime. Autosave,
   crash recovery and backups keep your work safe.
-- **Built for agents.** Every action is a command with an id. The same 91 engine commands (plus 31
-  window commands) drive the menus, toolbar, keyboard shortcuts, a command-line tool, a JSON
+- **Built for agents.** Every action is a command with an id. The same 185 engine commands (plus the window's own
+  commands) drive the menus, toolbar, keyboard shortcuts, a command-line tool, a JSON
   control channel and an MCP server.
 - **Never crashes on your script.** No `unwrap`/`panic` outside tests, hostile input is clamped, and
   a test runs every command with junk parameters.
