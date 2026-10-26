@@ -2879,7 +2879,7 @@ checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
 
 [[package]]
 name = "scriptcraft"
-version = "0.1.0"
+version = "0.5.0"
 dependencies = [
  "ctrlc",
  "eframe",
@@ -2895,7 +2895,7 @@ dependencies = [
 
 [[package]]
 name = "scriptcraft-cli"
-version = "0.1.0"
+version = "0.5.0"
 dependencies = [
  "scriptcraft-doc",
  "scriptcraft-engine",
@@ -2905,7 +2905,7 @@ dependencies = [
 
 [[package]]
 name = "scriptcraft-collab"
-version = "0.1.0"
+version = "0.5.0"
 dependencies = [
  "getrandom 0.3.4",
  "scriptcraft-doc",
@@ -2915,14 +2915,14 @@ dependencies = [
 
 [[package]]
 name = "scriptcraft-control-key"
-version = "0.1.0"
+version = "0.5.0"
 dependencies = [
  "craft-settings",
 ]
 
 [[package]]
 name = "scriptcraft-doc"
-version = "0.1.0"
+version = "0.5.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -2931,7 +2931,7 @@ dependencies = [
 
 [[package]]
 name = "scriptcraft-engine"
-version = "0.1.0"
+version = "0.5.0"
 dependencies = [
  "scriptcraft-collab",
  "scriptcraft-doc",
@@ -2949,7 +2949,7 @@ dependencies = [
 
 [[package]]
 name = "scriptcraft-fdx"
-version = "0.1.0"
+version = "0.5.0"
 dependencies = [
  "quick-xml",
  "scriptcraft-doc",
@@ -2958,14 +2958,14 @@ dependencies = [
 
 [[package]]
 name = "scriptcraft-fonts"
-version = "0.1.0"
+version = "0.5.0"
 dependencies = [
  "ttf-parser",
 ]
 
 [[package]]
 name = "scriptcraft-fountain"
-version = "0.1.0"
+version = "0.5.0"
 dependencies = [
  "scriptcraft-doc",
  "serde",
@@ -2974,14 +2974,14 @@ dependencies = [
 
 [[package]]
 name = "scriptcraft-geom"
-version = "0.1.0"
+version = "0.5.0"
 dependencies = [
  "serde",
 ]
 
 [[package]]
 name = "scriptcraft-import"
-version = "0.1.0"
+version = "0.5.0"
 dependencies = [
  "flate2",
  "quick-xml",
@@ -2991,7 +2991,7 @@ dependencies = [
 
 [[package]]
 name = "scriptcraft-layout"
-version = "0.1.0"
+version = "0.5.0"
 dependencies = [
  "scriptcraft-doc",
  "scriptcraft-geom",
@@ -3000,7 +3000,7 @@ dependencies = [
 
 [[package]]
 name = "scriptcraft-mcp"
-version = "0.1.0"
+version = "0.5.0"
 dependencies = [
  "scriptcraft-control-key",
  "scriptcraft-doc",
@@ -3010,7 +3010,7 @@ dependencies = [
 
 [[package]]
 name = "scriptcraft-pdf"
-version = "0.1.0"
+version = "0.5.0"
 dependencies = [
  "krilla",
  "scriptcraft-doc",
@@ -3022,11 +3022,11 @@ dependencies = [
 
 [[package]]
 name = "scriptcraft-spell"
-version = "0.1.0"
+version = "0.5.0"
 
 [[package]]
 name = "scriptcraft-ui-egui"
-version = "0.1.0"
+version = "0.5.0"
 dependencies = [
  "craft-settings",
  "egui",
@@ -3047,7 +3047,7 @@ dependencies = [
 
 [[package]]
 name = "scriptcraft-web"
-version = "0.1.0"
+version = "0.5.0"
 dependencies = [
  "eframe",
  "egui",
@@ -4519,7 +4519,7 @@ checksum = "9440ea3e5aeabb0ac63af70daf835274065238cdd0cec83418f417eae38bacee"
 
 [[package]]
 name = "xtask"
-version = "0.1.0"
+version = "0.5.0"
 dependencies = [
  "scriptcraft-engine",
 ]

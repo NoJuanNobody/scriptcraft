@@ -36,7 +36,7 @@
   <img alt="Runs on macOS, Windows, Linux and the web" src="https://img.shields.io/badge/runs%20on-macOS%20%C2%B7%20Windows%20%C2%B7%20Linux%20%C2%B7%20Web-3b5bdb?style=flat-square">
   <img alt="License: MIT OR Apache-2.0" src="https://img.shields.io/badge/license-MIT%20%2F%20Apache--2.0-2b47b5?style=flat-square">
   <img alt="Agent-drivable over MCP" src="https://img.shields.io/badge/agents-MCP%20%C2%B7%20CLI-3b5bdb?style=flat-square">
-  <img alt="Version 0.4 done" src="https://img.shields.io/badge/version-0.4%20(done)-6f8cff?style=flat-square">
+  <a href="https://github.com/NoJuanNobody/scriptcraft/releases/latest"><img alt="Version 0.5.0" src="https://img.shields.io/badge/version-0.5.0-6f8cff?style=flat-square"></a>
 </p>
 
 <br>
@@ -59,11 +59,12 @@
 
 ## Downloads
 
-**Windows:** Download the latest release from [GitHub Releases](https://github.com/NoJuanNobody/scriptcraft/releases). Extract the ZIP, run `scriptcraft.exe`, and start writing. See [docs/windows-setup.md](docs/windows-setup.md) for detailed instructions and troubleshooting.
+Pre-built binaries for **v0.5.0** are available on [GitHub Releases](https://github.com/NoJuanNobody/scriptcraft/releases/latest):
 
-**macOS & Linux:** Build from source (see [Quick start](#quick-start) below).
-
-**Web:** Try the browser version at [scriptcraft-web.pages.dev](https://scriptcraft-web.pages.dev) (experimental).
+- **macOS (Universal — Apple Silicon & Intel):** Download [`scriptcraft-macos-universal.zip`](https://github.com/NoJuanNobody/scriptcraft/releases/latest/download/scriptcraft-macos-universal.zip), extract, and open `ScriptCraft.app` (`scriptcraft-cli` is included alongside it).
+- **Windows (x64):** Download [`scriptcraft-windows-x64.zip`](https://github.com/NoJuanNobody/scriptcraft/releases/latest/download/scriptcraft-windows-x64.zip), extract the ZIP, and run `scriptcraft.exe` (`scriptcraft-cli.exe` included). See [docs/windows-setup.md](docs/windows-setup.md) for detailed instructions and troubleshooting.
+- **Linux (x86_64):** Download [`scriptcraft-linux-x86_64.tar.gz`](https://github.com/NoJuanNobody/scriptcraft/releases/latest/download/scriptcraft-linux-x86_64.tar.gz) or the Debian/Ubuntu package [`scriptcraft-linux-x86_64.deb`](https://github.com/NoJuanNobody/scriptcraft/releases/latest/download/scriptcraft-linux-x86_64.deb).
+- **Web (Browser / WASM):** Launch directly in your browser at [nojuannobody.github.io/scriptcraft/app/](https://nojuannobody.github.io/scriptcraft/app/), explore the landing page & interactive explainer at [nojuannobody.github.io/scriptcraft/](https://nojuannobody.github.io/scriptcraft/), or download [`scriptcraft-web.zip`](https://github.com/NoJuanNobody/scriptcraft/releases/latest/download/scriptcraft-web.zip).
 
 ## A tour
 
@@ -92,7 +93,7 @@ Every screenshot is ScriptCraft itself, rendered offscreen by its own UI harness
 - **Your files.** Opens and saves Final Draft XML (.fdx) and Fountain (.fountain) with bold,
   italic and underline intact; exports PDF with embedded, selectable Courier Badi. Autosave,
   crash recovery and backups keep your work safe.
-- **Built for agents.** Every action is a command with an id. The same 185 engine commands (plus the window's own
+- **Built for agents.** Every action is a command with an id. The same 191 engine commands (plus 53 window
   commands) drive the menus, toolbar, keyboard shortcuts, a command-line tool, a JSON
   control channel and an MCP server.
 - **Never crashes on your script.** No `unwrap`/`panic` outside tests, hostile input is clamped, and

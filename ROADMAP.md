@@ -1,9 +1,10 @@
 # ScriptCraft roadmap
 
-**Stage:** v0.5 (fidelity and polish) on branch `v0.5-fidelity`, stacked on v0.4 (PR #47); #42's last items, #44 and #32 need Final Draft 13.
+**Stage:** v0.5.0 (released); #42's last items, #44 and #32 need Final Draft 13.
 **Headline numbers:** 63 of 68 Final Draft 13 catalog features implemented
-([docs/parity-checklist.md](docs/parity-checklist.md)); 191 engine commands + 52 window commands;
-~38k lines of Rust; 282 tests; native and browser builds; CI on Linux, macOS and Windows.
+([docs/parity-checklist.md](docs/parity-checklist.md)); 191 engine commands + 53 window commands;
+~38.7k lines of Rust; 291 tests; English & Russian UI with Cyrillic screenplay support (Courier Badi);
+native (macOS, Windows, Linux) and browser builds; CI and automated releases on GitHub Actions.
 
 ## v0.1 (this release)
 
@@ -100,3 +101,7 @@ Verification:
   page setup, notes, voices and options (docs/fdx-format.md), which also fixed real Final Draft
   files opening fully revised; import from Word, Celtx and PDF; reports with printed page labels
   on locked pages; continued dual-dialogue cues kept in their column; printing to a printer.
+- 2026-10-26 — v0.5.0 release (#48, #49, #50, #51, #53, #54): Russian localization and Cyrillic
+  screenplay support with embedded Courier Badi v1.010; interactive architecture & workflow
+  explainer and live browser app on GitHub Pages; multi-platform release builds for Windows (x64),
+  macOS (Universal `.app` + CLI), Linux (`x86_64` tarball and `.deb`), and Web (WASM).

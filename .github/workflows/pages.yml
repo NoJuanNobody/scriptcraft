@@ -1,0 +1,48 @@
+name: Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Build & Deploy Pages
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - name: Install wasm-bindgen-cli
+        run: |
+          WB_VER=$(awk '/^name = "wasm-bindgen"$/{getline; gsub(/"/, "", $3); print $3; exit}' Cargo.lock)
+          echo "Installing wasm-bindgen-cli@${WB_VER}"
+          curl -fsSL "https://github.com/wasm-bindgen/wasm-bindgen/releases/download/${WB_VER}/wasm-bindgen-${WB_VER}-x86_64-unknown-linux-musl.tar.gz" \
+            | tar -xz --strip-components=1 -C "$HOME/.cargo/bin" "wasm-bindgen-${WB_VER}-x86_64-unknown-linux-musl/wasm-bindgen"
+      - name: Build web app
+        run: cargo xtask web
+      - name: Assemble site
+        run: |
+          mkdir -p _site/app
+          cp -R docs/. _site/
+          cp -R apps/scriptcraft-web/dist/. _site/app/
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4
