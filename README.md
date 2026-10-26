@@ -29,6 +29,7 @@
 </p>
 
 <p align="center">
+  <a href="#downloads">Downloads</a> ·
   <a href="#a-tour">A tour</a> ·
   <a href="#what-works-today">What works today</a> ·
   <a href="#quick-start">Quick start</a> ·
@@ -37,6 +38,14 @@
   <a href="#roadmap">Roadmap</a> ·
   <a href="#license-and-credits">License and credits</a>
 </p>
+
+## Downloads
+
+**Windows:** Download the latest release from [GitHub Releases](https://github.com/NoJuanNobody/scriptcraft/releases). Extract the ZIP, run `scriptcraft.exe`, and start writing. See [docs/windows-setup.md](docs/windows-setup.md) for detailed instructions and troubleshooting.
+
+**macOS & Linux:** Build from source (see [Quick start](#quick-start) below).
+
+**Web:** Try the browser version at [scriptcraft-web.pages.dev](https://scriptcraft-web.pages.dev) (experimental).
 
 ## A tour
 

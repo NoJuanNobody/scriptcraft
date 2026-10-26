@@ -1,0 +1,41 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    name: Build Windows
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build release binary
+        run: cargo build --release -p scriptcraft
+      - name: Create release artifact
+        run: |
+          mkdir scriptcraft-release
+          copy target\release\scriptcraft.exe scriptcraft-release\
+          copy LICENSE-MIT scriptcraft-release\
+          copy LICENSE-APACHE scriptcraft-release\
+          copy README.md scriptcraft-release\
+      - name: Prepare for upload
+        shell: bash
+        run: |
+          cd scriptcraft-release
+          7z a ../scriptcraft-windows-x64.zip * -r
+          echo "ARTIFACT_PATH=scriptcraft-windows-x64.zip" >> $GITHUB_ENV
+      - name: Upload to release
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: ${{ env.ARTIFACT_PATH }}
+          draft: false
+          prerelease: false
