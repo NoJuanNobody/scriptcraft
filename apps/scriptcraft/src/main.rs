@@ -1,6 +1,6 @@
 //! The ScriptCraft desktop app.
 //!
-//! Usage: `scriptcraft [--new | --sample] [--config-dir <dir>] [--control <port>] [file.fountain|file.fdx]`
+//! Usage: `scriptcraft [--new | --sample] [--config-dir <dir>] [--control <port>] [file.fountain|file.fdx|file.docx|file.celtx|file.pdf]`
 //!
 //! With no file it opens the sample script (`--new` starts blank). Settings and data follow the
 //! Craft suite's folder rules (craft-settings): `--config-dir`, then `SCRIPTCRAFT_CONFIG_DIR`
@@ -11,6 +11,7 @@
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 mod control_server;
+mod printing;
 mod tts;
 
 use scriptcraft_engine::Session;
@@ -125,7 +126,9 @@ fn main() -> eframe::Result<()> {
             "--new" => blank = true,
             "--sample" => blank = false,
             "--help" | "-h" => {
-                println!("scriptcraft [--new | --sample] [--config-dir <dir>] [--control <port>] [file.fountain|file.fdx]");
+                println!(
+                    "scriptcraft [--new | --sample] [--config-dir <dir>] [--control <port>] [file.fountain|file.fdx|file.docx|file.celtx|file.pdf]"
+                );
                 return Ok(());
             }
             other => file = Some(other.to_string()),
@@ -170,6 +173,8 @@ fn main() -> eframe::Result<()> {
             app = app.with_folders(folders);
             // Read aloud with the system's voices (and whisper.cpp dictation when installed).
             app.speaker = tts::detect().map(|s| Box::new(s) as Box<dyn scriptcraft_ui_egui::speech::SpeechHost>);
+            // Print to the system's printers (CUPS, or the Windows print action).
+            app.printer = printing::detect().map(|p| Box::new(p) as Box<dyn scriptcraft_ui_egui::printing::PrintHost>);
             let mut key_file = None;
             if let Some(port) = control_port
                 && let Some((rx, kf)) = control_server::start(port, cc.egui_ctx.clone(), data.as_deref())

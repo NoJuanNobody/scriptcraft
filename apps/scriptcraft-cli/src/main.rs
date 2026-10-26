@@ -20,7 +20,7 @@ use serde_json::{Value, json};
 const USAGE: &str = "ScriptCraft command line
 
 USAGE:
-  scriptcraft-cli convert <in.fountain|in.fdx> <out.pdf|out.fdx|out.fountain>
+  scriptcraft-cli convert <in.fountain|in.fdx|in.docx|in.celtx|in.pdf> <out.pdf|out.fdx|out.fountain>
   scriptcraft-cli commands [--json]
   scriptcraft-cli run [--open <file> | --sample] [--cmd 'id' | --cmd 'id={json}']... [--save <file>]
   scriptcraft-cli new <feature|tv-single-camera|tv-multi-camera|stage-play> <out.fdx|out.fountain|out.pdf>
@@ -175,7 +175,7 @@ fn report(a: &[String]) -> Result<(), String> {
             c["name"].as_str().unwrap_or(""),
             c["speeches"].as_u64().unwrap_or(0),
             c["words"].as_u64().unwrap_or(0),
-            c["firstPage"]
+            c["firstPageLabel"].as_str().unwrap_or("")
         );
     }
     println!("\nSCENES");
@@ -184,7 +184,7 @@ fn report(a: &[String]) -> Result<(), String> {
         println!(
             "  {:>3}  p.{:<3} {:>6}  {}",
             c["scene"].as_u64().unwrap_or(0),
-            c["page"].as_u64().unwrap_or(0),
+            c["pageLabel"].as_str().unwrap_or(""),
             scriptcraft_engine::reports::eighths_label(e),
             c["heading"].as_str().unwrap_or("")
         );

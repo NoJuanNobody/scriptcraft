@@ -7,7 +7,7 @@ use serde::Serialize;
 /// Most suggestions offered at once.
 pub const MAX_ITEMS: usize = 12;
 
-pub const PREFIXES: [&str; 5] = ["INT. ", "EXT. ", "INT./EXT. ", "EST. ", "I/E. "];
+pub const PREFIXES: [&str; 8] = ["INT. ", "EXT. ", "INT./EXT. ", "EST. ", "I/E. ", "ИНТ. ", "НАТ. ", "ИНТ./НАТ. "];
 pub const TIMES: [&str; 11] =
     ["DAY", "NIGHT", "MORNING", "AFTERNOON", "EVENING", "DAWN", "DUSK", "CONTINUOUS", "LATER", "MOMENTS LATER", "SAME TIME"];
 pub const EXTENSIONS: [&str; 4] = ["(V.O.)", "(O.S.)", "(O.C.)", "(CONT'D)"];

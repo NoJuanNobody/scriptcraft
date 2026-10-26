@@ -5,37 +5,216 @@ on:
     tags:
       - "v*"
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to upload assets to (optional, e.g. v0.5.0)"
+        required: false
+        type: string
 
 permissions:
   contents: write
 
 jobs:
   build-windows:
-    name: Build Windows
+    name: Build Windows (x86_64)
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - name: Build release binary
-        run: cargo build --release -p scriptcraft
-      - name: Create release artifact
-        run: |
-          mkdir scriptcraft-release
-          copy target\release\scriptcraft.exe scriptcraft-release\
-          copy LICENSE-MIT scriptcraft-release\
-          copy LICENSE-APACHE scriptcraft-release\
-          copy README.md scriptcraft-release\
-      - name: Prepare for upload
+      - name: Build release binaries
+        run: cargo build --release -p scriptcraft -p scriptcraft-cli
+      - name: Package Windows archive
         shell: bash
         run: |
-          cd scriptcraft-release
+          mkdir -p scriptcraft-windows-x64
+          cp target/release/scriptcraft.exe scriptcraft-windows-x64/
+          cp target/release/scriptcraft-cli.exe scriptcraft-windows-x64/
+          cp README.md LICENSE-MIT LICENSE-APACHE NOTICE ATTRIBUTION.md scriptcraft-windows-x64/
+          cd scriptcraft-windows-x64
           7z a ../scriptcraft-windows-x64.zip * -r
-          echo "ARTIFACT_PATH=scriptcraft-windows-x64.zip" >> $GITHUB_ENV
-      - name: Upload to release
-        uses: softprops/action-gh-release@v1
-        if: startsWith(github.ref, 'refs/tags/')
+      - uses: actions/upload-artifact@v4
         with:
-          files: ${{ env.ARTIFACT_PATH }}
+          name: windows-x64
+          path: scriptcraft-windows-x64.zip
+
+  build-macos:
+    name: Build macOS (Universal)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+      - name: Build arm64 binaries
+        run: cargo build --release --target aarch64-apple-darwin -p scriptcraft -p scriptcraft-cli
+      - name: Build x86_64 binaries
+        run: cargo build --release --target x86_64-apple-darwin -p scriptcraft -p scriptcraft-cli
+      - name: Create Universal .app bundle and archive
+        run: |
+          VERSION=$(awk -F'"' '/^version = /{print $2; exit}' Cargo.toml)
+          STAGE="scriptcraft-macos-universal"
+          APP="${STAGE}/ScriptCraft.app"
+          mkdir -p "${APP}/Contents/MacOS" "${APP}/Contents/Resources"
+
+          lipo -create \
+            target/aarch64-apple-darwin/release/scriptcraft \
+            target/x86_64-apple-darwin/release/scriptcraft \
+            -output "${APP}/Contents/MacOS/scriptcraft"
+          chmod +x "${APP}/Contents/MacOS/scriptcraft"
+
+          lipo -create \
+            target/aarch64-apple-darwin/release/scriptcraft-cli \
+            target/x86_64-apple-darwin/release/scriptcraft-cli \
+            -output "${STAGE}/scriptcraft-cli"
+          chmod +x "${STAGE}/scriptcraft-cli"
+
+          cat > "${APP}/Contents/Info.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>CFBundleName</key>
+            <string>ScriptCraft</string>
+            <key>CFBundleDisplayName</key>
+            <string>ScriptCraft</string>
+            <key>CFBundleIdentifier</key>
+            <string>com.scriptcraft.app</string>
+            <key>CFBundleVersion</key>
+            <string>${VERSION}</string>
+            <key>CFBundleShortVersionString</key>
+            <string>${VERSION}</string>
+            <key>CFBundlePackageType</key>
+            <string>APPL</string>
+            <key>CFBundleExecutable</key>
+            <string>scriptcraft</string>
+            <key>LSMinimumSystemVersion</key>
+            <string>11.0</string>
+            <key>NSHighResolutionCapable</key>
+            <true/>
+          </dict>
+          </plist>
+          EOF
+
+          codesign --force --deep --sign - "${APP}"
+          codesign --force --sign - "${STAGE}/scriptcraft-cli"
+
+          cp README.md LICENSE-MIT LICENSE-APACHE NOTICE ATTRIBUTION.md "${STAGE}/"
+          ditto -c -k --keepParent "${STAGE}" scriptcraft-macos-universal.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-universal
+          path: scriptcraft-macos-universal.zip
+
+  build-linux:
+    name: Build Linux (x86_64)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: System packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev \
+            libxkbcommon-dev libssl-dev libgtk-3-dev libasound2-dev
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build release binaries
+        run: cargo build --release -p scriptcraft -p scriptcraft-cli
+      - name: Package tarball and .deb
+        run: |
+          VERSION=$(awk -F'"' '/^version = /{print $2; exit}' Cargo.toml)
+          strip target/release/scriptcraft target/release/scriptcraft-cli
+
+          STAGE="scriptcraft-linux-x86_64"
+          mkdir -p "${STAGE}"
+          cp target/release/scriptcraft target/release/scriptcraft-cli "${STAGE}/"
+          cp README.md LICENSE-MIT LICENSE-APACHE NOTICE ATTRIBUTION.md "${STAGE}/"
+          tar -czf scriptcraft-linux-x86_64.tar.gz "${STAGE}"
+
+          DEB="deb-pkg"
+          mkdir -p "${DEB}/DEBIAN" "${DEB}/usr/bin" "${DEB}/usr/share/applications" "${DEB}/usr/share/doc/scriptcraft"
+          cp target/release/scriptcraft "${DEB}/usr/bin/scriptcraft"
+          cp target/release/scriptcraft-cli "${DEB}/usr/bin/scriptcraft-cli"
+          cp README.md LICENSE-MIT LICENSE-APACHE NOTICE ATTRIBUTION.md "${DEB}/usr/share/doc/scriptcraft/"
+
+          cat > "${DEB}/usr/share/applications/scriptcraft.desktop" <<EOF
+          [Desktop Entry]
+          Name=ScriptCraft
+          Comment=Screenwriting application for .fdx and .fountain scripts
+          Exec=scriptcraft %F
+          Terminal=false
+          Type=Application
+          Categories=Office;WordProcessor;TextEditor;
+          MimeType=application/x-final-draft;text/plain;
+          EOF
+
+          cat > "${DEB}/DEBIAN/control" <<EOF
+          Package: scriptcraft
+          Version: ${VERSION}
+          Section: editors
+          Priority: optional
+          Architecture: amd64
+          Depends: libc6, libgcc-s1, libgtk-3-0, libxkbcommon0
+          Maintainer: ScriptCraft Contributors <https://github.com/NoJuanNobody/scriptcraft>
+          Description: Fast, local-first screenwriting application
+           ScriptCraft is a screenwriting editor, CLI, and MCP server written in Rust
+           with native Final Draft (.fdx) and Fountain (.fountain) support.
+          EOF
+
+          dpkg-deb --build --root-owner-group "${DEB}" scriptcraft-linux-x86_64.deb
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-x86_64
+          path: |
+            scriptcraft-linux-x86_64.tar.gz
+            scriptcraft-linux-x86_64.deb
+
+  build-web:
+    name: Build Web (WASM)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - name: Install wasm-bindgen-cli
+        run: |
+          WB_VER=$(awk '/^name = "wasm-bindgen"$/{getline; gsub(/"/, "", $3); print $3; exit}' Cargo.lock)
+          curl -fsSL "https://github.com/wasm-bindgen/wasm-bindgen/releases/download/${WB_VER}/wasm-bindgen-${WB_VER}-x86_64-unknown-linux-musl.tar.gz" \
+            | tar -xz --strip-components=1 -C "$HOME/.cargo/bin" "wasm-bindgen-${WB_VER}-x86_64-unknown-linux-musl/wasm-bindgen"
+      - name: Build web bundle
+        run: |
+          cargo xtask web
+          cp README.md LICENSE-MIT LICENSE-APACHE NOTICE ATTRIBUTION.md apps/scriptcraft-web/dist/
+          cd apps/scriptcraft-web/dist
+          zip -r ../../../scriptcraft-web.zip .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web-wasm
+          path: scriptcraft-web.zip
+
+  publish:
+    name: Publish Release
+    needs: [build-windows, build-macos, build-linux, build-web]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Generate SHA256SUMS.txt
+        run: |
+          cd dist
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+      - name: Upload to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/') || inputs.tag != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag != '' && inputs.tag || github.ref_name }}
+          files: dist/*
           draft: false
           prerelease: false

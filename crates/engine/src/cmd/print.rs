@@ -1,5 +1,6 @@
-//! Print: the pages to print, rendered as PDF. The app hands the PDF to the system (the default
-//! viewer's print dialog natively, a download in the browser); agents get the bytes.
+//! Print: the pages to print, rendered as PDF. The window sends the PDF to a printer (`print.send`,
+//! `print.printers`: CUPS, the Windows print action, or the browser's print window), or opens it in
+//! the system's viewer; agents get the bytes from `print.render`.
 
 use scriptcraft_pdf::Selection;
 use serde_json::{Value, json};
@@ -14,7 +15,18 @@ pub fn specs() -> Vec<CommandSpec> {
         CommandSpec::new("print.render", "Print", "File › Print", render)
             .params(r#"{"from": page or label ("12A"), "to": page or label, "titlePage": bool (default true), "revisedOnly": bool} → {"name", "data": base64 PDF, "pages", "bytes"}"#)
             .pure(),
+        CommandSpec::new("print.printers", "Printers", "File › Print", needs_app)
+            .params(r#"{"refresh": bool (ask the system again)} → {"printers": [{"name", "default"}], "default", "engine", "choosesInDialog": bool (the browser picks the printer in its own print window)}"#)
+            .pure(),
+        CommandSpec::new("print.send", "Print to Printer", "File › Print", needs_app)
+            .params(r#"{"printer": name from print.printers (default: the system's default), "copies": 1–99, "from", "to", "titlePage", "revisedOnly" (as print.render)} → {"name", "pages", "printer", "copies", "sent": true}; the outcome shows in the status bar"#)
+            .pure(),
     ]
+}
+
+/// Printers belong to the computer running the window, not to a headless session.
+fn needs_app(_: &mut Session, _: &Value) -> CmdResult {
+    Err(CmdError::Disabled("printing to a printer needs the ScriptCraft window; print.render gives the PDF".into()))
 }
 
 /// The page selection in `v`.

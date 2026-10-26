@@ -1,6 +1,7 @@
 //! The window runs headless (no GPU): typing through egui reaches the engine, every UI command
 //! runs, and all views lay out without panicking.
 
+use egui_kittest::kittest::Queryable;
 use scriptcraft_engine::Session;
 use scriptcraft_ui_egui::{ControlRequest, ScriptApp, UI_COMMANDS};
 use serde_json::json;
@@ -322,4 +323,70 @@ fn outline_view_drags_a_scene_under_an_act() {
     // The story map and navigator draw with structure.
     h.state_mut().execute("ui.view.page", json!({})).unwrap();
     step(&mut h, 2);
+}
+
+#[test]
+fn import_from_word_celtx_and_pdf() {
+    // Through the host (the browser): the picked file arrives in the inbox and is imported.
+    let saved = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let mut app = ScriptApp::new(Session::sample());
+    app.dialogs = false;
+    let html = br#"<p class="sceneheading">INT. LAMP ROOM - NIGHT</p><p class="character">NELL</p><p class="dialog">Light it.</p>"#;
+    app.host = Some(Box::new(MockHost { saved, pick: Some(("lamp.celtx".into(), html.to_vec())) }));
+    let mut h = harness(app);
+    step(&mut h, 2);
+    h.state_mut().execute("ui.import", json!({})).unwrap();
+    step(&mut h, 2);
+    let st = h.state();
+    assert_eq!(st.session.script.paras.len(), 3);
+    assert_eq!(st.session.script.paras[2].text, "Light it.");
+    assert!(st.session.dirty && st.session.path.is_none());
+    // Natively, with a path: a PDF exported by ScriptCraft comes back as the same script.
+    let dir = std::env::temp_dir().join(format!("sc-ui-import-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let pdf = dir.join("night.pdf");
+    let mut s = Session::sample();
+    s.run("file.exportPdf", &json!({"path": pdf})).unwrap();
+    let want = s.script.paras.len();
+    let mut app = ScriptApp::new(Session::new(Default::default()));
+    app.dialogs = false;
+    let mut h = harness(app);
+    step(&mut h, 2);
+    let v = h.state_mut().execute("ui.import", json!({"path": pdf})).unwrap();
+    assert_eq!(v["format"], "PDF");
+    assert_eq!(h.state().session.script.paras.len(), want);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn russian_language_switch_preserves_script_and_command_ids() {
+    let mut app = ScriptApp::new(Session::new(Default::default()));
+    app.dialogs = false;
+    let original = app.session.script.clone();
+    app.execute("ui.language", json!({"language": "ru"})).unwrap();
+    assert_eq!(app.prefs.appearance.language, scriptcraft_ui_egui::i18n::Language::Russian);
+    assert_eq!(app.session.script, original);
+    assert!(app.execute("ui.language", json!({"language": "unknown"})).is_err());
+    let mut h = harness(app);
+    step(&mut h, 4);
+    assert!(h.query_by_label("Файл").is_some());
+    assert!(h.query_by_label("File").is_none());
+    for (id, params) in [
+        ("text.insert", json!({"text": "ИНТ. КУХНЯ — НОЧЬ"})),
+        ("text.enter", json!({})),
+        ("text.insert", json!({"text": "Ёжик ждёт у окна."})),
+        ("ui.view.cards", json!({})),
+        ("ui.view.reports", json!({})),
+        ("ui.titlePage", json!({})),
+        ("ui.elementSettings", json!({})),
+    ] {
+        h.state_mut().execute(id, params).unwrap();
+        step(&mut h, 2);
+    }
+    assert!(h.state().session.script.paras.iter().any(|p| p.text == "Ёжик ждёт у окна."));
+    h.state_mut().execute("ui.language", json!({"language": "en"})).unwrap();
+    assert_eq!(h.state().prefs.appearance.language, scriptcraft_ui_egui::i18n::Language::English);
+    step(&mut h, 2);
+    assert!(h.query_by_label("File").is_some());
+    assert!(h.query_by_label("Файл").is_none());
 }

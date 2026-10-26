@@ -12,6 +12,10 @@
 //! index card instead), boneyard (`/* … */`, removed), page breaks (`===`, ignored) and lyrics
 //! (`~`, imported as Action).
 //!
+//! Shot and General, which Fountain lacks, are written as action with a ScriptCraft note at the
+//! end of the line: `!CLOSE ON THE KEYS. [[shot]]`, `Some general text. [[general]]`. Other
+//! Fountain apps hide the note and show the line as action; ScriptCraft reads the element back.
+//!
 //! ScriptCraft's beat board, bookmarks and beat links travel in one boneyard block at the end
 //! (`/* ScriptCraft board: {…} */`, see `board.rs`), which other Fountain apps ignore.
 //!
@@ -32,6 +36,22 @@ const NOTE_OPEN: char = '\u{E000}';
 const NOTE_CLOSE: char = '\u{E001}';
 /// Starts a line that held only a note.
 const NOTE_LINE: char = '\u{2}';
+/// Ends a line that carried a `[[shot]]` / `[[general]]` element note.
+const SHOT_MARK: char = '\u{E002}';
+const GENERAL_MARK: char = '\u{E003}';
+
+/// The element notes for elements Fountain has no syntax for.
+const ELEMENT_NOTES: [(Element, &str, char); 2] = [(Element::Shot, "shot", SHOT_MARK), (Element::General, "general", GENERAL_MARK)];
+
+/// A line ending in an element note (`… [[shot]]`): the line without it, and the mark.
+fn element_note(line: &str) -> Option<(&str, char)> {
+    let t = line.trim_end();
+    let body = t.strip_suffix("]]")?;
+    let open = body.rfind("[[")?;
+    let word = body.get(open + 2..)?.trim();
+    let (_, _, mark) = ELEMENT_NOTES.iter().find(|(_, w, _)| word.eq_ignore_ascii_case(w))?;
+    Some((body.get(..open)?.trim_end(), *mark))
+}
 
 /// Largest input we parse, in bytes (longer input is cut at a char boundary).
 pub const MAX_INPUT: usize = 64 << 20;
@@ -42,7 +62,12 @@ pub fn parse(src: &str) -> Script {
     while cut > 0 && !src.is_char_boundary(cut) {
         cut -= 1;
     }
-    let src = src.get(..cut).unwrap_or("").replace("\r\n", "\n").replace('\r', "\n").replace([NOTE_OPEN, NOTE_CLOSE, NOTE_LINE], "");
+    let src = src
+        .get(..cut)
+        .unwrap_or("")
+        .replace("\r\n", "\n")
+        .replace('\r', "\n")
+        .replace([NOTE_OPEN, NOTE_CLOSE, NOTE_LINE, SHOT_MARK, GENERAL_MARK], "");
     // ScriptCraft's beat board and bookmarks, in a boneyard block at the end.
     let (src, board_meta) = board::extract(&src);
     // Index-card colour and tags travel as notes on their own line: `[[color: blue]]`,
@@ -51,6 +76,11 @@ pub fn parse(src: &str) -> Script {
         .split('\n')
         .map(|l| {
             let t = l.trim();
+            if let Some((rest, mark)) = element_note(l)
+                && !rest.trim().is_empty()
+            {
+                return format!("{rest}{mark}");
+            }
             match t.strip_prefix("[[").and_then(|x| x.strip_suffix("]]")) {
                 Some(inner) if !inner.contains("[[") && (inner.trim_start().starts_with("color:") || inner.trim_start().starts_with("tags:")) => {
                     format!("\u{1}{}", inner.trim())
@@ -120,6 +150,20 @@ pub fn parse(src: &str) -> Script {
         }
         let was_blank = std::mem::replace(&mut prev_blank, false);
         let after_section = std::mem::replace(&mut section_open, false);
+        // Shot and General (element note at the end of the line), always action-like.
+        if let Some((el, mark)) = ELEMENT_NOTES.iter().find(|(_, _, m)| line.ends_with(*m)).map(|(e, _, m)| (*e, *m)) {
+            let text = line.trim_end_matches(mark).trim_end();
+            let text = text.strip_prefix('!').unwrap_or(text).trim();
+            in_dialogue = false;
+            match paras.last_mut().filter(|p| !was_blank && p.element == el) {
+                Some(last) => {
+                    last.text.push(' ');
+                    last.text.push_str(text);
+                }
+                None => paras.push(Para::new(el, text)),
+            }
+            continue;
+        }
         if in_dialogue {
             if line.starts_with('(') && raw.trim_start().ends_with(')') {
                 paras.push(Para::new(Element::Parenthetical, line));
@@ -431,7 +475,7 @@ fn push_character(paras: &mut Vec<Para>, text: &str) {
 /// dot or space.
 pub fn is_heading(line: &str) -> bool {
     let up = line.trim_start().to_uppercase();
-    ["INT./EXT", "INT/EXT", "EXT./INT", "EXT/INT", "I/E", "INT", "EXT", "EST"]
+    ["INT./EXT", "INT/EXT", "EXT./INT", "EXT/INT", "I/E", "INT", "EXT", "EST", "ИНТ./НАТ", "ИНТ/НАТ", "НАТ./ИНТ", "НАТ/ИНТ", "ИНТ", "НАТ"]
         .iter()
         .any(|p| up.strip_prefix(p).is_some_and(|rest| rest.starts_with('.') || rest.starts_with(' ')))
 }
@@ -559,10 +603,14 @@ pub fn write(s: &Script) -> String {
                 }
                 blank(&mut out);
                 note_lines(&mut out, p);
-                if needs_force(text) {
+                let note = ELEMENT_NOTES.iter().find(|(e, _, _)| *e == p.element).map(|(_, w, _)| *w);
+                if needs_force(text) || note.is_some_and(|_| element_note(text).is_some()) {
                     out.push('!');
                 }
                 out.push_str(text);
+                if let Some(w) = note {
+                    out.push_str(&format!(" [[{w}]]"));
+                }
                 out.push('\n');
             }
         }
@@ -620,6 +668,9 @@ mod annot_tests;
 #[cfg(test)]
 #[path = "board_tests.rs"]
 mod board_tests;
+#[cfg(test)]
+#[path = "element_tests.rs"]
+mod element_tests;
 #[cfg(test)]
 #[path = "v04_tests.rs"]
 mod v04_tests;

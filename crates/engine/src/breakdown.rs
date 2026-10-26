@@ -24,7 +24,10 @@ pub struct SceneBreakdown {
     pub heading: String,
     pub location: String,
     pub time: String,
+    /// Position of the scene's first page among script pages, from 1.
     pub page: usize,
+    /// The scene's first page as printed (`"12A"` with locked pages).
+    pub page_label: String,
     /// Length in eighths of a page.
     pub eighths: usize,
     pub length: String,
@@ -93,6 +96,7 @@ pub fn breakdown(s: &Script, l: &Layout) -> Vec<SceneBreakdown> {
             location: String::new(),
             time: String::new(),
             page: 1,
+            page_label: l.page_label_of(0),
             eighths: 0,
             length: String::new(),
             speaking: Vec::new(),
@@ -116,6 +120,7 @@ pub fn breakdown(s: &Script, l: &Layout) -> Vec<SceneBreakdown> {
             location: r.location,
             time: r.time,
             page: r.page,
+            page_label: r.page_label,
             eighths: r.eighths,
             length: reports::eighths_label(r.eighths),
             speaking: r.characters,
@@ -171,7 +176,7 @@ pub fn csv(s: &Script, l: &Layout) -> String {
             b.scene.to_string(),
             b.number.clone().unwrap_or_default(),
             b.heading.clone(),
-            b.page.to_string(),
+            b.page_label.clone(),
             b.length.clone(),
             b.speaking.join("; "),
         ];

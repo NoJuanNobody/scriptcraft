@@ -25,7 +25,13 @@ fn annotated() -> Script {
 fn notes_tags_and_alternates_round_trip() {
     let s = annotated();
     let xml = write(&s);
-    assert!(xml.contains("<ScriptNote Range=\"4,4\""), "{xml}");
+    // Notes sit among the text runs where they start (Final Draft's form), with their range.
+    assert!(
+        xml.contains(
+            "<Text>Ada </Text>\n      <ScriptNote ID=\"1\" Author=\"Jo &lt;editor&gt;\" Color=\"#4C4C6E6EF5F5\" Name=\"\" Type=\"\" Range=\"4,4\">"
+        ),
+        "{xml}"
+    );
     assert!(xml.contains("<ScriptCraftTag Range=\"30,9\" Category=\"Set Dressing\"/>"), "{xml}");
     let back = parse(&xml).unwrap_or_default();
     for (a, b) in s.paras.iter().zip(&back.paras) {

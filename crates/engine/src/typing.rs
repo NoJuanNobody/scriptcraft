@@ -50,5 +50,7 @@ pub const fn shift_tab(e: Element) -> Element {
 /// Action typed as a scene-heading prefix becomes a Scene Heading (`int. ` → `INT. `).
 pub fn looks_like_heading(text: &str) -> bool {
     let up = text.to_uppercase();
-    ["INT. ", "EXT. ", "INT./EXT. ", "EXT./INT. ", "I/E. ", "I/E ", "EST. "].iter().any(|p| up.starts_with(p))
+    ["INT. ", "EXT. ", "INT./EXT. ", "EXT./INT. ", "I/E. ", "I/E ", "EST. ", "ИНТ. ", "НАТ. ", "ИНТ./НАТ. ", "НАТ./ИНТ. "]
+        .iter()
+        .any(|p| up.starts_with(p))
 }

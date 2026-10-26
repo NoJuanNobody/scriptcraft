@@ -14,14 +14,17 @@ pub fn specs() -> Vec<CommandSpec> {
     vec![
         CommandSpec::new("file.new", "New Script", "File", new).key("Mod+N").pure(),
         CommandSpec::new("file.sample", "Open Sample Script", "Help", sample).pure(),
-        CommandSpec::new("file.open", "Open", "File", open).params(r#"{"path": ".fountain|.fdx file"}"#).pure(),
+        CommandSpec::new("file.open", "Open", "File", open).params(r#"{"path": ".fountain|.fdx file, or .docx|.celtx|.pdf (imported)"}"#).pure(),
+        CommandSpec::new("file.import", "Import", "File", import)
+            .params(r#"{"path": ".docx|.celtx|.pdf"} or {"name": "draft.docx", "data": base64} → {"paragraphs", "format", "notes"}"#)
+            .pure(),
         CommandSpec::new("file.save", "Save", "File", save).key("Mod+S").params(r#"{"path": string (optional once saved)}"#).pure(),
         CommandSpec::new("file.saveAs", "Save As", "File", save_as).key("Mod+Shift+S").params(r#"{"path": ".fountain|.fdx"}"#).pure(),
         CommandSpec::new("file.exportPdf", "Export PDF", "File › Export", export_pdf).params(r#"{"path": ".pdf"}"#).pure(),
         CommandSpec::new("file.exportFdx", "Export Final Draft (FDX)", "File › Export", export_fdx).params(r#"{"path": ".fdx"}"#).pure(),
         CommandSpec::new("file.exportFountain", "Export Fountain", "File › Export", export_fountain).params(r#"{"path": ".fountain"}"#).pure(),
         CommandSpec::new("file.load", "Open from Data", "File", load)
-            .params(r#"{"name": "draft.fdx|draft.fountain", "text": string} or {"name", "data": base64} (no file system: the browser, agents)"#)
+            .params(r#"{"name": "draft.fdx|draft.fountain|draft.docx|draft.celtx|draft.pdf", "text": string} or {"name", "data": base64} (no file system: the browser, agents)"#)
             .pure(),
         CommandSpec::new("document.export", "Export as Data", "File › Export", export_data)
             .params(r#"{"format": "pdf"|"fdx"|"fountain"|"csv" (the breakdown)} → {"name", "data": base64}"#)
@@ -43,11 +46,45 @@ fn sample(s: &mut Session, _: &Value) -> CmdResult {
 
 fn open(s: &mut Session, v: &Value) -> CmdResult {
     let path = PathBuf::from(p::req_str(v, "path")?);
-    let script = io::read(&path).map_err(CmdError::Failed)?;
+    let (script, format, notes) = io::read_noted(&path).map_err(CmdError::Failed)?;
+    let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("the file").to_string();
+    if format.imported() {
+        return Ok(imported(s, script, format, &name, notes));
+    }
     s.replace_script(script);
     s.status = format!("Opened {}", path.display());
     s.path = Some(path);
     Ok(json!({"paragraphs": s.script.paras.len()}))
+}
+
+/// Take an imported script: not tied to its file (it can't be saved back), so it starts unsaved.
+fn imported(s: &mut Session, script: scriptcraft_doc::Script, format: Format, name: &str, notes: Vec<String>) -> Value {
+    s.replace_script(script);
+    s.path = None;
+    s.dirty = true;
+    s.status = format!("Imported {name}; save it as .fdx or .fountain to keep it");
+    json!({"paragraphs": s.script.paras.len(), "format": format.name(), "notes": notes, "name": name})
+}
+
+fn import(s: &mut Session, v: &Value) -> CmdResult {
+    if let Some(path) = p::str(v, "path") {
+        let path = PathBuf::from(path);
+        let format =
+            Format::of(&path).filter(|f| f.imported()).ok_or_else(|| CmdError::Params("import takes a .docx, .celtx or .pdf file".into()))?;
+        let (script, _, notes) = io::read_noted(&path).map_err(CmdError::Failed)?;
+        let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("the file").to_string();
+        return Ok(imported(s, script, format, &name, notes));
+    }
+    let name = p::req_str(v, "name")?.to_string();
+    let format = Format::of(std::path::Path::new(&name))
+        .filter(|f| f.imported())
+        .ok_or_else(|| CmdError::Params("import takes a .docx, .celtx or .pdf file".into()))?;
+    let bytes = crate::b64::decode(p::req_str(v, "data")?).map_err(CmdError::Params)?;
+    if bytes.len() as u64 > io::MAX_FILE {
+        return Err(CmdError::Failed(format!("{name} is too large to open")));
+    }
+    let (script, notes) = io::parse_noted(&bytes, format).map_err(CmdError::Failed)?;
+    Ok(imported(s, script, format, &name, notes))
 }
 
 fn write_to(s: &mut Session, path: PathBuf, keep: bool) -> CmdResult {
@@ -76,14 +113,7 @@ fn save_as(s: &mut Session, v: &Value) -> CmdResult {
 fn export(s: &mut Session, v: &Value, want: Format) -> CmdResult {
     let path = PathBuf::from(p::req_str(v, "path")?);
     if Format::of(&path) != Some(want) {
-        return Err(CmdError::Params(format!(
-            "the path must end in .{}",
-            match want {
-                Format::Pdf => "pdf",
-                Format::Fdx => "fdx",
-                Format::Fountain => "fountain",
-            }
-        )));
+        return Err(CmdError::Params(format!("the path must end in .{}", want.ext())));
     }
     write_to(s, path, false)
 }
@@ -109,7 +139,10 @@ fn load(s: &mut Session, v: &Value) -> CmdResult {
     if bytes.len() as u64 > io::MAX_FILE {
         return Err(CmdError::Failed(format!("{name} is too large to open")));
     }
-    let script = io::parse(&bytes, format).map_err(CmdError::Failed)?;
+    let (script, notes) = io::parse_noted(&bytes, format).map_err(CmdError::Failed)?;
+    if format.imported() {
+        return Ok(imported(s, script, format, name, notes));
+    }
     s.replace_script(script);
     s.path = None;
     s.status = format!("Opened {name}");

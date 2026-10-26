@@ -737,6 +737,9 @@ fn title_page(script: &Script) -> Option<Page> {
     if !script.settings.title_page || t.is_empty() {
         return None;
     }
+    if t.is_free_form() {
+        return Some(free_form_title_page(t, paper));
+    }
     let mut lines = Vec::new();
     let center = |s: &str| ((page_w - s.chars().count() as f32 * CHAR_W) / 2.0).max(inch(1.0));
     let mut row = 18usize;
@@ -772,6 +775,42 @@ fn title_page(script: &Script) -> Option<Page> {
         lines.push(deco(LineKind::Title, x, TOP + (first + i) as f32 * LINE_H, l));
     }
     Some(Page { number: None, label: String::new(), title_page: true, lines })
+}
+
+/// A free-form title page: one row per line from the top margin, between 1" from each edge of
+/// the paper (as Final Draft lays out title pages), wrapped; rows past the page are dropped.
+fn free_form_title_page(t: &scriptcraft_doc::TitlePage, paper: scriptcraft_doc::Paper) -> Page {
+    let page_w = paper.width_pt();
+    let (left, right) = (inch(1.0), page_w - inch(1.0));
+    let cols = (((right - left) / CHAR_W) as usize).max(10);
+    let rows = body_rows(paper);
+    let mut lines = Vec::new();
+    let mut row = 0usize;
+    for l in &t.lines {
+        let text = l.text.trim();
+        let parts = if text.is_empty() { vec![(0, 0)] } else { wrap(text, cols) };
+        for (s, e) in parts {
+            if row >= rows {
+                break;
+            }
+            let piece = text.get(s..e).unwrap_or("").trim_end();
+            let w = piece.chars().count() as f32 * CHAR_W;
+            let x = match l.align {
+                scriptcraft_doc::Align::Left => left,
+                scriptcraft_doc::Align::Center => (left + (right - left - w) / 2.0).max(left),
+                scriptcraft_doc::Align::Right => (right - w).max(left),
+            };
+            if !piece.is_empty() {
+                let mut line = deco(LineKind::Title, x, TOP + row as f32 * LINE_H, piece);
+                if !l.style.is_plain() {
+                    line.spans = vec![scriptcraft_doc::Span { start: 0, end: piece.len(), style: l.style }];
+                }
+                lines.push(line);
+            }
+            row += 1;
+        }
+    }
+    Page { number: None, label: String::new(), title_page: true, lines }
 }
 
 /// Paginate a script.
@@ -881,3 +920,5 @@ pub mod locked;
 mod tests;
 #[cfg(test)]
 mod tests_page;
+#[cfg(test)]
+mod tests_title;

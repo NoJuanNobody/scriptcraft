@@ -3,7 +3,7 @@ resolver = "3"
 members = ["crates/*", "apps/*", "xtask"]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.5.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 rust-version = "1.95"
@@ -20,6 +20,7 @@ scriptcraft-layout = { path = "crates/layout" }
 scriptcraft-pdf = { path = "crates/pdf" }
 scriptcraft-spell = { path = "crates/spell" }
 scriptcraft-collab = { path = "crates/collab" }
+scriptcraft-import = { path = "crates/import" }
 scriptcraft-engine = { path = "crates/engine" }
 scriptcraft-control-key = { path = "crates/control-key" }
 scriptcraft-mcp = { path = "crates/mcp" }
@@ -37,6 +38,7 @@ log = "0.4"
 quick-xml = "0.41"
 krilla = "0.8"
 getrandom = "0.3"
+flate2 = "1"
 
 # ui
 egui = "0.36"

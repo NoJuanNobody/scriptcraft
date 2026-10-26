@@ -17,6 +17,7 @@ pub fn card_rgb(c: CardColor) -> Color32 {
 }
 
 pub fn show(app: &mut ScriptApp, ui: &mut Ui) {
+    let lang = app.prefs.appearance.language;
     let t = app.tokens();
     let scenes = app.session.script.scenes();
     let l = app.session.layout();
@@ -32,12 +33,12 @@ pub fn show(app: &mut ScriptApp, ui: &mut Ui) {
         if scenes.is_empty() {
             ui.horizontal(|ui| {
                 ui.add_space(24.0);
-                ui.label(RichText::new("No scenes yet: add a scene heading (INT. / EXT.) in the page view.").color(t.text_soft));
+                ui.label(RichText::new(lang.text("No scenes yet: add a scene heading (INT. / EXT.) in the page view.")).color(t.text_soft));
             });
         }
         ui.horizontal(|ui| {
             ui.add_space(20.0);
-            ui.label(RichText::new("Drag a card to move its scene · right-click for colour and tags").size(11.5).color(t.text_soft));
+            ui.label(RichText::new(lang.text("Drag a card to move its scene · right-click for colour and tags")).size(11.5).color(t.text_soft));
         });
         ui.add_space(8.0);
         for row in scenes.chunks(cols) {
@@ -76,7 +77,12 @@ pub fn show(app: &mut ScriptApp, ui: &mut Ui) {
                     p.text(r.left_top() + vec2(12.0, 18.0), Align2::LEFT_TOP, num, FontId::monospace(13.0), band);
                     let info = reports
                         .get(sc.index)
-                        .map(|x| format!("p.{} · {}", x.page, scriptcraft_engine::reports::eighths_label(x.eighths)))
+                        .map(|x| {
+                            lang.format(
+                                "p.{page} · {length}",
+                                &[("page", x.page_label.clone()), ("length", (scriptcraft_engine::reports::eighths_label(x.eighths)).to_string())],
+                            )
+                        })
                         .unwrap_or_default();
                     p.text(r.right_top() + vec2(-12.0, 19.0), Align2::RIGHT_TOP, info, FontId::proportional(11.0), t.text_soft);
                     p.text(
@@ -112,7 +118,7 @@ pub fn show(app: &mut ScriptApp, ui: &mut Ui) {
                         egui::TextEdit::multiline(&mut text)
                             .id_salt(("card-summary", sc.index))
                             .frame(egui::Frame::NONE)
-                            .hint_text("Summary…")
+                            .hint_text(lang.text("Summary…"))
                             .desired_width(body.width())
                             .desired_rows(4)
                             .font(FontId::proportional(13.0)),
@@ -123,7 +129,7 @@ pub fn show(app: &mut ScriptApp, ui: &mut Ui) {
                     // Go to scene.
                     let br = Rect::from_min_size(r.right_bottom() + vec2(-34.0, -26.0), vec2(26.0, 20.0));
                     let mut child = ui.new_child(egui::UiBuilder::new().max_rect(br));
-                    if child.add(egui::Button::new("↗").small().frame(false)).on_hover_text("Go to scene").clicked() {
+                    if child.add(egui::Button::new("↗").small().frame(false)).on_hover_text(lang.text("Go to scene")).clicked() {
                         actions.push(("scene.goto", json!({"index": sc.index})));
                     }
                     resp.context_menu(|ui| card_menu(app, ui, sc.index, sc.color, &sc.tags, &mut actions));
@@ -159,7 +165,8 @@ fn card_menu(
     tags: &[String],
     actions: &mut Vec<(&'static str, serde_json::Value)>,
 ) {
-    ui.label(RichText::new("Colour").strong());
+    let lang = app.prefs.appearance.language;
+    ui.label(RichText::new(lang.text("Colour")).strong());
     ui.horizontal(|ui| {
         for c in CardColor::ALL {
             let (r, resp) = ui.allocate_exact_size(vec2(18.0, 18.0), Sense::click());
@@ -173,25 +180,25 @@ fn card_menu(
             }
         }
     });
-    if ui.button("No colour").clicked() {
+    if ui.button(lang.text("No colour")).clicked() {
         actions.push(("scene.setColor", json!({"index": index, "color": null})));
         ui.close();
     }
     ui.separator();
-    ui.label(RichText::new("Tags (comma separated)").strong());
+    ui.label(RichText::new(lang.text("Tags (comma separated)")).strong());
     let buf = app.tag_edit.get_or_insert_with(|| (index, tags.join(", ")));
     if buf.0 != index {
         *buf = (index, tags.join(", "));
     }
     let r = ui.add(egui::TextEdit::singleline(&mut buf.1).desired_width(200.0));
     let enter = r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
-    if ui.button("Apply tags").clicked() || enter {
+    if ui.button(lang.text("Apply tags")).clicked() || enter {
         actions.push(("scene.setTags", json!({"index": index, "tags": buf.1})));
         app.tag_edit = None;
         ui.close();
     }
     ui.separator();
-    if ui.button("Go to scene").clicked() {
+    if ui.button(lang.text("Go to scene")).clicked() {
         actions.push(("scene.goto", json!({"index": index})));
         ui.close();
     }

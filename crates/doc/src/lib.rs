@@ -17,6 +17,7 @@ mod structure;
 mod style;
 pub mod template;
 mod text;
+mod title;
 pub mod track;
 pub mod voices;
 
@@ -37,6 +38,7 @@ pub use structure::{MAX_STRUCTURE, OutlineItem, PointSlot, StructureKind, Struct
 pub use style::{Flag, Span, Style};
 pub use template::Template;
 pub use text::{next_boundary, prev_boundary, word_left, word_right};
+pub use title::{MAX_TITLE_LINES, TitleLine};
 pub use track::{Change, ChangeKind, TrackSettings};
 pub use voices::Voices;
 
@@ -314,6 +316,10 @@ pub struct TitlePage {
     pub contact: String,
     pub copyright: String,
     pub notes: String,
+    /// A free-form title page's paragraphs (see the `title` module); empty: the fields are laid
+    /// out in the usual arrangement.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub lines: Vec<TitleLine>,
 }
 
 impl TitlePage {
@@ -353,7 +359,7 @@ impl TitlePage {
     }
 
     pub fn is_empty(&self) -> bool {
-        Self::FIELDS.iter().all(|f| self.get(f).is_none_or(|v| v.trim().is_empty()))
+        Self::FIELDS.iter().all(|f| self.get(f).is_none_or(|v| v.trim().is_empty())) && !self.is_free_form()
     }
 }
 
@@ -869,7 +875,8 @@ pub fn character_name(cue: &str) -> String {
 }
 
 /// Scene-heading prefixes, longest first.
-pub const HEADING_PREFIXES: [&str; 8] = ["INT./EXT.", "EXT./INT.", "INT/EXT.", "I/E.", "INT.", "EXT.", "EST.", "INT "];
+pub const HEADING_PREFIXES: [&str; 13] =
+    ["ИНТ./НАТ.", "НАТ./ИНТ.", "ИНТ/НАТ.", "ИНТ.", "НАТ.", "INT./EXT.", "EXT./INT.", "INT/EXT.", "I/E.", "INT.", "EXT.", "EST.", "INT "];
 
 /// A heading split into (prefix, location, time): `"INT. DINER - NIGHT"` →
 /// `("INT.", "DINER", "NIGHT")`. Missing parts are empty.

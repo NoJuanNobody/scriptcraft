@@ -11,10 +11,10 @@ the window icon in `apps/scriptcraft/src/main.rs`).
 
 | File | Author | Source | Licence |
 |---|---|---|---|
-| `crates/fonts/fonts/CourierPrime-Regular.ttf` | Alan Dague-Greene for Quote-Unquote Apps (The Courier Prime Project Authors) | https://github.com/quoteunquoteapps/CourierPrime via https://github.com/google/fonts/tree/main/ofl/courierprime | SIL Open Font License 1.1 (`crates/fonts/fonts/OFL.txt`) |
-| `crates/fonts/fonts/CourierPrime-Bold.ttf` | same | same | SIL OFL 1.1 |
-| `crates/fonts/fonts/CourierPrime-Italic.ttf` | same | same | SIL OFL 1.1 |
-| `crates/fonts/fonts/CourierPrime-BoldItalic.ttf` | same | same | SIL OFL 1.1 |
+| `crates/fonts/fonts/CourierBadi-Regular.ttf` | Alan Dague-Greene (Courier Prime), Dmitry Novikov (Cyrillic), LaPingvino and the Courier Badi contributors | https://github.com/LaPingvino/courier-badi/releases/tag/v1.010 (`fonts/ttf`, not the contrast variant) | SIL Open Font License 1.1 (`crates/fonts/fonts/OFL.txt`) |
+| `crates/fonts/fonts/CourierBadi-Bold.ttf` | same | same | SIL OFL 1.1 |
+| `crates/fonts/fonts/CourierBadi-Italic.ttf` | same | same | SIL OFL 1.1 |
+| `crates/fonts/fonts/CourierBadi-BoldItalic.ttf` | same | same | SIL OFL 1.1 |
 
 ## Word lists
 
@@ -38,3 +38,6 @@ the window icon in `apps/scriptcraft/src/main.rs`).
 | `docs/images/reports.png` | The ScriptCraft contributors | Screenshot of ScriptCraft rendered by `ui_shot` | MIT OR Apache-2.0 |
 | `docs/demo/pr33-tour.mp4` | The ScriptCraft contributors | Recording of ScriptCraft by `ui_demo` (docs/demo/record.sh) | MIT OR Apache-2.0 |
 | `docs/images/dark-smarttype.png` | The ScriptCraft contributors | Screenshot of ScriptCraft rendered by `ui_shot` | MIT OR Apache-2.0 |
+| `docs/explainer/poster.png` | The ScriptCraft contributors | Frame of the explainer video (`ui_shot` screenshots; Anton and JetBrains Mono, both SIL OFL 1.1) | MIT OR Apache-2.0 |
+| `docs/explainer/explainer.mp4` | The ScriptCraft contributors | Narrated explainer: `ui_shot` screenshots, `scriptcraft-cli` output, Kokoro TTS voice; Anton and JetBrains Mono (SIL OFL 1.1) | MIT OR Apache-2.0 |
+| `docs/images/russian.png` | The ScriptCraft contributors | Screenshot of ScriptCraft rendered by `ui_shot` from `docs/demo/russian-tour.jsonl` | MIT OR Apache-2.0 |

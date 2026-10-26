@@ -1,5 +1,23 @@
 <h1 align="center">ScriptCraft</h1>
 
+<p align="center"><b>ScriptCraft is a free, open-source app for writing screenplays: you type, Enter and Tab pick the screenplay format for you, and it gives you industry-standard pages, Final Draft and Fountain files, and PDFs.</b></p>
+
+<p align="center">
+  <a href="https://nojuannobody.github.io/scriptcraft/explainer/explainer.mp4"><img src="docs/explainer/poster.png" alt="ScriptCraft explainer video: the app with a diner scene typed in, and a panel showing which screenplay element each key produced" width="720"></a>
+  <br>
+  <a href="https://nojuannobody.github.io/scriptcraft/explainer/explainer.mp4">▶ Watch the 60-second explainer</a> ·
+  <a href="https://nojuannobody.github.io/scriptcraft/explainer/">Read the one-page explainer</a>
+</p>
+
+### How it works for you
+
+1. **Open or start a script**: blank, from a template (feature, TV single-camera, multi-camera, stage play), or an existing `.fdx` / `.fountain` file.
+2. **Type with Enter and Tab**: `int. diner - night` becomes a scene heading; Enter gives Action, Tab a Character, Enter again Dialogue. Names and headings capitalise themselves and SmartType offers what you used before.
+3. **See real pages**: Letter, 12-point Courier, page numbers, (MORE) and (CONT'D) when a speech breaks across pages.
+4. **Shape the story**: the Navigator, index cards, Outline view, story map and beat board let you rearrange scenes.
+5. **Check and share**: character, scene and location reports; save as Final Draft (`.fdx`) or Fountain, or export a PDF.
+
+
 <p align="center">
   <b>Screenwriting; an open-source, clean-room take on the Final Draft workflow, built in pure Rust.</b>
 </p>
@@ -18,7 +36,7 @@
   <img alt="Runs on macOS, Windows, Linux and the web" src="https://img.shields.io/badge/runs%20on-macOS%20%C2%B7%20Windows%20%C2%B7%20Linux%20%C2%B7%20Web-3b5bdb?style=flat-square">
   <img alt="License: MIT OR Apache-2.0" src="https://img.shields.io/badge/license-MIT%20%2F%20Apache--2.0-2b47b5?style=flat-square">
   <img alt="Agent-drivable over MCP" src="https://img.shields.io/badge/agents-MCP%20%C2%B7%20CLI-3b5bdb?style=flat-square">
-  <img alt="Version 0.2 in progress" src="https://img.shields.io/badge/version-0.2%20(in%20progress)-6f8cff?style=flat-square">
+  <a href="https://github.com/NoJuanNobody/scriptcraft/releases/latest"><img alt="Version 0.5.0" src="https://img.shields.io/badge/version-0.5.0-6f8cff?style=flat-square"></a>
 </p>
 
 <br>
@@ -41,11 +59,12 @@
 
 ## Downloads
 
-**Windows:** Download the latest release from [GitHub Releases](https://github.com/NoJuanNobody/scriptcraft/releases). Extract the ZIP, run `scriptcraft.exe`, and start writing. See [docs/windows-setup.md](docs/windows-setup.md) for detailed instructions and troubleshooting.
+Pre-built binaries for **v0.5.0** are available on [GitHub Releases](https://github.com/NoJuanNobody/scriptcraft/releases/latest):
 
-**macOS & Linux:** Build from source (see [Quick start](#quick-start) below).
-
-**Web:** Try the browser version at [scriptcraft-web.pages.dev](https://scriptcraft-web.pages.dev) (experimental).
+- **macOS (Universal — Apple Silicon & Intel):** Download [`scriptcraft-macos-universal.zip`](https://github.com/NoJuanNobody/scriptcraft/releases/latest/download/scriptcraft-macos-universal.zip), extract, and open `ScriptCraft.app` (`scriptcraft-cli` is included alongside it).
+- **Windows (x64):** Download [`scriptcraft-windows-x64.zip`](https://github.com/NoJuanNobody/scriptcraft/releases/latest/download/scriptcraft-windows-x64.zip), extract the ZIP, and run `scriptcraft.exe` (`scriptcraft-cli.exe` included). See [docs/windows-setup.md](docs/windows-setup.md) for detailed instructions and troubleshooting.
+- **Linux (x86_64):** Download [`scriptcraft-linux-x86_64.tar.gz`](https://github.com/NoJuanNobody/scriptcraft/releases/latest/download/scriptcraft-linux-x86_64.tar.gz) or the Debian/Ubuntu package [`scriptcraft-linux-x86_64.deb`](https://github.com/NoJuanNobody/scriptcraft/releases/latest/download/scriptcraft-linux-x86_64.deb).
+- **Web (Browser / WASM):** Launch directly in your browser at [nojuannobody.github.io/scriptcraft/app/](https://nojuannobody.github.io/scriptcraft/app/), explore the landing page & interactive explainer at [nojuannobody.github.io/scriptcraft/](https://nojuannobody.github.io/scriptcraft/), or download [`scriptcraft-web.zip`](https://github.com/NoJuanNobody/scriptcraft/releases/latest/download/scriptcraft-web.zip).
 
 ## A tour
 
@@ -72,10 +91,10 @@ Every screenshot is ScriptCraft itself, rendered offscreen by its own UI harness
   indents, page numbers top-right, (MORE)/(CONT'D) when dialogue breaks across pages, no orphaned
   scene headings — the same layout on screen, in reports and in the PDF.
 - **Your files.** Opens and saves Final Draft XML (.fdx) and Fountain (.fountain) with bold,
-  italic and underline intact; exports PDF with embedded, selectable Courier Prime. Autosave,
+  italic and underline intact; exports PDF with embedded, selectable Courier Badi. Autosave,
   crash recovery and backups keep your work safe.
-- **Built for agents.** Every action is a command with an id. The same 91 engine commands (plus 31
-  window commands) drive the menus, toolbar, keyboard shortcuts, a command-line tool, a JSON
+- **Built for agents.** Every action is a command with an id. The same 191 engine commands (plus 53 window
+  commands) drive the menus, toolbar, keyboard shortcuts, a command-line tool, a JSON
   control channel and an MCP server.
 - **Never crashes on your script.** No `unwrap`/`panic` outside tests, hostile input is clamped, and
   a test runs every command with junk parameters.
@@ -89,14 +108,14 @@ Every screenshot is ScriptCraft itself, rendered offscreen by its own UI harness
 | **Pages** | Letter, Courier 12, 54 lines; Action 1.5"–7.5", Character 3.7", Dialogue 2.5"–6.0", Parenthetical 3.1"–5.6", Transition right-aligned at 7.5"; page numbers from page 2; (MORE)/(CONT'D) across dialogue breaks (split at sentence ends, never after a parenthetical); headings and cues kept with what follows; action split only with two lines each side; automatic character (CONT'D); scene numbers in both margins; title page |
 | **Structure** | Navigator (scenes with summaries, colours and pages; acts, sequences and sections; characters; bookmarks), index cards with editable summaries, colours and tags, drag to reorder scenes, go to scene/page; Outline view to rearrange scenes under acts and sequences; story map scaled to pages; beat board with beats linked to scenes |
 | **Reports** | Characters (speeches, words, scenes, first page), scenes (page, length in eighths, cast), locations (INT/EXT) |
-| **Files** | `.fdx` open/save (incl. text styles, element settings, dual dialogue, scene numbers, card summaries/colours, title page), `.fountain` open/save (the public fountain.io syntax incl. emphasis), PDF export; autosave with crash recovery, backups on save, recent files, drag-and-drop to open |
+| **Files** | `.fdx` open/save (incl. text styles, element settings, dual dialogue, scene numbers, card summaries/colours, title page, including free-form ones; Final Draft's own forms where known, see [docs/fdx-format.md](docs/fdx-format.md)), `.fountain` open/save (the public fountain.io syntax incl. emphasis; Shot and General kept), PDF export; import from Word `.docx`, Celtx and PDF; print to a printer; autosave with crash recovery, backups on save, recent files, drag-and-drop to open |
 | **Window** | Menu bar, toolbar with element picker and B/I/U, page view with page breaks or a continuous speed view, split screen with two views, blinking caret, status bar (element · page x of y · scene · words), light and dark themes, zoom (menus, Ctrl/⌘+wheel, pinch, fit width); unsaved-changes prompts on close, quit and open; runs natively and in the browser |
 | **Drafts and production** | Revision mode with coloured pages, locked pages with A/B pages, omitted scenes, headers and footers, A4, script notes, alternate lines, production tagging and breakdown reports, print; track changes per author with accept/reject; Compare Drafts; templates for feature, TV single-camera, multi-camera and stage play |
 | **Together and aloud** | Real-time collaboration on a local network with names and carets ([docs/collaboration.md](docs/collaboration.md)); read aloud with a system voice per character; dictation that turns spoken phrases into formatted script |
 | **Agents** | `scriptcraft-cli` (convert, run, report, commands, parity), MCP server (headless or bridged to the window), keyed loopback control channel, headless screenshots |
 
 The full Final Draft 13 comparison, including what's not done yet, is in
-[docs/parity-checklist.md](docs/parity-checklist.md): **62 implemented · 0 partial · 6 not yet**.
+[docs/parity-checklist.md](docs/parity-checklist.md): **63 implemented · 0 partial · 5 not yet**.
 
 ## Quick start
 
@@ -108,6 +127,33 @@ cargo run --release -p scriptcraft                       # opens the sample scri
 cargo run --release -p scriptcraft -- --new              # blank script
 cargo run --release -p scriptcraft -- my-script.fdx      # open a Final Draft or Fountain file
 ```
+
+### Russian / Русский
+
+Choose **View → Language → Русский** to switch the interface; **English** switches it back.
+The desktop app saves the choice as `[appearance] language = "ru"` in `config.toml`.
+The browser supports switching for the current session (its settings are not persisted).
+
+Русский интерфейс: **Вид → Язык → Русский**. Кириллица, включая **Ё/ё**, поддерживается
+в редакторе и при экспорте PDF во всех четырёх начертаниях Courier Badi — открытого шрифта
+на основе сценарного Courier Prime. Устанавливать шрифты в систему не требуется.
+Заголовки `ИНТ. КУХНЯ - НОЧЬ` и `НАТ. ДВОР - ДЕНЬ` распознаются при вводе и в Fountain;
+русский текст сохраняется в FDX и Fountain. Язык интерфейса не меняет содержимое сценария.
+Проверка орфографии пока только английская: русские слова пропускаются.
+В FDX указан Courier Badi; для просмотра в других редакторах может потребоваться установить
+этот шрифт или выбрать другой шрифт с кириллицей.
+Технические сообщения движка/API и названия пользовательских наборов правок не переводятся.
+
+![Russian interface and Cyrillic screenplay in Courier Badi](docs/images/russian.png)
+
+### Adding another interface language
+
+1. Copy `crates/ui-egui/locales/en.json` to `<code>.json` and translate its values, keeping keys and named placeholders (`{page}`, `{name}`, etc.).
+2. Add one entry to `languages!` in `crates/ui-egui/src/i18n.rs`, for example:
+   `French, "fr", "Français", "../locales/fr.json";`
+3. Run `cargo test -p scriptcraft-ui-egui`. Catalogue tests check keys and placeholders; the menu and settings automatically use the registry.
+
+Catalogues are embedded for offline desktop and browser builds. Missing translations fall back to the English source string. Values such as filenames and script text are never translated or parsed as templates. For scripts outside the bundled fonts' coverage, add and attribute appropriate fonts as well.
 
 ### Settings and data
 
@@ -158,7 +204,7 @@ below the UI depends on egui.
 |---|---|---|
 | L0 | `scriptcraft-geom` | Letter page and Courier metrics (10 cpi, 6 lpi, 54 lines) |
 | L1 | `scriptcraft-doc` | screenplay model: element-typed paragraphs, title page, settings, clamped edit primitives |
-| L1 | `scriptcraft-fonts`, `scriptcraft-spell`, `scriptcraft-control-key` | Courier Prime (OFL); offline English spelling (SCOWL); the control key file |
+| L1 | `scriptcraft-fonts`, `scriptcraft-spell`, `scriptcraft-control-key` | Courier Badi (OFL); offline English spelling (SCOWL); the control key file |
 | L2 | `scriptcraft-fountain`, `scriptcraft-fdx` | Fountain and Final Draft XML import/export |
 | L2 | `scriptcraft-layout` | pagination, (MORE)/(CONT'D), dual dialogue, caret and hit testing |
 | L3 | `scriptcraft-pdf` | PDF export with krilla |
@@ -175,9 +221,9 @@ layers, parity doc up to date).
 ## Roadmap
 
 See [ROADMAP.md](ROADMAP.md); every gap is tracked as a
-[GitHub issue](https://github.com/NoJuanNobody/scriptcraft/issues) under milestones. v0.2–v0.4 are done; next up: file-format fidelity
-(Shot/General in Fountain, full FDX title pages, importing from Word, Celtx and PDF) and checking
-the typing flow against real Final Draft 13.
+[GitHub issue](https://github.com/NoJuanNobody/scriptcraft/issues) under milestones. v0.2–v0.5 are done apart from the items that need Final Draft 13 itself:
+confirming its FDX form for tags, omitted scenes, alternates and locked pages (#42, #44) and
+checking the typing flow against it (#32).
 
 ## Contributing
 
@@ -187,7 +233,7 @@ clean room, everything is a command) and run `cargo xtask ci` before opening a P
 ## License and credits
 
 MIT OR Apache-2.0 ([LICENSE-MIT](LICENSE-MIT), [LICENSE-APACHE](LICENSE-APACHE)). Typeface:
-[Courier Prime](https://github.com/quoteunquoteapps/CourierPrime) (SIL Open Font License 1.1).
+[Courier Badi](https://github.com/LaPingvino/courier-badi) (SIL Open Font License 1.1).
 Architecture patterns adapted from WordCraft (MIT OR Apache-2.0); see [NOTICE](NOTICE) and
 [ATTRIBUTION.md](ATTRIBUTION.md).
 

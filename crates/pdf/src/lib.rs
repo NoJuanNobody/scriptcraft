@@ -1,5 +1,5 @@
 //! PDF export, written with krilla: each laid-out page becomes a US Letter PDF page with the
-//! text set in embedded (subsetted) Courier Prime, so it is selectable and searchable. Bold,
+//! text set in embedded (subsetted) Courier Badi, so it is selectable and searchable. Bold,
 //! italic and bold italic use the matching faces; underlines are drawn as thin rules.
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
@@ -140,6 +140,19 @@ mod tests {
     use scriptcraft_doc::{Element, Para};
 
     use super::*;
+
+    #[test]
+    fn russian_script_exports_in_every_style() {
+        let mut s = Script::from_paras(vec![Para::new(Element::Action, "Ёжик ждёт у окна. Алёна говорит: «Всё готово?»")]).unwrap();
+        s.title.title = "Ночной разговор".into();
+        s.title.author = "Алёна Ёлкина".into();
+        for (bold, italic) in [(false, false), (true, false), (false, true), (true, true)] {
+            let end = s.paras[0].text.len();
+            s.set_flag(scriptcraft_doc::Pos::new(0, 0), scriptcraft_doc::Pos::new(0, end), scriptcraft_doc::Flag::Bold, bold);
+            s.set_flag(scriptcraft_doc::Pos::new(0, 0), scriptcraft_doc::Pos::new(0, end), scriptcraft_doc::Flag::Italic, italic);
+            assert!(export(&s).unwrap().starts_with(b"%PDF-"));
+        }
+    }
 
     #[test]
     fn writes_pages() {

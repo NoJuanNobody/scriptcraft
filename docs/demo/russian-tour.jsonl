@@ -1,0 +1,5 @@
+{"empty": true}
+{"method": "command", "params": {"id": "ui.language", "params": {"language": "ru"}}}
+{"method": "command", "params": {"id": "file.load", "params": {"name": "Ночной разговор.fountain", "text": "Title: Ночной разговор\nAuthor: Алёна Ёлкина\n\nИНТ. КУХНЯ - НОЧЬ\n\nЁжик ждёт у окна. **Жирный текст.** *Курсивный текст.* ***Жирный курсив.***\n\nАЛЁНА\n(тихо)\nВсё готово? «Да», — отвечает он.\n\nНАТ. ДВОР - ДЕНЬ\n\nПадает снег.\n"}}}
+{"method": "command", "params": {"id": "settings.set", "params": {"titlePage": false}}}
+{"shot": "docs/images/russian.png"}

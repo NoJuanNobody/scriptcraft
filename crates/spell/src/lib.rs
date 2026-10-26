@@ -2,6 +2,7 @@
 //! -ise spellings; licence in `words/LICENSE-SCOWL.txt`) with Damerau edit-distance suggestions.
 //!
 //! Words are letters with inner apostrophes (`don't`, `Nell's`); tokens with digits are skipped.
+//! Cyrillic words are skipped: this is an English dictionary, not a Russian spell checker.
 //! Matching ignores case, so all-caps screenplay text (`INT.`, character cues) is checked too.
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
@@ -65,7 +66,7 @@ impl Speller {
     /// Whether `word` is in the list (case-insensitive; a possessive `'s` is accepted on known words).
     pub fn check(&self, word: &str) -> bool {
         let k = key(word);
-        if k.chars().count() > MAX_WORD || k.chars().count() <= 1 {
+        if k.chars().any(|c| matches!(c, '\u{0400}'..='\u{052f}')) || k.chars().count() > MAX_WORD || k.chars().count() <= 1 {
             return true;
         }
         self.words.contains(&k) || k.strip_suffix("'s").is_some_and(|b| self.words.contains(b))
@@ -79,7 +80,7 @@ impl Speller {
     /// Up to `n` suggestions for `word`, closest first, in the word's capitalisation.
     pub fn suggest(&self, word: &str, n: usize) -> Vec<String> {
         let k = key(word);
-        if k.is_empty() || k.chars().count() > MAX_WORD {
+        if k.chars().any(|c| matches!(c, '\u{0400}'..='\u{052f}')) || k.is_empty() || k.chars().count() > MAX_WORD {
             return Vec::new();
         }
         let mut found: Vec<String> = Vec::new();
@@ -154,6 +155,15 @@ fn recase(like: &str, s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn russian_words_are_not_checked_against_english_dictionary() {
+        let sp = english();
+        let text = "Ёжик ждёт у окна. Helo world.";
+        assert_eq!(sp.misspelled(text, &|_| false).iter().map(|&(a, b)| text.get(a..b).unwrap()).collect::<Vec<_>>(), ["Helo"]);
+        assert!(sp.check("ёжик"));
+        assert!(sp.suggest("ёжик", 5).is_empty());
+    }
 
     #[test]
     fn checks_and_suggests() {

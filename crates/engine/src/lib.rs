@@ -165,6 +165,8 @@ mod tests_annot;
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests_collab;
 #[cfg(test)]
+mod tests_import;
+#[cfg(test)]
 mod tests_structure;
 #[cfg(test)]
 mod tests_typing;

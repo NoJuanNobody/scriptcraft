@@ -3,7 +3,7 @@ name = "scriptcraft-pdf"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "ScriptCraft PDF export with krilla: embedded Courier Prime, selectable text (L3)"
+description = "ScriptCraft PDF export with krilla: embedded Courier Badi, selectable text (L3)"
 
 [lints]
 workspace = true
