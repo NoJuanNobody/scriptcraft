@@ -38,3 +38,5 @@ the window icon in `apps/scriptcraft/src/main.rs`).
 | `docs/images/reports.png` | The ScriptCraft contributors | Screenshot of ScriptCraft rendered by `ui_shot` | MIT OR Apache-2.0 |
 | `docs/demo/pr33-tour.mp4` | The ScriptCraft contributors | Recording of ScriptCraft by `ui_demo` (docs/demo/record.sh) | MIT OR Apache-2.0 |
 | `docs/images/dark-smarttype.png` | The ScriptCraft contributors | Screenshot of ScriptCraft rendered by `ui_shot` | MIT OR Apache-2.0 |
+| `docs/explainer/poster.png` | The ScriptCraft contributors | Frame of the explainer video (`ui_shot` screenshots; Anton and JetBrains Mono, both SIL OFL 1.1) | MIT OR Apache-2.0 |
+| `docs/explainer/explainer.mp4` | The ScriptCraft contributors | Narrated explainer: `ui_shot` screenshots, `scriptcraft-cli` output, Kokoro TTS voice; Anton and JetBrains Mono (SIL OFL 1.1) | MIT OR Apache-2.0 |
