@@ -475,7 +475,7 @@ fn push_character(paras: &mut Vec<Para>, text: &str) {
 /// dot or space.
 pub fn is_heading(line: &str) -> bool {
     let up = line.trim_start().to_uppercase();
-    ["INT./EXT", "INT/EXT", "EXT./INT", "EXT/INT", "I/E", "INT", "EXT", "EST"]
+    ["INT./EXT", "INT/EXT", "EXT./INT", "EXT/INT", "I/E", "INT", "EXT", "EST", "ИНТ./НАТ", "ИНТ/НАТ", "НАТ./ИНТ", "НАТ/ИНТ", "ИНТ", "НАТ"]
         .iter()
         .any(|p| up.strip_prefix(p).is_some_and(|rest| rest.starts_with('.') || rest.starts_with(' ')))
 }

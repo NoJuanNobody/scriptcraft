@@ -59,8 +59,9 @@ pub fn global_shortcuts(app: &mut ScriptApp, ctx: &egui::Context) {
 }
 
 fn item(app: &mut ScriptApp, ui: &mut Ui, label: &str, id: &str, key: &str) {
+    let lang = app.prefs.appearance.language;
     let enabled = if id.starts_with("ui.") { true } else { app.session.registry.get(id).is_some_and(|c| (c.enabled)(&app.session).is_none()) };
-    let mut b = egui::Button::new(label);
+    let mut b = egui::Button::new(lang.text(label));
     if !key.is_empty() {
         b = b.shortcut_text(pretty_key(key));
     }
@@ -71,8 +72,9 @@ fn item(app: &mut ScriptApp, ui: &mut Ui, label: &str, id: &str, key: &str) {
 }
 
 fn check(app: &mut ScriptApp, ui: &mut Ui, label: &str, on: bool, id: &str, params: serde_json::Value) {
+    let lang = app.prefs.appearance.language;
     let mut v = on;
-    if ui.checkbox(&mut v, label).clicked() {
+    if ui.checkbox(&mut v, lang.text(label)).clicked() {
         app.run(id, params);
         ui.close();
     }
@@ -108,18 +110,19 @@ pub fn pretty_key(k: &str) -> String {
 const ELEMENT_KEYS: [&str; 8] = ["Mod+1", "Mod+2", "Mod+3", "Mod+4", "Mod+5", "Mod+6", "Mod+7", "Mod+8"];
 
 pub fn menu_bar(app: &mut ScriptApp, ui: &mut Ui) {
+    let lang = app.prefs.appearance.language;
     let t = app.tokens();
     egui::Panel::top("menu").frame(egui::Frame::NONE.fill(t.chrome).inner_margin(egui::Margin::symmetric(8, 3))).show(ui, |ui| {
         egui::MenuBar::new().ui(ui, |ui| {
-            ui.menu_button("File", |ui| {
+            ui.menu_button(lang.text("File"), |ui| {
                 item(app, ui, "New Script", "file.new", "Mod+N");
                 crate::drafts::new_menu(app, ui);
                 item(app, ui, "Open…", "ui.open", "Mod+O");
                 item(app, ui, "Import from Word, Celtx or PDF…", "ui.import", "");
-                ui.menu_button("Open Recent", |ui| {
+                ui.menu_button(lang.text("Open Recent"), |ui| {
                     let recent = app.prefs.files.recent.clone();
                     if recent.is_empty() {
-                        ui.label(RichText::new("No recent files").italics());
+                        ui.label(RichText::new(lang.text("No recent files")).italics());
                     }
                     for p in recent {
                         let name = std::path::Path::new(&p).file_name().and_then(|n| n.to_str()).unwrap_or(&p).to_string();
@@ -145,18 +148,18 @@ pub fn menu_bar(app: &mut ScriptApp, ui: &mut Ui) {
                 ui.separator();
                 item(app, ui, "Quit", "ui.quit", "Mod+Q");
             });
-            ui.menu_button("Edit", |ui| {
-                let undo = app.session.undo_label().map_or("Undo".to_string(), |l| format!("Undo {l}"));
+            ui.menu_button(lang.text("Edit"), |ui| {
+                let undo = app.session.undo_label().map_or(lang.text("Undo").to_string(), |l| lang.format("Undo {l}", &[("l", (l).to_string())]));
                 item(app, ui, &undo, "edit.undo", "Mod+Z");
                 item(app, ui, "Redo", "edit.redo", "Mod+Shift+Z");
                 ui.separator();
-                if ui.add(egui::Button::new("Cut").shortcut_text(pretty_key("Mod+X"))).clicked() {
+                if ui.add(egui::Button::new(lang.text("Cut")).shortcut_text(pretty_key("Mod+X"))).clicked() {
                     if let Ok(v) = app.execute("edit.cut", json!({})) {
                         ui.ctx().copy_text(v["text"].as_str().unwrap_or("").to_string());
                     }
                     ui.close();
                 }
-                if ui.add(egui::Button::new("Copy").shortcut_text(pretty_key("Mod+C"))).clicked() {
+                if ui.add(egui::Button::new(lang.text("Copy")).shortcut_text(pretty_key("Mod+C"))).clicked() {
                     if let Ok(v) = app.execute("edit.copy", json!({})) {
                         ui.ctx().copy_text(v["text"].as_str().unwrap_or("").to_string());
                     }
@@ -168,7 +171,7 @@ pub fn menu_bar(app: &mut ScriptApp, ui: &mut Ui) {
                 ui.separator();
                 crate::bookmarks::menu(app, ui);
             });
-            ui.menu_button("View", |ui| {
+            ui.menu_button(lang.text("View"), |ui| {
                 let v = crate::split::active_view(app);
                 check(app, ui, "Page View", v == View::Page, "ui.view.page", json!({}));
                 check(app, ui, "Index Cards", v == View::Cards, "ui.view.cards", json!({}));
@@ -176,7 +179,7 @@ pub fn menu_bar(app: &mut ScriptApp, ui: &mut Ui) {
                 check(app, ui, "Outline", v == View::Outline, "ui.view.outline", json!({}));
                 check(app, ui, "Beat Board", v == View::BeatBoard, "ui.view.beats", json!({}));
                 check(app, ui, "Story Map", app.story_map, "ui.toggleStoryMap", json!({}));
-                ui.menu_button("Add Structure Point", |ui| {
+                ui.menu_button(lang.text("Add Structure Point"), |ui| {
                     for k in scriptcraft_doc::StructureKind::ALL {
                         if ui.button(format!("{} Before This Scene", k.label())).clicked() {
                             app.run("structure.add", json!({"kind": k.id()}));
@@ -220,11 +223,20 @@ pub fn menu_bar(app: &mut ScriptApp, ui: &mut Ui) {
                 item(app, ui, "Zoom Out", "ui.zoomOut", "Mod+-");
                 item(app, ui, "Actual Size", "ui.zoomReset", "Mod+0");
                 item(app, ui, "Fit Page Width", "ui.zoomFit", "Mod+9");
+                ui.separator();
+                ui.menu_button(lang.text("Language"), |ui| {
+                    for &language in crate::i18n::Language::ALL {
+                        if ui.selectable_label(lang == language, language.name()).clicked() {
+                            app.run("ui.language", json!({"language": language.code()}));
+                            ui.close();
+                        }
+                    }
+                });
             });
-            ui.menu_button("Format", |ui| {
+            ui.menu_button(lang.text("Format"), |ui| {
                 let cur = app.session.element();
                 for (e, k) in Element::ALL.iter().zip(ELEMENT_KEYS) {
-                    let b = egui::Button::selectable(cur == *e, e.name()).shortcut_text(pretty_key(k));
+                    let b = egui::Button::selectable(cur == *e, lang.text(e.name())).shortcut_text(pretty_key(k));
                     if ui.add(b).clicked() {
                         app.run("element.set", json!({"element": e.id()}));
                         ui.close();
@@ -242,7 +254,7 @@ pub fn menu_bar(app: &mut ScriptApp, ui: &mut Ui) {
                 ui.separator();
                 item(app, ui, "Dual Dialogue", "dialogue.toggleDual", "Mod+D");
             });
-            ui.menu_button("Document", |ui| {
+            ui.menu_button(lang.text("Document"), |ui| {
                 item(app, ui, "Title Page…", "ui.titlePage", "");
                 item(app, ui, "Page Setup…", "ui.pageSetup", "");
                 ui.separator();
@@ -258,10 +270,11 @@ pub fn menu_bar(app: &mut ScriptApp, ui: &mut Ui) {
                 check(app, ui, "Automatic Character (CONT'D)", st.auto_contd, "settings.set", json!({"autoContd": !st.auto_contd}));
                 check(app, ui, "Print Title Page", st.title_page, "settings.set", json!({"titlePage": !st.title_page}));
             });
-            ui.menu_button("Production", |ui| production_menu(app, ui));
-            ui.menu_button("Tools", |ui| {
+            ui.menu_button(lang.text("Production"), |ui| production_menu(app, ui));
+            ui.menu_button(lang.text("Tools"), |ui| {
                 item(app, ui, "Next Misspelling", "spell.next", "Mod+;");
                 check(app, ui, "Check Spelling as You Type", app.spelling, "ui.toggleSpelling", json!({}));
+                ui.label(egui::RichText::new(lang.text("Spelling checks English words only; Russian words are skipped.")).small().weak());
                 crate::annotations::tools_menu(app, ui);
                 ui.separator();
                 ui.menu_button("Read Aloud", |ui| {
@@ -275,7 +288,7 @@ pub fn menu_bar(app: &mut ScriptApp, ui: &mut Ui) {
                 item(app, ui, "Dictation…", "ui.dictation", "");
                 crate::drafts::tools_menu(app, ui);
             });
-            ui.menu_button("Help", |ui| {
+            ui.menu_button(lang.text("Help"), |ui| {
                 item(app, ui, "About ScriptCraft", "ui.about", "");
                 item(app, ui, "Open Sample Script", "file.sample", "");
             });
@@ -316,6 +329,7 @@ fn sep(ui: &mut Ui) {
 }
 
 pub fn toolbar(app: &mut ScriptApp, ui: &mut Ui) {
+    let lang = app.prefs.appearance.language;
     let t = app.tokens();
     egui::Panel::top("toolbar")
         .frame(
@@ -327,25 +341,26 @@ pub fn toolbar(app: &mut ScriptApp, ui: &mut Ui) {
         .show(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 2.0;
-                if icons::button(ui, Icon::Navigator, "Navigator", app.navigator).clicked() {
+                if icons::button(ui, Icon::Navigator, lang.text("Navigator"), app.navigator).clicked() {
                     app.run("ui.toggleNavigator", json!({}));
                 }
                 sep(ui);
                 for (icon, tip, id) in [
-                    (Icon::New, "New script", "file.new"),
-                    (Icon::Open, "Open…", "ui.open"),
-                    (Icon::Save, "Save", "ui.save"),
-                    (Icon::Pdf, "Export PDF…", "ui.exportPdf"),
+                    (Icon::New, lang.text("New script"), "file.new"),
+                    (Icon::Open, lang.text("Open…"), "ui.open"),
+                    (Icon::Save, lang.text("Save"), "ui.save"),
+                    (Icon::Pdf, lang.text("Export PDF…"), "ui.exportPdf"),
                 ] {
-                    if icons::button(ui, icon, tip, false).clicked() {
+                    if icons::button(ui, icon, lang.text(tip), false).clicked() {
                         app.run(id, json!({}));
                     }
                 }
                 sep(ui);
-                for (icon, tip, id, enabled) in
-                    [(Icon::Undo, "Undo", "edit.undo", app.session.can_undo()), (Icon::Redo, "Redo", "edit.redo", app.session.can_redo())]
-                {
-                    if ui.add_enabled_ui(enabled, |ui| icons::button(ui, icon, tip, false)).inner.clicked() {
+                for (icon, tip, id, enabled) in [
+                    (Icon::Undo, lang.text("Undo"), "edit.undo", app.session.can_undo()),
+                    (Icon::Redo, lang.text("Redo"), "edit.redo", app.session.can_redo()),
+                ] {
+                    if ui.add_enabled_ui(enabled, |ui| icons::button(ui, icon, lang.text(tip), false)).inner.clicked() {
                         app.run(id, json!({}));
                     }
                 }
@@ -355,17 +370,17 @@ pub fn toolbar(app: &mut ScriptApp, ui: &mut Ui) {
                 ui.add_space(4.0);
                 egui::ComboBox::from_id_salt("element")
                     .width(150.0)
-                    .selected_text(RichText::new(cur.name()).strong())
+                    .selected_text(RichText::new(lang.text(cur.name())).strong())
                     .show_ui(ui, |ui| {
                         for (e, k) in Element::ALL.iter().zip(ELEMENT_KEYS) {
-                            let label = format!("{:<16} {}", e.name(), pretty_key(k));
+                            let label = format!("{:<16} {}", lang.text(e.name()), pretty_key(k));
                             if ui.selectable_label(cur == *e, label).clicked() {
                                 app.run("element.set", json!({"element": e.id()}));
                             }
                         }
                     })
                     .response
-                    .on_hover_text("Element of the current paragraph (Enter and Tab change it as you type)");
+                    .on_hover_text(lang.text("Element of the current paragraph (Enter and Tab change it as you type)"));
                 ui.add_space(4.0);
                 let fs = scriptcraft_engine::cmd::format::caret_style(&app.session);
                 let (a, b) = app.session.sel.ordered();
@@ -374,9 +389,9 @@ pub fn toolbar(app: &mut ScriptApp, ui: &mut Ui) {
                     .map(|f| if a == b { fs.get(*f) } else { app.session.script.all_have(a, b, *f) })
                     .collect();
                 for (k, (label, tip, id, f)) in [
-                    ("B", "Bold", "format.bold", scriptcraft_doc::Flag::Bold),
-                    ("I", "Italic", "format.italic", scriptcraft_doc::Flag::Italic),
-                    ("U", "Underline", "format.underline", scriptcraft_doc::Flag::Underline),
+                    ("B", lang.text("Bold"), "format.bold", scriptcraft_doc::Flag::Bold),
+                    ("I", lang.text("Italic"), "format.italic", scriptcraft_doc::Flag::Italic),
+                    ("U", lang.text("Underline"), "format.underline", scriptcraft_doc::Flag::Underline),
                 ]
                 .into_iter()
                 .enumerate()
@@ -402,16 +417,16 @@ pub fn toolbar(app: &mut ScriptApp, ui: &mut Ui) {
                     }
                 }
                 sep(ui);
-                if icons::button(ui, Icon::Dual, "Dual dialogue", false).clicked() {
+                if icons::button(ui, Icon::Dual, lang.text("Dual dialogue"), false).clicked() {
                     app.run("dialogue.toggleDual", json!({}));
                 }
-                if icons::button(ui, Icon::Numbers, "Scene numbers", app.session.script.settings.show_scene_numbers).clicked() {
+                if icons::button(ui, Icon::Numbers, lang.text("Scene numbers"), app.session.script.settings.show_scene_numbers).clicked() {
                     app.run("view.toggleSceneNumbers", json!({}));
                 }
-                if icons::button(ui, Icon::Title, "Title page…", app.title_dialog).clicked() {
+                if icons::button(ui, Icon::Title, lang.text("Title page…"), app.title_dialog).clicked() {
                     app.run("ui.titlePage", json!({}));
                 }
-                if icons::button(ui, Icon::Find, "Find and replace", app.find.is_some()).clicked() {
+                if icons::button(ui, Icon::Find, lang.text("Find and replace"), app.find.is_some()).clicked() {
                     if app.find.is_some() {
                         app.find = None;
                     } else {
@@ -420,13 +435,13 @@ pub fn toolbar(app: &mut ScriptApp, ui: &mut Ui) {
                 }
                 sep(ui);
                 for (icon, tip, id, v) in [
-                    (Icon::Page, "Page view", "ui.view.page", View::Page),
-                    (Icon::Cards, "Index cards", "ui.view.cards", View::Cards),
-                    (Icon::Reports, "Reports", "ui.view.reports", View::Reports),
-                    (Icon::Outline, "Outline", "ui.view.outline", View::Outline),
-                    (Icon::Beats, "Beat board", "ui.view.beats", View::BeatBoard),
+                    (Icon::Page, lang.text("Page view"), "ui.view.page", View::Page),
+                    (Icon::Cards, lang.text("Index cards"), "ui.view.cards", View::Cards),
+                    (Icon::Reports, lang.text("Reports"), "ui.view.reports", View::Reports),
+                    (Icon::Outline, lang.text("Outline"), "ui.view.outline", View::Outline),
+                    (Icon::Beats, lang.text("Beat board"), "ui.view.beats", View::BeatBoard),
                 ] {
-                    if icons::button(ui, icon, tip, crate::split::active_view(app) == v).clicked() {
+                    if icons::button(ui, icon, lang.text(tip), crate::split::active_view(app) == v).clicked() {
                         app.run(id, json!({}));
                     }
                 }
@@ -437,16 +452,16 @@ pub fn toolbar(app: &mut ScriptApp, ui: &mut Ui) {
                     app.run("ui.split", json!({}));
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    let (icon, tip) = if app.dark { (Icon::Sun, "Light mode") } else { (Icon::Moon, "Dark mode") };
-                    if icons::button(ui, icon, tip, false).clicked() {
+                    let (icon, tip) = if app.dark { (Icon::Sun, lang.text("Light mode")) } else { (Icon::Moon, lang.text("Dark mode")) };
+                    if icons::button(ui, icon, lang.text(tip), false).clicked() {
                         app.run("ui.theme.toggle", json!({}));
                     }
                     ui.add_space(6.0);
-                    if ui.small_button("+").on_hover_text("Zoom in").clicked() {
+                    if ui.small_button("+").on_hover_text(lang.text("Zoom in")).clicked() {
                         app.run("ui.zoomIn", json!({}));
                     }
                     ui.label(RichText::new(format!("{:.0}%", app.canvas.zoom * 100.0)).color(t.text_soft).monospace());
-                    if ui.small_button("−").on_hover_text("Zoom out").clicked() {
+                    if ui.small_button("−").on_hover_text(lang.text("Zoom out")).clicked() {
                         app.run("ui.zoomOut", json!({}));
                     }
                 });
@@ -455,6 +470,7 @@ pub fn toolbar(app: &mut ScriptApp, ui: &mut Ui) {
 }
 
 pub fn find_bar(app: &mut ScriptApp, ui: &mut Ui) {
+    let lang = app.prefs.appearance.language;
     let t = app.tokens();
     let Some(mut f) = app.find.take() else { return };
     let mut close = false;
@@ -462,34 +478,34 @@ pub fn find_bar(app: &mut ScriptApp, ui: &mut Ui) {
         .frame(egui::Frame::NONE.fill(t.panel).inner_margin(egui::Margin::symmetric(12, 6)).stroke(egui::Stroke::new(1.0, t.chrome_line)))
         .show(ui, |ui| {
             ui.horizontal(|ui| {
-                ui.label("Find");
-                let r = ui.add(egui::TextEdit::singleline(&mut f.find).desired_width(200.0).hint_text("text"));
+                ui.label(lang.text("Find"));
+                let r = ui.add(egui::TextEdit::singleline(&mut f.find).desired_width(200.0).hint_text(lang.text("text")));
                 if f.focus {
                     r.request_focus();
                     f.focus = false;
                 }
                 let enter = r.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter));
-                ui.label("Replace with");
+                ui.label(lang.text("Replace with"));
                 ui.add(egui::TextEdit::singleline(&mut f.replace).desired_width(160.0));
-                ui.checkbox(&mut f.match_case, "Match case");
-                if ui.button("Previous").clicked() {
+                ui.checkbox(&mut f.match_case, lang.text("Match case"));
+                if ui.button(lang.text("Previous")).clicked() {
                     app.run("edit.find", json!({"text": f.find, "matchCase": f.match_case, "backwards": true}));
                 }
-                if ui.button("Next").clicked() || enter {
+                if ui.button(lang.text("Next")).clicked() || enter {
                     app.run("edit.find", json!({"text": f.find, "matchCase": f.match_case}));
                     if enter {
                         r.request_focus();
                     }
                 }
-                if ui.button("Replace").clicked() {
+                if ui.button(lang.text("Replace")).clicked() {
                     app.run("edit.replace", json!({"find": f.find, "replace": f.replace, "matchCase": f.match_case}));
                 }
-                if ui.button("Replace All").clicked()
+                if ui.button(lang.text("Replace All")).clicked()
                     && let Ok(v) = app.execute("edit.replaceAll", json!({"find": f.find, "replace": f.replace, "matchCase": f.match_case}))
                 {
-                    app.set_status(format!("Replaced {} occurrence(s)", v["count"]));
+                    app.set_status(lang.format("Replaced {count} occurrence(s)", &[("count", (v["count"]).to_string())]));
                 }
-                if ui.button("Done").clicked() || ui.input(|i| i.key_pressed(Key::Escape)) {
+                if ui.button(lang.text("Done")).clicked() || ui.input(|i| i.key_pressed(Key::Escape)) {
                     close = true;
                 }
             });
@@ -502,6 +518,7 @@ pub fn find_bar(app: &mut ScriptApp, ui: &mut Ui) {
 }
 
 pub fn status_bar(app: &mut ScriptApp, ui: &mut Ui, status: Option<String>) {
+    let lang = app.prefs.appearance.language;
     let t = app.tokens();
     let l = app.session.layout();
     let focus = app.session.sel.focus;
@@ -514,25 +531,25 @@ pub fn status_bar(app: &mut ScriptApp, ui: &mut Ui, status: Option<String>) {
         .show(ui, |ui| {
             ui.horizontal(|ui| {
                 let soft = |s: String| RichText::new(s).size(12.0).color(t.text_soft);
-                ui.label(RichText::new(app.session.element().name()).size(12.0).strong().color(t.accent));
+                ui.label(RichText::new(lang.text(app.session.element().name())).size(12.0).strong().color(t.accent));
                 ui.label(soft("·".into()));
-                ui.label(soft(format!("Page {page} of {}", l.script_pages())));
+                ui.label(soft(lang.format("Page {page} of {total}", &[("page", (page).to_string()), ("total", (l.script_pages()).to_string())])));
                 ui.label(soft("·".into()));
-                ui.label(soft(format!("Scene {scene} of {scenes}")));
+                ui.label(soft(lang.format("Scene {scene} of {scenes}", &[("scene", (scene).to_string()), ("scenes", (scenes).to_string())])));
                 ui.label(soft("·".into()));
-                ui.label(soft(format!("{} words", app.session.script.word_count())));
+                ui.label(soft(lang.format("{count} words", &[("count", (app.session.script.word_count()).to_string())])));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     let state = if app.session.dirty {
-                        "Edited"
+                        lang.text("Edited")
                     } else if app.session.path.is_some() {
-                        "Saved"
+                        lang.text("Saved")
                     } else {
                         ""
                     };
-                    ui.label(soft(state.into()));
+                    ui.label(soft(lang.text(state).into()));
                     crate::collab_ui::status_badge(app, ui);
                     if let Some(s) = status {
-                        ui.label(RichText::new(s).size(12.0).color(t.text));
+                        ui.label(RichText::new(lang.status(&s)).size(12.0).color(t.text));
                     }
                 });
             });
@@ -540,6 +557,7 @@ pub fn status_bar(app: &mut ScriptApp, ui: &mut Ui, status: Option<String>) {
 }
 
 pub fn navigator(app: &mut ScriptApp, ui: &mut Ui) {
+    let lang = app.prefs.appearance.language;
     let t = app.tokens();
     egui::Panel::left("navigator")
         .resizable(true)
@@ -553,12 +571,12 @@ pub fn navigator(app: &mut ScriptApp, ui: &mut Ui) {
         )
         .show(ui, |ui| {
             ui.horizontal(|ui| {
-                ui.label(RichText::new("NAVIGATOR").size(11.0).strong().color(t.text_soft));
+                ui.label(RichText::new(lang.text("NAVIGATOR")).size(11.0).strong().color(t.text_soft));
             });
             ui.add_space(4.0);
             ui.horizontal(|ui| {
                 for (i, name) in ["Scenes", "Characters", "Notes", "Bookmarks"].iter().enumerate() {
-                    if ui.selectable_label(app.nav_tab == i, *name).clicked() {
+                    if ui.selectable_label(app.nav_tab == i, lang.text(name)).clicked() {
                         app.nav_tab = i;
                     }
                 }
@@ -570,7 +588,7 @@ pub fn navigator(app: &mut ScriptApp, ui: &mut Ui) {
                     let cur = app.session.script.scene_of(app.session.sel.focus.para);
                     let scenes = app.session.script.scenes();
                     if scenes.is_empty() {
-                        ui.label(RichText::new("No scenes yet. Start a paragraph with INT. or EXT.").color(t.text_soft));
+                        ui.label(RichText::new(lang.text("No scenes yet. Start a paragraph with INT. or EXT.")).color(t.text_soft));
                     }
                     // Structure points before each scene: (heading paragraph → reading-order index of its first point).
                     let mut first_point = std::collections::HashMap::new();
@@ -651,7 +669,14 @@ pub fn navigator(app: &mut ScriptApp, ui: &mut Ui) {
                         ui.horizontal(|ui| {
                             ui.label(RichText::new(&c.name).strong());
                             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                ui.label(RichText::new(format!("{} lines · p.{}", c.speeches, c.first_page_label)).size(11.0).color(t.text_soft));
+                                ui.label(
+                                    RichText::new(lang.format(
+                                        "{lines} lines · p.{page}",
+                                        &[("lines", (c.speeches).to_string()), ("page", c.first_page_label.clone())],
+                                    ))
+                                    .size(11.0)
+                                    .color(t.text_soft),
+                                );
                             });
                         });
                     }
@@ -667,6 +692,7 @@ pub fn elide(s: &str, n: usize) -> String {
 }
 
 pub fn dialogs(app: &mut ScriptApp, ctx: &egui::Context) {
+    let lang = app.prefs.appearance.language;
     crate::production::dialogs(app, ctx);
     if app.title_dialog {
         let mut open = true;
@@ -675,17 +701,17 @@ pub fn dialogs(app: &mut ScriptApp, ctx: &egui::Context) {
         let mut lines = tp.lines.clone();
         let mut lines_changed = false;
         let mut action: Option<&str> = None;
-        egui::Window::new("Title Page").open(&mut open).resizable(false).collapsible(false).default_width(480.0).show(ctx, |ui| {
+        egui::Window::new(lang.text("Title Page")).open(&mut open).resizable(false).collapsible(false).default_width(480.0).show(ctx, |ui| {
             if tp.is_free_form() {
-                ui.label(RichText::new("Free-form title page: each row is one printed line, top to bottom.").size(11.5));
+                ui.label(RichText::new(lang.text("Free-form title page: each row is one printed line, top to bottom.")).size(11.5));
                 ui.add_space(4.0);
                 let mut remove = None;
                 egui::ScrollArea::vertical().max_height(380.0).show(ui, |ui| {
                     egui::Grid::new("tp-lines").num_columns(5).spacing([6.0, 4.0]).show(ui, |ui| {
                         for (i, l) in lines.iter_mut().enumerate() {
-                            egui::ComboBox::from_id_salt(("tp-align", i)).width(70.0).selected_text(l.align.name()).show_ui(ui, |ui| {
+                            egui::ComboBox::from_id_salt(("tp-align", i)).width(70.0).selected_text(lang.text(l.align.name())).show_ui(ui, |ui| {
                                 for a in [scriptcraft_doc::Align::Left, scriptcraft_doc::Align::Center, scriptcraft_doc::Align::Right] {
-                                    lines_changed |= ui.selectable_value(&mut l.align, a, a.name()).changed();
+                                    lines_changed |= ui.selectable_value(&mut l.align, a, lang.text(a.name())).changed();
                                 }
                             });
                             lines_changed |= ui.add_sized([250.0, 22.0], egui::TextEdit::singleline(&mut l.text)).changed();
@@ -697,7 +723,7 @@ pub fn dialogs(app: &mut ScriptApp, ctx: &egui::Context) {
                                     }
                                 }
                             });
-                            if ui.small_button("Delete").on_hover_text("Delete this line").clicked() {
+                            if ui.small_button(lang.text("Delete")).on_hover_text(lang.text("Delete this line")).clicked() {
                                 remove = Some(i);
                             }
                             ui.end_row();
@@ -710,11 +736,11 @@ pub fn dialogs(app: &mut ScriptApp, ctx: &egui::Context) {
                 }
                 ui.add_space(6.0);
                 ui.horizontal(|ui| {
-                    if ui.button("Add Line").clicked() {
+                    if ui.button(lang.text("Add Line")).clicked() {
                         lines.push(scriptcraft_doc::TitleLine::new(scriptcraft_doc::Align::Center, ""));
                         lines_changed = true;
                     }
-                    if ui.button("Use Fields Instead").on_hover_text("Lay out the title page from its fields").clicked() {
+                    if ui.button(lang.text("Use Fields Instead")).on_hover_text(lang.text("Lay out the title page from its fields")).clicked() {
                         action = Some("title.useFields");
                     }
                 });
@@ -722,16 +748,16 @@ pub fn dialogs(app: &mut ScriptApp, ctx: &egui::Context) {
             }
             egui::Grid::new("tp").num_columns(2).spacing([12.0, 8.0]).show(ui, |ui| {
                 for (label, field, multi) in [
-                    ("Title", "title", false),
-                    ("Credit", "credit", false),
-                    ("Author", "author", false),
-                    ("Source", "source", false),
-                    ("Draft date", "draftDate", false),
-                    ("Contact", "contact", true),
-                    ("Copyright", "copyright", false),
-                    ("Notes", "notes", true),
+                    (lang.text("Title"), "title", false),
+                    (lang.text("Credit"), "credit", false),
+                    (lang.text("Author"), "author", false),
+                    (lang.text("Source"), "source", false),
+                    (lang.text("Draft date"), "draftDate", false),
+                    (lang.text("Contact"), "contact", true),
+                    (lang.text("Copyright"), "copyright", false),
+                    (lang.text("Notes"), "notes", true),
                 ] {
-                    ui.label(label);
+                    ui.label(lang.text(label));
                     let mut v = tp.get(field).unwrap_or("").to_string();
                     let r = if multi {
                         ui.add(egui::TextEdit::multiline(&mut v).desired_rows(2).desired_width(300.0))
@@ -766,28 +792,28 @@ pub fn dialogs(app: &mut ScriptApp, ctx: &egui::Context) {
         let mut open = true;
         let mut changes: Vec<serde_json::Value> = Vec::new();
         let mut reset = false;
-        egui::Window::new("Element Settings")
+        egui::Window::new(lang.text("Element Settings"))
             .open(&mut open)
             .resizable(false)
             .collapsible(false)
             .pivot(egui::Align2::CENTER_TOP)
             .default_pos(ctx.content_rect().center_top() + vec2(0.0, 110.0))
             .show(ctx, |ui| {
-                ui.label(RichText::new("Indents in inches from the left edge of the paper; space before in blank lines.").size(11.5));
+                ui.label(RichText::new(lang.text("Indents in inches from the left edge of the paper; space before in blank lines.")).size(11.5));
                 ui.add_space(6.0);
                 egui::Grid::new("elements").num_columns(11).spacing([10.0, 6.0]).striped(true).show(ui, |ui| {
                     for h in [
-                        "Element",
-                        "Left",
-                        "Right",
-                        "Before",
-                        "Spacing",
-                        "Align",
-                        "Caps",
-                        "New page",
-                        "Enter goes to",
-                        "Tab goes to",
-                        "Tab when empty",
+                        lang.text("Element"),
+                        lang.text("Left"),
+                        lang.text("Right"),
+                        lang.text("Before"),
+                        lang.text("Spacing"),
+                        lang.text("Align"),
+                        lang.text("Caps"),
+                        lang.text("New page"),
+                        lang.text("Enter goes to"),
+                        lang.text("Tab goes to"),
+                        lang.text("Tab when empty"),
                     ] {
                         ui.label(RichText::new(h).strong());
                     }
@@ -795,7 +821,7 @@ pub fn dialogs(app: &mut ScriptApp, ctx: &egui::Context) {
                     for e in Element::ALL {
                         let f = app.session.script.settings.elements.get(e);
                         let id = e.id();
-                        ui.label(e.name());
+                        ui.label(lang.text(e.name()));
                         let (mut l, mut r, mut b, mut caps) = (f.left, f.right, f.before, f.uppercase);
                         let (mut sp, mut np) = (f.spacing, f.new_page);
                         if ui.add(egui::DragValue::new(&mut l).speed(0.05).range(0.0..=8.0).fixed_decimals(2)).changed() {
@@ -807,12 +833,12 @@ pub fn dialogs(app: &mut ScriptApp, ctx: &egui::Context) {
                         if ui.add(egui::DragValue::new(&mut b).range(0..=6)).changed() {
                             changes.push(json!({"element": id, "before": b}));
                         }
-                        if ui.add(egui::DragValue::new(&mut sp).range(1..=3)).on_hover_text("1 = single, 2 = double-spaced").changed() {
+                        if ui.add(egui::DragValue::new(&mut sp).range(1..=3)).on_hover_text(lang.text("1 = single, 2 = double-spaced")).changed() {
                             changes.push(json!({"element": id, "spacing": sp}));
                         }
-                        egui::ComboBox::from_id_salt(("align", id)).width(70.0).selected_text(f.align.name()).show_ui(ui, |ui| {
+                        egui::ComboBox::from_id_salt(("align", id)).width(70.0).selected_text(lang.text(f.align.name())).show_ui(ui, |ui| {
                             for a in [scriptcraft_doc::Align::Left, scriptcraft_doc::Align::Center, scriptcraft_doc::Align::Right] {
-                                if ui.selectable_label(f.align == a, a.name()).clicked() {
+                                if ui.selectable_label(f.align == a, lang.text(a.name())).clicked() {
                                     changes.push(json!({"element": id, "align": a.name()}));
                                 }
                             }
@@ -824,9 +850,9 @@ pub fn dialogs(app: &mut ScriptApp, ctx: &egui::Context) {
                             changes.push(json!({"element": id, "newPage": np}));
                         }
                         for (key, cur) in [("enter", f.enter), ("tab", f.tab), ("tabEmpty", f.tab_empty)] {
-                            egui::ComboBox::from_id_salt((key, id)).width(110.0).selected_text(cur.name()).show_ui(ui, |ui| {
+                            egui::ComboBox::from_id_salt((key, id)).width(110.0).selected_text(lang.text(cur.name())).show_ui(ui, |ui| {
                                 for t in Element::ALL {
-                                    if ui.selectable_label(cur == t, t.name()).clicked() {
+                                    if ui.selectable_label(cur == t, lang.text(t.name())).clicked() {
                                         changes.push(json!({"element": id, key: t.id()}));
                                     }
                                 }
@@ -836,7 +862,7 @@ pub fn dialogs(app: &mut ScriptApp, ctx: &egui::Context) {
                     }
                 });
                 ui.add_space(8.0);
-                if ui.button("Reset to Standard").clicked() {
+                if ui.button(lang.text("Reset to Standard")).clicked() {
                     reset = true;
                 }
             });
@@ -850,20 +876,21 @@ pub fn dialogs(app: &mut ScriptApp, ctx: &egui::Context) {
     }
     if app.about {
         let mut open = true;
-        egui::Window::new("About ScriptCraft").open(&mut open).resizable(false).collapsible(false).show(ctx, |ui| {
+        egui::Window::new(lang.text("About ScriptCraft")).open(&mut open).resizable(false).collapsible(false).show(ctx, |ui| {
             ui.heading("ScriptCraft");
-            ui.label(format!("Version {}", env!("CARGO_PKG_VERSION")));
-            ui.label("Open-source screenwriting in pure Rust, by the ArtCraft community.");
-            ui.label("MIT OR Apache-2.0. Typeface: Courier Prime (SIL Open Font License 1.1).");
+            ui.label(lang.format("Version {version}", &[("version", (env!("CARGO_PKG_VERSION")).to_string())]));
+            ui.label(lang.text("Open-source screenwriting in pure Rust, by the ArtCraft community."));
+            ui.label(lang.text("MIT OR Apache-2.0. Typeface: Courier Badi (SIL Open Font License 1.1)."));
             ui.separator();
             let loc = app.settings_location();
-            let settings = loc["file"].as_str().map_or_else(|| "not stored (this run keeps settings in memory)".to_string(), str::to_string);
-            ui.label(RichText::new(format!("Settings: {settings}")).size(11.5));
+            let settings =
+                loc["file"].as_str().map_or_else(|| lang.text("not stored (this run keeps settings in memory)").to_string(), str::to_string);
+            ui.label(RichText::new(lang.format("Settings: {settings}", &[("settings", (settings).to_string())])).size(11.5));
             if let Some(rule) = loc["rule"].as_str() {
-                ui.label(RichText::new(format!("Chosen by: {rule}")).size(11.5));
+                ui.label(RichText::new(lang.format("Chosen by: {rule}", &[("rule", (rule).to_string())])).size(11.5));
             }
             if let Some(d) = loc["data"].as_str() {
-                ui.label(RichText::new(format!("Recovery, backups, dictionary: {d}")).size(11.5));
+                ui.label(RichText::new(lang.format("Recovery, backups, dictionary: {d}", &[("d", (d).to_string())])).size(11.5));
             }
             ui.hyperlink_to("getartcraft.com/apps", "https://getartcraft.com/apps");
         });
@@ -871,37 +898,38 @@ pub fn dialogs(app: &mut ScriptApp, ctx: &egui::Context) {
     }
     if let Some(r) = app.recovery_offer.clone() {
         let mut choice = None;
-        egui::Window::new("Recover unsaved changes?").collapsible(false).resizable(false).anchor(egui::Align2::CENTER_CENTER, vec2(0.0, 0.0)).show(
-            ctx,
-            |ui| {
+        egui::Window::new(lang.text("Recover unsaved changes?"))
+            .collapsible(false)
+            .resizable(false)
+            .anchor(egui::Align2::CENTER_CENTER, vec2(0.0, 0.0))
+            .show(ctx, |ui| {
                 let name = r
                     .path
                     .as_deref()
                     .and_then(|p| std::path::Path::new(p).file_name())
                     .and_then(|n| n.to_str())
-                    .unwrap_or("an untitled script")
+                    .unwrap_or(lang.text("an untitled script"))
                     .to_string();
-                ui.label(format!(
-                    "ScriptCraft did not close normally. An autosaved copy of {name} ({} scenes) is available.",
-                    r.script.scenes().len()
+                ui.label(lang.format(
+                    "ScriptCraft did not close normally. An autosaved copy of {name} ({scenes} scenes) is available.",
+                    &[("name", (name).to_string()), ("scenes", (r.script.scenes().len()).to_string())],
                 ));
                 ui.horizontal(|ui| {
-                    if ui.button("Recover").clicked() {
+                    if ui.button(lang.text("Recover")).clicked() {
                         choice = Some(true);
                     }
-                    if ui.button("Discard").clicked() {
+                    if ui.button(lang.text("Discard")).clicked() {
                         choice = Some(false);
                     }
                 });
-            },
-        );
+            });
         match choice {
             Some(true) => {
                 app.session.replace_script(r.script);
                 app.session.path = r.path.map(std::path::PathBuf::from);
                 app.session.dirty = true;
                 app.recovery_offer = None;
-                app.set_status("Recovered unsaved changes; save to keep them");
+                app.set_status(lang.text("Recovered unsaved changes; save to keep them"));
             }
             Some(false) => {
                 app.recovery_offer = None;
@@ -912,23 +940,24 @@ pub fn dialogs(app: &mut ScriptApp, ctx: &egui::Context) {
     }
     if let Some((id, params)) = app.confirm_replace.clone() {
         let mut choice = None;
-        egui::Window::new("Save changes first?").collapsible(false).resizable(false).anchor(egui::Align2::CENTER_CENTER, vec2(0.0, 0.0)).show(
-            ctx,
-            |ui| {
-                ui.label("This script has unsaved changes.");
+        egui::Window::new(lang.text("Save changes first?"))
+            .collapsible(false)
+            .resizable(false)
+            .anchor(egui::Align2::CENTER_CENTER, vec2(0.0, 0.0))
+            .show(ctx, |ui| {
+                ui.label(lang.text("This script has unsaved changes."));
                 ui.horizontal(|ui| {
-                    if ui.button("Save").clicked() {
+                    if ui.button(lang.text("Save")).clicked() {
                         choice = Some(1);
                     }
-                    if ui.button("Don't Save").clicked() {
+                    if ui.button(lang.text("Don't Save")).clicked() {
                         choice = Some(2);
                     }
-                    if ui.button("Cancel").clicked() {
+                    if ui.button(lang.text("Cancel")).clicked() {
                         choice = Some(0);
                     }
                 });
-            },
-        );
+            });
         if let Some(c) = choice {
             if c == 1 {
                 let _ = app.execute("ui.save", json!({}));
@@ -941,30 +970,33 @@ pub fn dialogs(app: &mut ScriptApp, ctx: &egui::Context) {
         }
     }
     if app.confirm_close {
-        egui::Window::new("Save changes?").collapsible(false).resizable(false).anchor(egui::Align2::CENTER_CENTER, vec2(0.0, 0.0)).show(ctx, |ui| {
-            ui.label("This script has unsaved changes. Save them before closing?");
-            ui.horizontal(|ui| {
-                let save = ui.button("Save");
-                let discard = ui.button("Don't Save");
-                let cancel = ui.button("Cancel");
-                for (n, r) in [("Save", &save), ("Don't Save", &discard), ("Cancel", &cancel)] {
-                    app.dialog_buttons.push((n.to_string(), r.rect));
-                }
-                if save.clicked() {
-                    let _ = app.execute("ui.save", json!({}));
-                    app.confirm_close = false;
-                    if !app.session.dirty {
+        egui::Window::new(lang.text("Save changes?")).collapsible(false).resizable(false).anchor(egui::Align2::CENTER_CENTER, vec2(0.0, 0.0)).show(
+            ctx,
+            |ui| {
+                ui.label(lang.text("This script has unsaved changes. Save them before closing?"));
+                ui.horizontal(|ui| {
+                    let save = ui.button(lang.text("Save"));
+                    let discard = ui.button(lang.text("Don't Save"));
+                    let cancel = ui.button(lang.text("Cancel"));
+                    for (n, r) in [(lang.text("Save"), &save), (lang.text("Don't Save"), &discard), (lang.text("Cancel"), &cancel)] {
+                        app.dialog_buttons.push((n.to_string(), r.rect));
+                    }
+                    if save.clicked() {
+                        let _ = app.execute("ui.save", json!({}));
+                        app.confirm_close = false;
+                        if !app.session.dirty {
+                            app.quit_requested = true;
+                        }
+                    }
+                    if discard.clicked() {
+                        app.confirm_close = false;
                         app.quit_requested = true;
                     }
-                }
-                if discard.clicked() {
-                    app.confirm_close = false;
-                    app.quit_requested = true;
-                }
-                if cancel.clicked() {
-                    app.confirm_close = false;
-                }
-            });
-        });
+                    if cancel.clicked() {
+                        app.confirm_close = false;
+                    }
+                });
+            },
+        );
     }
 }

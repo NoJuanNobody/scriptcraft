@@ -185,3 +185,20 @@ fn tracked_changes_round_trip() {
     let back = parse(x).unwrap();
     assert_eq!(track::list(&back).len(), 2);
 }
+
+#[test]
+fn russian_text_and_styles_round_trip() {
+    let mut s = Script::from_paras(vec![
+        Para::new(Element::SceneHeading, "ИНТ. КУХНЯ - НОЧЬ"),
+        Para::new(Element::Action, "Ёжик ждёт у окна."),
+        Para::new(Element::Character, "АЛЁНА"),
+        Para::new(Element::Dialogue, "Всё готово?"),
+    ])
+    .unwrap();
+    s.title.title = "Ночной разговор".into();
+    s.title.author = "Алёна Ёлкина".into();
+    s.set_flag(scriptcraft_doc::Pos::new(1, 0), scriptcraft_doc::Pos::new(1, "Ёжик".len()), scriptcraft_doc::Flag::Bold, true);
+    let xml = write(&s);
+    assert!(xml.contains("Courier Badi"));
+    assert_eq!(parse(&xml).unwrap(), s);
+}

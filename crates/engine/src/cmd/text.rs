@@ -72,7 +72,7 @@ fn type_str(s: &mut Session, at: Pos, text: &str) -> Result<Pos, CmdError> {
     // `int. ` typed at the start of Action makes it a Scene Heading.
     if element == Element::Action
         && let Some(p) = s.script.para(at.para)
-        && p.text.len() <= 12
+        && p.text.chars().take(13).count() <= 12
         && looks_like_heading(&p.text)
     {
         s.script.set_element(at.para, Element::SceneHeading)?;

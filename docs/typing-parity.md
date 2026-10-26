@@ -88,3 +88,5 @@ next keystroke. Commands: `smarttype.suggest`, `smarttype.accept {index}`.
 ## Undo
 
 Consecutive typing is one undo step; any other command ends it. Every other edit is its own step.
+
+Russian scene prefixes `инт. `, `нат. ` and `инт./нат. ` follow the same Action-to-Scene-Heading flow. The early-prefix limit counts characters, not UTF-8 bytes.

@@ -7,8 +7,9 @@ control-channel key file, headless ui_shot harness) from WordCraft
 (https://github.com/storytold/wordcraft), Copyright the ArtCraft team and the WordCraft
 contributors, licensed MIT OR Apache-2.0. No code was copied wholesale.
 
-Courier Prime is Copyright 2015 The Courier Prime Project Authors and is licensed under the SIL
-Open Font License 1.1; see crates/fonts/fonts/OFL.txt.
+Courier Badi (derived from Courier Prime by Alan Dague-Greene for Quote-Unquote Apps, with Cyrillic
+by Dmitry Novikov and contributions by LaPingvino and the Courier Badi contributors) is licensed
+under the SIL Open Font License 1.1; see crates/fonts/fonts/OFL.txt.
 
 Final Draft is a trademark of its owner. ScriptCraft is not affiliated with or endorsed by it; the
 name is used only to describe file-format compatibility and feature parity.

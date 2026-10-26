@@ -9,7 +9,7 @@
 
 - [x] Screenplay model, undo/redo, element flow, SmartType, dual dialogue
 - [x] Industry pagination with (MORE)/(CONT'D), title page, scene numbers
-- [x] Fountain and FDX round trips; PDF export (krilla, embedded Courier Prime)
+- [x] Fountain and FDX round trips; PDF export (krilla, embedded Courier Badi)
 - [x] Navigator, index cards with summaries and reordering, reports
 - [x] egui window: menu bar, element picker, page view, status bar, dark mode, zoom
 - [x] CLI, MCP server, keyed control channel, headless `ui_shot`

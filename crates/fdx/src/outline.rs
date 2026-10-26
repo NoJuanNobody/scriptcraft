@@ -95,7 +95,7 @@ pub(crate) fn write_points(out: &mut String, indent: &str, points: &[StructurePo
 pub(crate) fn write_settings(out: &mut String) {
     for (level, size, left) in [(1, 16, 0.88), (2, 14, 1.12), (3, 12, 1.38)] {
         out.push_str(&format!(
-            "  <ElementSettings Type=\"Outline {level}\">\n    <FontSpec Font=\"Courier Prime\" Size=\"{size}\" Style=\"Bold+HiddenText\"/>\n    <ParagraphSpec Alignment=\"Left\" FirstIndent=\"0.00\" Leading=\"Regular\" LeftIndent=\"{left:.2}\" RightIndent=\"7.50\" SpaceBefore=\"{size}\" Spacing=\"1\" StartsNewPage=\"No\"/>\n    <Behavior PaginateAs=\"Outline\" ReturnKey=\"Summary\"/>\n  </ElementSettings>\n"
+            "  <ElementSettings Type=\"Outline {level}\">\n    <FontSpec Font=\"Courier Badi\" Size=\"{size}\" Style=\"Bold+HiddenText\"/>\n    <ParagraphSpec Alignment=\"Left\" FirstIndent=\"0.00\" Leading=\"Regular\" LeftIndent=\"{left:.2}\" RightIndent=\"7.50\" SpaceBefore=\"{size}\" Spacing=\"1\" StartsNewPage=\"No\"/>\n    <Behavior PaginateAs=\"Outline\" ReturnKey=\"Summary\"/>\n  </ElementSettings>\n"
         ));
     }
 }

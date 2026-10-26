@@ -131,17 +131,18 @@ pub fn open_note(app: &mut ScriptApp, index: usize) -> bool {
 
 /// The Notes tab of the navigator.
 pub fn notes_tab(app: &mut ScriptApp, ui: &mut Ui) {
+    let lang = app.prefs.appearance.language;
     let t = app.tokens();
     ui.horizontal(|ui| {
-        if ui.button("Add Note…").on_hover_text("Add a note to the selected words (or at the caret)").clicked() {
+        if ui.button(lang.text("Add Note…")).on_hover_text(lang.text("Add a note to the selected words (or at the caret)")).clicked() {
             open_new_note(app);
         }
         let any = app.session.script.paras.iter().any(|p| !p.notes.is_empty());
-        if ui.add_enabled(any, egui::Button::new("‹").small()).on_hover_text("Previous note").clicked() {
+        if ui.add_enabled(any, egui::Button::new("‹").small()).on_hover_text(lang.text("Previous note")).clicked() {
             app.run("note.previous", json!({}));
             crate::split::show_page(app);
         }
-        if ui.add_enabled(any, egui::Button::new("›").small()).on_hover_text("Next note").clicked() {
+        if ui.add_enabled(any, egui::Button::new("›").small()).on_hover_text(lang.text("Next note")).clicked() {
             app.run("note.next", json!({}));
             crate::split::show_page(app);
         }
@@ -149,7 +150,7 @@ pub fn notes_tab(app: &mut ScriptApp, ui: &mut Ui) {
     ui.add_space(4.0);
     let notes = scriptcraft_engine::cmd::notes::notes_json(&mut app.session);
     if notes.is_empty() {
-        ui.label(RichText::new("No notes yet. Select some words and choose Add Note, or right-click the page.").color(t.text_soft));
+        ui.label(RichText::new(lang.text("No notes yet. Select some words and choose Add Note, or right-click the page.")).color(t.text_soft));
         return;
     }
     let mut goto = None;
@@ -168,19 +169,19 @@ pub fn notes_tab(app: &mut ScriptApp, ui: &mut Ui) {
                 ui.horizontal(|ui| {
                     let (r, _) = ui.allocate_exact_size(vec2(8.0, 8.0), egui::Sense::hover());
                     ui.painter().rect_filled(r, 2.0, color);
-                    let mut meta = format!("p.{}", n["page"].as_u64().unwrap_or(1));
+                    let mut meta = lang.format("p.{page}", &[("page", (n["page"].as_u64().unwrap_or(1)).to_string())]);
                     if let Some(sc) = n["scene"].as_u64() {
-                        meta.push_str(&format!(" · scene {sc}"));
+                        meta.push_str(&lang.format(" · scene {sc}", &[("sc", (sc).to_string())]));
                     }
                     if let Some(a) = n["author"].as_str().filter(|a| !a.is_empty()) {
                         meta.push_str(&format!(" · {a}"));
                     }
                     ui.label(RichText::new(meta).size(11.0).color(t.text_soft));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui.small_button("×").on_hover_text("Delete note").clicked() {
+                        if ui.small_button("×").on_hover_text(lang.text("Delete note")).clicked() {
                             delete = Some(index);
                         }
-                        if ui.small_button("Edit").clicked() {
+                        if ui.small_button(lang.text("Edit")).clicked() {
                             edit = Some(index);
                         }
                     });
@@ -217,12 +218,13 @@ pub fn dialogs(app: &mut ScriptApp, ctx: &egui::Context) {
 }
 
 fn note_editor(app: &mut ScriptApp, ctx: &egui::Context) {
+    let lang = app.prefs.appearance.language;
     let Some(mut ed) = app.note_editor.take() else { return };
     let mut open = true;
     let mut save = false;
     let mut cancel = false;
     let mut delete = false;
-    let title = if ed.index.is_some() { "Edit Script Note" } else { "Add Script Note" };
+    let title = if ed.index.is_some() { lang.text("Edit Script Note") } else { lang.text("Add Script Note") };
     let quote = if ed.index.is_none() && ed.anchor != ed.focus { app.session.script.text_between(ed.anchor, ed.focus) } else { String::new() };
     egui::Window::new(title)
         .open(&mut open)
@@ -232,14 +234,18 @@ fn note_editor(app: &mut ScriptApp, ctx: &egui::Context) {
         .default_pos(ctx.content_rect().center_top() + vec2(0.0, 120.0))
         .show(ctx, |ui| {
             if !quote.is_empty() {
-                ui.label(RichText::new(format!("On “{}”", crate::chrome::elide(&quote, 60))).italics().color(app.tokens().text_soft));
+                ui.label(
+                    RichText::new(lang.format("On “{quote}”", &[("quote", (crate::chrome::elide(&quote, 60)).to_string())]))
+                        .italics()
+                        .color(app.tokens().text_soft),
+                );
             }
-            let r = ui.add(egui::TextEdit::multiline(&mut ed.text).desired_rows(4).desired_width(360.0).hint_text("Note"));
+            let r = ui.add(egui::TextEdit::multiline(&mut ed.text).desired_rows(4).desired_width(360.0).hint_text(lang.text("Note")));
             if std::mem::take(&mut ed.grab) {
                 r.request_focus();
             }
             ui.horizontal(|ui| {
-                ui.label("Colour");
+                ui.label(lang.text("Colour"));
                 for c in CardColor::ALL {
                     let (rect, resp) = ui.allocate_exact_size(vec2(18.0, 18.0), egui::Sense::click());
                     ui.painter().rect_filled(rect.shrink(2.0), 4.0, note_color(c));
@@ -252,19 +258,19 @@ fn note_editor(app: &mut ScriptApp, ctx: &egui::Context) {
                 }
             });
             ui.horizontal(|ui| {
-                ui.label("Author");
+                ui.label(lang.text("Author"));
                 ui.add(egui::TextEdit::singleline(&mut ed.author).desired_width(200.0));
             });
             ui.add_space(6.0);
             ui.horizontal(|ui| {
                 let ok = !ed.text.trim().is_empty();
-                if ui.add_enabled(ok, egui::Button::new(if ed.index.is_some() { "Save" } else { "Add Note" })).clicked() {
+                if ui.add_enabled(ok, egui::Button::new(if ed.index.is_some() { lang.text("Save") } else { lang.text("Add Note") })).clicked() {
                     save = true;
                 }
-                if ui.button("Cancel").clicked() {
+                if ui.button(lang.text("Cancel")).clicked() {
                     cancel = true;
                 }
-                if ed.index.is_some() && ui.button("Delete").clicked() {
+                if ed.index.is_some() && ui.button(lang.text("Delete")).clicked() {
                     delete = true;
                 }
             });
@@ -296,6 +302,7 @@ fn note_editor(app: &mut ScriptApp, ctx: &egui::Context) {
 }
 
 fn alternates_window(app: &mut ScriptApp, ctx: &egui::Context) {
+    let lang = app.prefs.appearance.language;
     if !app.alt_window {
         return;
     }
@@ -303,7 +310,7 @@ fn alternates_window(app: &mut ScriptApp, ctx: &egui::Context) {
     let mut actions: Vec<(&str, Value)> = Vec::new();
     let i = app.session.sel.focus.para;
     let para = app.session.script.para(i).cloned();
-    egui::Window::new("Alternate Lines")
+    egui::Window::new(lang.text("Alternate Lines"))
         .open(&mut open)
         .resizable(false)
         .collapsible(false)
@@ -312,26 +319,26 @@ fn alternates_window(app: &mut ScriptApp, ctx: &egui::Context) {
         .show(ctx, |ui| {
             let t = app.tokens();
             let Some(p) = para.filter(|p| p.element == Element::Dialogue || !p.alternates.is_empty()) else {
-                ui.label(RichText::new("Put the caret in a line of dialogue to keep other versions of it.").color(t.text_soft));
+                ui.label(RichText::new(lang.text("Put the caret in a line of dialogue to keep other versions of it.")).color(t.text_soft));
                 return;
             };
-            ui.label(RichText::new("The chosen line is the one that prints. The others are kept with it.").size(11.5).color(t.text_soft));
+            ui.label(RichText::new(lang.text("The chosen line is the one that prints. The others are kept with it.")).size(11.5).color(t.text_soft));
             ui.add_space(4.0);
             ui.horizontal(|ui| {
                 let _ = ui.radio(true, "");
                 ui.label(RichText::new(&p.text).strong());
-                ui.label(RichText::new("(in the script)").size(11.0).color(t.text_soft));
+                ui.label(RichText::new(lang.text("(in the script)")).size(11.0).color(t.text_soft));
             });
             for (k, a) in p.alternates.iter().enumerate() {
                 ui.horizontal(|ui| {
-                    if ui.radio(false, "").on_hover_text("Use this line").clicked() {
+                    if ui.radio(false, "").on_hover_text(lang.text("Use this line")).clicked() {
                         actions.push(("alt.choose", json!({"index": k})));
                     }
                     let mut text = a.text.clone();
                     if ui.add(egui::TextEdit::singleline(&mut text).desired_width(320.0)).changed() && !text.trim().is_empty() {
                         actions.push(("alt.edit", json!({"index": k, "text": text})));
                     }
-                    if ui.small_button("×").on_hover_text("Delete this alternate").clicked() {
+                    if ui.small_button("×").on_hover_text(lang.text("Delete this alternate")).clicked() {
                         actions.push(("alt.delete", json!({"index": k})));
                     }
                 });
@@ -339,17 +346,17 @@ fn alternates_window(app: &mut ScriptApp, ctx: &egui::Context) {
             ui.add_space(6.0);
             ui.horizontal(|ui| {
                 if ui
-                    .add_enabled(p.element == Element::Dialogue, egui::Button::new("Add Alternate"))
-                    .on_hover_text("Add a copy of the line to rework")
+                    .add_enabled(p.element == Element::Dialogue, egui::Button::new(lang.text("Add Alternate")))
+                    .on_hover_text(lang.text("Add a copy of the line to rework"))
                     .clicked()
                 {
                     actions.push(("alt.add", json!({})));
                 }
                 let many = !p.alternates.is_empty();
-                if ui.add_enabled(many, egui::Button::new("Previous")).clicked() {
+                if ui.add_enabled(many, egui::Button::new(lang.text("Previous"))).clicked() {
                     actions.push(("alt.previous", json!({})));
                 }
-                if ui.add_enabled(many, egui::Button::new("Next")).clicked() {
+                if ui.add_enabled(many, egui::Button::new(lang.text("Next"))).clicked() {
                     actions.push(("alt.next", json!({})));
                 }
             });
@@ -362,9 +369,10 @@ fn alternates_window(app: &mut ScriptApp, ctx: &egui::Context) {
 
 /// Script Notes, Alternates and Production Tagging in the Tools menu.
 pub fn tools_menu(app: &mut ScriptApp, ui: &mut Ui) {
+    let lang = app.prefs.appearance.language;
     ui.separator();
-    ui.menu_button("Script Notes", |ui| {
-        if ui.button("Add Script Note…").clicked() {
+    ui.menu_button(lang.text("Script Notes"), |ui| {
+        if ui.button(lang.text("Add Script Note…")).clicked() {
             open_new_note(app);
             ui.close();
         }
@@ -374,18 +382,18 @@ pub fn tools_menu(app: &mut ScriptApp, ui: &mut Ui) {
         ui.separator();
         menu_item(app, ui, "Delete All Notes", "note.deleteAll");
     });
-    ui.menu_button("Alternate Lines", |ui| {
+    ui.menu_button(lang.text("Alternate Lines"), |ui| {
         menu_item(app, ui, "Alternate Lines…", "ui.alternates");
         menu_item(app, ui, "Add Alternate", "alt.add");
         menu_item(app, ui, "Next Alternate", "alt.next");
         menu_item(app, ui, "Previous Alternate", "alt.previous");
     });
-    ui.menu_button("Production Tagging", |ui| {
+    ui.menu_button(lang.text("Production Tagging"), |ui| {
         tag_menu(app, ui);
         menu_item(app, ui, "Remove Tags from Selection", "tag.remove");
         ui.separator();
         let mut on = app.show_tags;
-        if ui.checkbox(&mut on, "Highlight Tagged Items").clicked() {
+        if ui.checkbox(&mut on, lang.text("Highlight Tagged Items")).clicked() {
             app.run("ui.toggleTags", json!({}));
             ui.close();
         }
@@ -395,8 +403,9 @@ pub fn tools_menu(app: &mut ScriptApp, ui: &mut Ui) {
 }
 
 fn menu_item(app: &mut ScriptApp, ui: &mut Ui, label: &str, id: &str) {
+    let lang = app.prefs.appearance.language;
     let enabled = id.starts_with("ui.") || app.session.registry.get(id).is_some_and(|c| (c.enabled)(&app.session).is_none());
-    if ui.add_enabled(enabled, egui::Button::new(label)).clicked() {
+    if ui.add_enabled(enabled, egui::Button::new(lang.text(label))).clicked() {
         app.run(id, json!({}));
         ui.close();
     }
@@ -404,9 +413,10 @@ fn menu_item(app: &mut ScriptApp, ui: &mut Ui, label: &str, id: &str) {
 
 /// "Tag Selection As" with every standard category and any custom ones in use.
 fn tag_menu(app: &mut ScriptApp, ui: &mut Ui) {
+    let lang = app.prefs.appearance.language;
     let has_sel = !app.session.sel.is_caret();
     ui.add_enabled_ui(has_sel, |ui| {
-        ui.menu_button("Tag Selection As", |ui| {
+        ui.menu_button(lang.text("Tag Selection As"), |ui| {
             let mut cats: Vec<String> = TAG_CATEGORIES.iter().map(|(n, _)| (*n).to_string()).collect();
             for c in app.session.script.tag_categories_used() {
                 if !cats.contains(&c) {
@@ -419,7 +429,13 @@ fn tag_menu(app: &mut ScriptApp, ui: &mut Ui) {
                     ui.painter().rect_filled(r, 3.0, ui.visuals().widgets.hovered.weak_bg_fill);
                 }
                 ui.painter().rect_filled(Rect::from_min_size(r.left_center() + vec2(4.0, -5.0), vec2(10.0, 10.0)), 2.0, tag_color(&c));
-                ui.painter().text(r.left_center() + vec2(20.0, 0.0), Align2::LEFT_CENTER, &c, FontId::proportional(13.0), ui.visuals().text_color());
+                ui.painter().text(
+                    r.left_center() + vec2(20.0, 0.0),
+                    Align2::LEFT_CENTER,
+                    lang.category(&c),
+                    FontId::proportional(13.0),
+                    ui.visuals().text_color(),
+                );
                 if resp.clicked() {
                     app.run("tag.add", json!({"category": c}));
                     app.show_tags = true;
@@ -428,8 +444,8 @@ fn tag_menu(app: &mut ScriptApp, ui: &mut Ui) {
             }
             ui.separator();
             ui.horizontal(|ui| {
-                ui.label("Other");
-                let r = ui.add(egui::TextEdit::singleline(&mut app.custom_category).desired_width(120.0).hint_text("category"));
+                ui.label(lang.text("Other"));
+                let r = ui.add(egui::TextEdit::singleline(&mut app.custom_category).desired_width(120.0).hint_text(lang.text("category")));
                 if r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) && !app.custom_category.trim().is_empty() {
                     let c = std::mem::take(&mut app.custom_category);
                     app.run("tag.add", json!({"category": c}));
@@ -443,9 +459,10 @@ fn tag_menu(app: &mut ScriptApp, ui: &mut Ui) {
 
 /// Entries for the page's right-click menu.
 pub fn context_items(app: &mut ScriptApp, ui: &mut Ui) {
+    let lang = app.prefs.appearance.language;
     let (a, _) = app.session.sel.ordered();
     let para = app.session.script.para(a.para).cloned();
-    if ui.button("Add Script Note…").clicked() {
+    if ui.button(lang.text("Add Script Note…")).clicked() {
         open_new_note(app);
         ui.close();
     }
@@ -453,7 +470,7 @@ pub fn context_items(app: &mut ScriptApp, ui: &mut Ui) {
     let refs = app.session.script.note_refs();
     let at = refs.iter().position(|r| r.para == a.para && app.session.script.note(*r).is_some_and(|n| n.start <= a.off && a.off <= n.end));
     if let Some(i) = at
-        && ui.button("Edit Script Note…").clicked()
+        && ui.button(lang.text("Edit Script Note…")).clicked()
     {
         open_note(app, i);
         ui.close();
@@ -462,7 +479,7 @@ pub fn context_items(app: &mut ScriptApp, ui: &mut Ui) {
     if para.as_ref().is_some_and(|p| p.tagged.iter().any(|t| t.start <= a.off && a.off <= t.end)) || !app.session.sel.is_caret() {
         menu_item(app, ui, "Remove Tags", "tag.remove");
     }
-    if para.is_some_and(|p| p.element == Element::Dialogue || !p.alternates.is_empty()) && ui.button("Alternate Lines…").clicked() {
+    if para.is_some_and(|p| p.element == Element::Dialogue || !p.alternates.is_empty()) && ui.button(lang.text("Alternate Lines…")).clicked() {
         app.alt_window = true;
         ui.close();
     }
@@ -471,35 +488,37 @@ pub fn context_items(app: &mut ScriptApp, ui: &mut Ui) {
 
 /// The BREAKDOWN section of the Reports view.
 pub fn breakdown_section(app: &mut ScriptApp, ui: &mut Ui, goto: &mut Option<usize>) {
+    let lang = app.prefs.appearance.language;
     let t = app.tokens();
     let l = app.session.layout();
     let sheets = scriptcraft_engine::breakdown::breakdown(&app.session.script, &l);
     let cats = app.session.script.tag_categories_used();
     ui.add_space(18.0);
     ui.horizontal(|ui| {
-        ui.label(RichText::new("BREAKDOWN").strong().size(12.0).color(t.accent));
-        if ui.small_button("Export CSV…").clicked() {
+        ui.label(RichText::new(lang.text("BREAKDOWN")).strong().size(12.0).color(t.accent));
+        if ui.small_button(lang.text("Export CSV…")).clicked() {
             app.run("ui.exportBreakdown", json!({}));
         }
     });
     if cats.is_empty() {
         ui.label(
-            RichText::new("Nothing tagged yet. Select words on the page and choose Tag Selection As from the right-click menu.").color(t.text_soft),
+            RichText::new(lang.text("Nothing tagged yet. Select words on the page and choose Tag Selection As from the right-click menu."))
+                .color(t.text_soft),
         );
         return;
     }
     egui::Grid::new("breakdown").striped(true).num_columns(4 + cats.len()).spacing([18.0, 6.0]).show(ui, |ui| {
-        for h in ["#", "Scene heading", "Page", "Length"] {
+        for h in ["#", lang.text("Scene heading"), lang.text("Page"), lang.text("Length")] {
             ui.label(RichText::new(h).strong());
         }
         for c in &cats {
-            ui.label(RichText::new(c).strong().color(tag_color(c)));
+            ui.label(RichText::new(lang.category(c)).strong().color(tag_color(c)));
         }
         ui.end_row();
         for b in &sheets {
             ui.label(b.number.clone().unwrap_or_else(|| b.scene.to_string()));
             if b.scene == 0 {
-                ui.label(RichText::new("(before the first scene)").italics());
+                ui.label(RichText::new(lang.text("(before the first scene)")).italics());
             } else if ui.link(&b.heading).clicked() {
                 *goto = Some(b.scene - 1);
             }

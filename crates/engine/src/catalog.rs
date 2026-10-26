@@ -271,7 +271,7 @@ pub const FEATURES: &[Feature] = &[
         &["file.open", "file.save", "file.exportFountain"],
         "Shot and General kept with a `[[shot]]` / `[[general]]` note; other apps read them as action",
     ),
-    f("Files", "PDF export", Done, &["file.exportPdf"], "embedded Courier Prime, selectable text"),
+    f("Files", "PDF export", Done, &["file.exportPdf"], "embedded Courier Badi, selectable text"),
     f(
         "Files",
         "Print",

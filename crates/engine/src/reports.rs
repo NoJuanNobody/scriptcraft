@@ -149,8 +149,14 @@ pub fn locations(s: &Script) -> Vec<LocationReport> {
         if loc.is_empty() {
             continue;
         }
-        let int = prefix.starts_with("INT") || prefix.starts_with("I/E") || prefix.contains("/INT");
-        let ext = prefix.starts_with("EXT") || prefix.starts_with("I/E") || prefix.contains("/EXT") || prefix == "EST.";
+        let int =
+            prefix.starts_with("INT") || prefix.starts_with("I/E") || prefix.contains("/INT") || prefix.starts_with("ИНТ") || prefix.contains("/ИНТ");
+        let ext = prefix.starts_with("EXT")
+            || prefix.starts_with("I/E")
+            || prefix.contains("/EXT")
+            || prefix == "EST."
+            || prefix.starts_with("НАТ")
+            || prefix.contains("/НАТ");
         match out.iter_mut().find(|r| r.location == loc) {
             Some(r) => {
                 r.scenes += 1;

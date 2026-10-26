@@ -90,7 +90,7 @@ Every screenshot is ScriptCraft itself, rendered offscreen by its own UI harness
   indents, page numbers top-right, (MORE)/(CONT'D) when dialogue breaks across pages, no orphaned
   scene headings — the same layout on screen, in reports and in the PDF.
 - **Your files.** Opens and saves Final Draft XML (.fdx) and Fountain (.fountain) with bold,
-  italic and underline intact; exports PDF with embedded, selectable Courier Prime. Autosave,
+  italic and underline intact; exports PDF with embedded, selectable Courier Badi. Autosave,
   crash recovery and backups keep your work safe.
 - **Built for agents.** Every action is a command with an id. The same 185 engine commands (plus the window's own
   commands) drive the menus, toolbar, keyboard shortcuts, a command-line tool, a JSON
@@ -126,6 +126,33 @@ cargo run --release -p scriptcraft                       # opens the sample scri
 cargo run --release -p scriptcraft -- --new              # blank script
 cargo run --release -p scriptcraft -- my-script.fdx      # open a Final Draft or Fountain file
 ```
+
+### Russian / Русский
+
+Choose **View → Language → Русский** to switch the interface; **English** switches it back.
+The desktop app saves the choice as `[appearance] language = "ru"` in `config.toml`.
+The browser supports switching for the current session (its settings are not persisted).
+
+Русский интерфейс: **Вид → Язык → Русский**. Кириллица, включая **Ё/ё**, поддерживается
+в редакторе и при экспорте PDF во всех четырёх начертаниях Courier Badi — открытого шрифта
+на основе сценарного Courier Prime. Устанавливать шрифты в систему не требуется.
+Заголовки `ИНТ. КУХНЯ - НОЧЬ` и `НАТ. ДВОР - ДЕНЬ` распознаются при вводе и в Fountain;
+русский текст сохраняется в FDX и Fountain. Язык интерфейса не меняет содержимое сценария.
+Проверка орфографии пока только английская: русские слова пропускаются.
+В FDX указан Courier Badi; для просмотра в других редакторах может потребоваться установить
+этот шрифт или выбрать другой шрифт с кириллицей.
+Технические сообщения движка/API и названия пользовательских наборов правок не переводятся.
+
+![Russian interface and Cyrillic screenplay in Courier Badi](docs/images/russian.png)
+
+### Adding another interface language
+
+1. Copy `crates/ui-egui/locales/en.json` to `<code>.json` and translate its values, keeping keys and named placeholders (`{page}`, `{name}`, etc.).
+2. Add one entry to `languages!` in `crates/ui-egui/src/i18n.rs`, for example:
+   `French, "fr", "Français", "../locales/fr.json";`
+3. Run `cargo test -p scriptcraft-ui-egui`. Catalogue tests check keys and placeholders; the menu and settings automatically use the registry.
+
+Catalogues are embedded for offline desktop and browser builds. Missing translations fall back to the English source string. Values such as filenames and script text are never translated or parsed as templates. For scripts outside the bundled fonts' coverage, add and attribute appropriate fonts as well.
 
 ### Settings and data
 
@@ -176,7 +203,7 @@ below the UI depends on egui.
 |---|---|---|
 | L0 | `scriptcraft-geom` | Letter page and Courier metrics (10 cpi, 6 lpi, 54 lines) |
 | L1 | `scriptcraft-doc` | screenplay model: element-typed paragraphs, title page, settings, clamped edit primitives |
-| L1 | `scriptcraft-fonts`, `scriptcraft-spell`, `scriptcraft-control-key` | Courier Prime (OFL); offline English spelling (SCOWL); the control key file |
+| L1 | `scriptcraft-fonts`, `scriptcraft-spell`, `scriptcraft-control-key` | Courier Badi (OFL); offline English spelling (SCOWL); the control key file |
 | L2 | `scriptcraft-fountain`, `scriptcraft-fdx` | Fountain and Final Draft XML import/export |
 | L2 | `scriptcraft-layout` | pagination, (MORE)/(CONT'D), dual dialogue, caret and hit testing |
 | L3 | `scriptcraft-pdf` | PDF export with krilla |
@@ -205,7 +232,7 @@ clean room, everything is a command) and run `cargo xtask ci` before opening a P
 ## License and credits
 
 MIT OR Apache-2.0 ([LICENSE-MIT](LICENSE-MIT), [LICENSE-APACHE](LICENSE-APACHE)). Typeface:
-[Courier Prime](https://github.com/quoteunquoteapps/CourierPrime) (SIL Open Font License 1.1).
+[Courier Badi](https://github.com/LaPingvino/courier-badi) (SIL Open Font License 1.1).
 Architecture patterns adapted from WordCraft (MIT OR Apache-2.0); see [NOTICE](NOTICE) and
 [ATTRIBUTION.md](ATTRIBUTION.md).
 

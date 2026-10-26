@@ -1,6 +1,7 @@
 //! The window runs headless (no GPU): typing through egui reaches the engine, every UI command
 //! runs, and all views lay out without panicking.
 
+use egui_kittest::kittest::Queryable;
 use scriptcraft_engine::Session;
 use scriptcraft_ui_egui::{ControlRequest, ScriptApp, UI_COMMANDS};
 use serde_json::json;
@@ -355,4 +356,37 @@ fn import_from_word_celtx_and_pdf() {
     assert_eq!(v["format"], "PDF");
     assert_eq!(h.state().session.script.paras.len(), want);
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn russian_language_switch_preserves_script_and_command_ids() {
+    let mut app = ScriptApp::new(Session::new(Default::default()));
+    app.dialogs = false;
+    let original = app.session.script.clone();
+    app.execute("ui.language", json!({"language": "ru"})).unwrap();
+    assert_eq!(app.prefs.appearance.language, scriptcraft_ui_egui::i18n::Language::Russian);
+    assert_eq!(app.session.script, original);
+    assert!(app.execute("ui.language", json!({"language": "unknown"})).is_err());
+    let mut h = harness(app);
+    step(&mut h, 4);
+    assert!(h.query_by_label("Файл").is_some());
+    assert!(h.query_by_label("File").is_none());
+    for (id, params) in [
+        ("text.insert", json!({"text": "ИНТ. КУХНЯ — НОЧЬ"})),
+        ("text.enter", json!({})),
+        ("text.insert", json!({"text": "Ёжик ждёт у окна."})),
+        ("ui.view.cards", json!({})),
+        ("ui.view.reports", json!({})),
+        ("ui.titlePage", json!({})),
+        ("ui.elementSettings", json!({})),
+    ] {
+        h.state_mut().execute(id, params).unwrap();
+        step(&mut h, 2);
+    }
+    assert!(h.state().session.script.paras.iter().any(|p| p.text == "Ёжик ждёт у окна."));
+    h.state_mut().execute("ui.language", json!({"language": "en"})).unwrap();
+    assert_eq!(h.state().prefs.appearance.language, scriptcraft_ui_egui::i18n::Language::English);
+    step(&mut h, 2);
+    assert!(h.query_by_label("File").is_some());
+    assert!(h.query_by_label("Файл").is_none());
 }
