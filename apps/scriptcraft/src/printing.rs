@@ -233,6 +233,13 @@ impl PrintHost for SystemPrint {
             .or_else(|| self.cached.as_ref().and_then(|(_, l)| l.as_ref().ok()?.iter().find(|p| p.default).map(|p| p.name.clone())));
         let to = to.unwrap_or_else(|| "the default printer".into());
         let copies = job.copies.clamp(1, scriptcraft_ui_egui::printing::MAX_COPIES);
+        if self.dry_run {
+            let _ = std::fs::remove_file(&path);
+            if let Ok(mut d) = self.done.lock() {
+                d.push(Ok(format!("Dry run, nothing printed: {}", sent_message(job.pages, copies, &to))));
+            }
+            return Ok(());
+        }
         let mut runs: Vec<Command> = Vec::new();
         match self.backend {
             Backend::Cups => {
@@ -257,13 +264,6 @@ impl PrintHost for SystemPrint {
                     runs.push(c);
                 }
             }
-        }
-        if self.dry_run {
-            let _ = std::fs::remove_file(&path);
-            if let Ok(mut d) = self.done.lock() {
-                d.push(Ok(format!("Dry run, nothing printed: {}", sent_message(job.pages, copies, &to))));
-            }
-            return Ok(());
         }
         let done = self.done.clone();
         let running = self.running.clone();
