@@ -6,6 +6,7 @@
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 pub mod annotations;
+pub mod autosave;
 pub mod beatboard;
 pub mod bookmarks;
 mod canvas;
@@ -111,6 +112,7 @@ pub const UI_COMMANDS: &[(&str, &str, &str, &str)] = &[
     ("ui.elementSettings", "Element Settings…", "Format", ""),
     ("ui.open", "Open…", "File", "Mod+O"),
     ("ui.import", "Import…", "File", ""),
+    ("ui.recover", "Recover Autosaved Copy…", "File", ""),
     ("ui.save", "Save", "File", "Mod+S"),
     ("ui.saveAs", "Save As…", "File", "Mod+Shift+S"),
     ("ui.print", "Print…", "File", "Mod+P"),
@@ -200,8 +202,11 @@ pub struct ScriptApp {
     settings: Option<craft_settings::SettingsStore<persist::Prefs>>,
     /// An autosaved script found at start-up, offered for recovery.
     pub recovery_offer: Option<persist::Recovery>,
-    /// The folder the offered recovery copy came from (the data folder, or the legacy folder).
-    pub recovery_dir: Option<std::path::PathBuf>,
+    /// The copy being offered (removed once the user recovers or discards it) and the ones
+    /// offered after it, newest first.
+    recovery_orphans: Vec<persist::Orphan>,
+    /// Writes this run's recovery copy in the background (with a data folder).
+    autosaver: Option<autosave::Autosaver>,
     /// Where files are opened from and saved to when there is no file system (the web build).
     pub host: Option<Box<dyn FileHost>>,
     /// Files delivered by the host or dropped on the window.
@@ -282,7 +287,8 @@ impl ScriptApp {
             #[cfg(not(target_arch = "wasm32"))]
             settings: None,
             recovery_offer: None,
-            recovery_dir: None,
+            recovery_orphans: Vec::new(),
+            autosaver: None,
             last_autosave: 0.0,
             confirm_replace: None,
             dialog_buttons: Vec::new(),
@@ -330,16 +336,18 @@ impl ScriptApp {
                 words = persist::load_words(old);
             }
             self.session.user_words = words;
-            let found = persist::read_recovery(&dir)
-                .map(|r| (r, dir.clone()))
-                .or_else(|| f.legacy.as_ref().and_then(|old| persist::read_recovery(old).map(|r| (r, old.clone()))));
-            if let Some((r, from)) = found {
-                self.recovery_offer = Some(r);
-                self.recovery_dir = Some(from);
-            }
-            self.state_dir = Some(dir);
+            self.state_dir = Some(dir.clone());
         }
         self.folders = Some(f);
+        // Copies left by runs that ended without cleaning up, before claiming our own.
+        self.find_recovery();
+        self.autosaver = None;
+        if let Some(dir) = self.state_dir.clone() {
+            match autosave::Autosaver::start(&dir) {
+                Ok(a) => self.autosaver = Some(a),
+                Err(e) => self.set_status(format!("Autosave is off: {e}")),
+            }
+        }
     }
 
     /// Keep settings and data in one folder (tests, demos).
@@ -425,27 +433,70 @@ impl ScriptApp {
         printing::cleanup(self);
         if !self.session.dirty || self.quit_requested {
             self.clear_recovery();
+            if let Some(a) = &self.autosaver {
+                a.flush();
+            }
+        } else {
+            // Closed with unsaved changes and no answer (a crash-like exit): keep them all.
+            self.save_recovery_now();
         }
     }
 
-    /// Remove the recovery copy (and one left in the legacy folder that was offered).
+    /// Remove this run's recovery copy (never another window's, nor one being offered).
     pub fn clear_recovery(&mut self) {
-        if let Some(dir) = &self.state_dir {
-            persist::clear_recovery(dir);
+        if let Some(a) = &self.autosaver {
+            a.clear();
         }
-        if let Some(dir) = self.recovery_dir.take() {
-            persist::clear_recovery(&dir);
+    }
+
+    /// Look for recovery copies left by runs that did not end cleanly and offer the newest.
+    pub fn find_recovery(&mut self) {
+        let Some(dir) = &self.state_dir else { return };
+        let legacy = self.folders.as_ref().and_then(|f| f.legacy.clone());
+        // Let go of the copies offered now, or the scan would skip them as in use.
+        self.recovery_orphans.clear();
+        self.recovery_orphans = persist::orphans(dir, legacy.as_deref());
+        self.recovery_offer = self.recovery_orphans.first().map(|o| o.recovery.clone());
+    }
+
+    /// Write this run's recovery copy now and wait until it is on disk.
+    pub fn save_recovery_now(&mut self) {
+        if let Some(a) = &self.autosaver {
+            if self.session.dirty {
+                a.write(self.session.path.clone(), &self.session.script);
+            }
+            a.flush();
         }
+    }
+
+    /// Where this run's recovery copy is written (`None` without a data folder).
+    pub fn recovery_file(&self) -> Option<&std::path::Path> {
+        self.autosaver.as_ref().map(|a| a.file())
+    }
+
+    /// Answer the recovery offer: take the offered script (`recover`) or drop it. Either way
+    /// the old copy is removed (a recovered script is first written to this run's copy, so a
+    /// crash right now loses nothing) and the next one, if any, is offered.
+    pub fn answer_recovery(&mut self, recover: bool) {
+        if self.recovery_orphans.is_empty() {
+            self.recovery_offer = None;
+            return;
+        }
+        let o = self.recovery_orphans.remove(0);
+        if recover {
+            self.session.replace_script(o.recovery.script.clone());
+            self.session.path = o.recovery.path.clone().map(std::path::PathBuf::from);
+            self.session.dirty = true;
+            self.save_recovery_now();
+        }
+        o.remove();
+        self.recovery_offer = self.recovery_orphans.first().map(|o| o.recovery.clone());
     }
 
     /// The process is being terminated: keep unsaved changes as a recovery copy (offered at the
     /// next start) and save settings. Unlike [`ScriptApp::on_exit`] it never clears recovery.
     pub fn emergency_save(&mut self) {
-        if let Some(dir) = self.state_dir.clone()
-            && self.session.dirty
-        {
-            let _ = persist::write_recovery(&dir, self.session.path.as_deref(), &self.session.script);
-        }
+        self.save_recovery_now();
         self.flush_prefs();
         printing::cleanup(self);
     }
@@ -472,23 +523,25 @@ impl ScriptApp {
         if let Some(p) = self.session.path.as_ref().map(|p| p.display().to_string()) {
             self.prefs.touch_recent(&p);
         }
-        if !self.session.dirty && self.state_dir.is_some() {
+        if !self.session.dirty {
             self.clear_recovery();
-            self.recovery_offer = None;
         }
     }
 
-    /// Autosave a script with unsaved changes every `prefs.files.autosave_seconds`.
+    /// Autosave a script with unsaved changes every `prefs.files.autosave_seconds`, in the
+    /// background. Each run writes its own copy, so this goes on while a copy left by an
+    /// earlier run is still being offered.
     fn autosave(&mut self, now: f64) {
-        let Some(dir) = self.state_dir.clone() else { return };
+        let Some(a) = &self.autosaver else { return };
+        if let Some(e) = a.error() {
+            self.status = Some((format!("Autosave failed: {e}"), 0.0));
+        }
         let every = f64::from(self.prefs.files.autosave_seconds);
-        if every <= 0.0 || !self.session.dirty || self.recovery_offer.is_some() || now - self.last_autosave < every {
+        if every <= 0.0 || !self.session.dirty || now - self.last_autosave < every {
             return;
         }
         self.last_autosave = now;
-        if let Err(e) = persist::write_recovery(&dir, self.session.path.as_deref(), &self.session.script) {
-            self.status = Some((format!("Autosave failed: {e}"), 0.0));
-        }
+        a.write(self.session.path.clone(), &self.session.script);
     }
 
     /// Accept control-channel requests from `rx`.
@@ -690,6 +743,13 @@ impl ScriptApp {
             "ui.print" => production::toggle_print(self),
             "ui.printNow" => return production::print_now(self, p),
             "ui.about" => self.about = true,
+            "ui.recover" => {
+                self.find_recovery();
+                if self.recovery_offer.is_none() {
+                    self.set_status("No autosaved copies to recover");
+                }
+                return Ok(json!({"offered": self.recovery_orphans.len()}));
+            }
             "ui.quit" => self.close_wanted = true,
             "ui.openRecent" => {
                 let path = path.or_else(|| self.prefs.files.recent.first().cloned()).ok_or_else(|| CmdError::Disabled("no recent files".into()))?;

@@ -1,5 +1,22 @@
 # Architecture decisions
 
+## 2026-10-28 — Autosave: one durable recovery copy per running app
+
+- Autosave still never writes the user's script file; it keeps a recovery copy in the data folder.
+- Each running app claims its own copy, `recovery/run-<time>-<pid>-<n>.json`, with a `.lock`
+  beside it held (an OS file lock) for the life of the process. Two windows used to share
+  `recovery.json`, so one could overwrite or clear the other's unsaved work. A copy whose lock is
+  free belongs to a run that ended without cleaning up; those (and the old `recovery.json`) are
+  offered at start-up, newest first, one after another, and on demand from **File › Recover
+  Autosaved Copy…**. A copy being offered stays locked so a second window doesn't offer it too.
+- Copies are written on a background thread (serialising and writing a long script no longer
+  stalls a frame); queued writes superseded by newer ones are skipped. Exit, termination signals
+  and recovery wait for the writer.
+- Writes are durable: temporary file, `fsync`, rename, then `fsync` of the folder (Unix), so a
+  power cut leaves the old copy or the new one, never a torn file.
+- Recovering a copy writes it to this run's own copy before the old one is removed, so a crash
+  at that moment loses nothing. An unreadable copy is never offered and never deleted.
+
 ## 2026-10-14 — Russian support
 
 - UI language lives in `[appearance].language` (`en` / `ru`); English remains the default. Settings schema 2 migrates schema 1 by adding the English default and preserving hand edits.

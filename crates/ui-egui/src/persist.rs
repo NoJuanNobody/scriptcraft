@@ -7,7 +7,8 @@
 //!
 //! **Data** is not settings and lives in the data folder (`scriptcraft_control_key::Folders`), so
 //! a settings reset never loses work:
-//! - `recovery.json`: the autosaved copy of a script with unsaved changes (removed once saved)
+//! - `recovery/`: the autosaved copy of a script with unsaved changes, one per running app
+//!   (removed once saved); `recovery.json` from older versions is still offered
 //! - `backups/`: the previous version of each file, kept before it is overwritten
 //! - `dictionary.txt`: the user dictionary, one word per line
 //!
@@ -22,7 +23,10 @@ use serde::{Deserialize, Serialize};
 
 /// The pre-0.3 settings file, imported once.
 pub const LEGACY_PREFS: &str = "prefs.json";
+/// Where ScriptCraft 0.5 and earlier kept its one recovery copy (still read).
 pub const RECOVERY: &str = "recovery.json";
+/// Recovery copies, one per running app (see [`RecoverySlot`]).
+pub const RECOVERY_DIR: &str = "recovery";
 pub const BACKUPS: &str = "backups";
 /// Most recent files remembered.
 pub const MAX_RECENT: usize = 10;
@@ -244,24 +248,158 @@ fn now_secs() -> u64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs())
 }
 
-pub fn write_recovery(dir: &Path, path: Option<&Path>, script: &Script) -> std::io::Result<()> {
+/// Write `bytes` to `file` so that a crash or power cut leaves either the old or the new
+/// contents, never a torn file: a temporary file next to it, flushed to disk, renamed over it,
+/// then the folder flushed so the rename itself survives.
+pub fn write_durably(file: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+    let dir = file.parent().ok_or_else(|| std::io::Error::other("no folder"))?;
     std::fs::create_dir_all(dir)?;
-    let r = Recovery { path: path.map(|p| p.display().to_string()), saved_at: now_secs(), script: script.clone() };
-    let tmp = dir.join(format!("{RECOVERY}.tmp"));
-    std::fs::write(&tmp, serde_json::to_vec(&r).map_err(std::io::Error::other)?)?;
-    std::fs::rename(tmp, dir.join(RECOVERY))
+    let name = file.file_name().and_then(|n| n.to_str()).unwrap_or("file");
+    let tmp = dir.join(format!("{name}.tmp"));
+    let mut f = std::fs::File::create(&tmp)?;
+    f.write_all(bytes)?;
+    f.sync_all()?;
+    close(f);
+    std::fs::rename(&tmp, file)?;
+    // Windows can't open a folder as a file; its rename is already durable enough.
+    #[cfg(unix)]
+    std::fs::File::open(dir)?.sync_all()?;
+    Ok(())
 }
 
-/// The autosaved script, if any (normalised; a corrupt file counts as none).
-pub fn read_recovery(dir: &Path) -> Option<Recovery> {
-    let t = std::fs::read(dir.join(RECOVERY)).ok()?;
+/// Autosave `script` (saved at `path`, if it was) into the recovery copy `file`.
+pub fn write_recovery_file(file: &Path, path: Option<&Path>, script: &Script) -> std::io::Result<()> {
+    let r = Recovery { path: path.map(|p| p.display().to_string()), saved_at: now_secs(), script: script.clone() };
+    write_durably(file, &serde_json::to_vec(&r).map_err(std::io::Error::other)?)
+}
+
+/// A recovery copy (normalised; a missing or corrupt file counts as none).
+pub fn read_recovery_file(file: &Path) -> Option<Recovery> {
+    let t = std::fs::read(file).ok()?;
     let mut r: Recovery = serde_json::from_slice(&t).ok()?;
     r.script.normalize().ok()?;
     Some(r)
 }
 
-pub fn clear_recovery(dir: &Path) {
-    let _ = std::fs::remove_file(dir.join(RECOVERY));
+/// The recovery copy ScriptCraft 0.5 and earlier kept directly in the data folder (still read).
+pub fn read_recovery(dir: &Path) -> Option<Recovery> {
+    read_recovery_file(&dir.join(RECOVERY))
+}
+
+/// Close a file (and release its lock) before the path is renamed or removed: Windows can't
+/// remove an open file. (A function, not `drop`, as the browser build's `File` has no `Drop`.)
+fn close(_file: std::fs::File) {}
+
+/// Hold `file` locked for this process (`None` when another process holds it). The lock goes
+/// away with the process, so a crashed run's copy is free again at the next start.
+fn try_lock(file: &Path) -> std::io::Result<Option<std::fs::File>> {
+    let f = std::fs::OpenOptions::new().read(true).write(true).create(true).truncate(false).open(file)?;
+    match f.try_lock() {
+        Ok(()) => Ok(Some(f)),
+        Err(std::fs::TryLockError::WouldBlock) => Ok(None),
+        Err(std::fs::TryLockError::Error(e)) => Err(e),
+    }
+}
+
+/// This run's own recovery copy: `recovery/run-<time>-<pid>.json` in the data folder, with a
+/// `.lock` beside it held while the app runs. Every running ScriptCraft has its own, so two
+/// windows never overwrite (or clear) each other's unsaved work, and a copy whose lock is free
+/// was left by a run that ended without cleaning up.
+#[derive(Debug)]
+pub struct RecoverySlot {
+    pub file: PathBuf,
+    lock_path: PathBuf,
+    lock: Option<std::fs::File>,
+}
+
+impl RecoverySlot {
+    pub fn claim(data: &Path) -> std::io::Result<RecoverySlot> {
+        let dir = data.join(RECOVERY_DIR);
+        std::fs::create_dir_all(&dir)?;
+        static N: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+        let n = N.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let stem = format!("run-{}-{}-{n}", now_secs(), std::process::id());
+        let lock_path = dir.join(format!("{stem}.lock"));
+        let lock = try_lock(&lock_path)?.ok_or_else(|| std::io::Error::other("recovery copy is in use"))?;
+        Ok(RecoverySlot { file: dir.join(format!("{stem}.json")), lock_path, lock: Some(lock) })
+    }
+
+    /// Remove the copy (the script was saved, or the user chose not to keep it).
+    pub fn clear(&self) {
+        let _ = std::fs::remove_file(&self.file);
+    }
+}
+
+impl Drop for RecoverySlot {
+    fn drop(&mut self) {
+        // Unlock first: Windows can't remove an open file.
+        if let Some(f) = self.lock.take() {
+            close(f);
+        }
+        let _ = std::fs::remove_file(&self.lock_path);
+    }
+}
+
+/// A recovery copy left by a run that did not end cleanly, offered at start-up. Its lock is
+/// held while it is offered, so a second window started now doesn't offer it too.
+#[derive(Debug)]
+pub struct Orphan {
+    pub file: PathBuf,
+    pub recovery: Recovery,
+    lock: Option<(PathBuf, std::fs::File)>,
+}
+
+impl Orphan {
+    /// The user recovered or discarded it: remove the copy.
+    pub fn remove(mut self) {
+        let _ = std::fs::remove_file(&self.file);
+        if let Some((path, f)) = self.lock.take() {
+            close(f);
+            let _ = std::fs::remove_file(path);
+        }
+    }
+}
+
+/// Recovery copies nobody is using, newest first: those in `data/recovery/` whose run is gone,
+/// and the single copy older versions kept in `data` (and in the `legacy` folder).
+pub fn orphans(data: &Path, legacy: Option<&Path>) -> Vec<Orphan> {
+    let mut out = Vec::new();
+    let dir = data.join(RECOVERY_DIR);
+    let mut files: Vec<PathBuf> = std::fs::read_dir(&dir).into_iter().flatten().flatten().map(|e| e.path()).collect();
+    files.sort();
+    for file in files {
+        match file.extension().and_then(|e| e.to_str()) {
+            Some("json") => {}
+            // A lock left without its copy by a run that ended: tidy it away.
+            Some("lock") if !file.with_extension("json").exists() => {
+                if let Ok(Some(lock)) = try_lock(&file) {
+                    close(lock);
+                    let _ = std::fs::remove_file(&file);
+                }
+                continue;
+            }
+            _ => continue,
+        }
+        let lock_path = file.with_extension("lock");
+        let Ok(Some(lock)) = try_lock(&lock_path) else { continue };
+        match read_recovery_file(&file) {
+            Some(recovery) => out.push(Orphan { file, recovery, lock: Some((lock_path, lock)) }),
+            // Unreadable: leave it for a person to look at, offer nothing.
+            None => {
+                close(lock);
+                let _ = std::fs::remove_file(&lock_path);
+            }
+        }
+    }
+    for d in std::iter::once(data).chain(legacy) {
+        let file = d.join(RECOVERY);
+        if let Some(recovery) = read_recovery_file(&file) {
+            out.push(Orphan { file, recovery, lock: None });
+        }
+    }
+    out.sort_by_key(|o| std::cmp::Reverse(o.recovery.saved_at));
+    out
 }
 
 /// Copy `file` (when it exists) into `dir/backups` as `<stem>.<unix-time>.<ext>`, keeping the
@@ -370,16 +508,17 @@ mod tests {
         // A hand-edited value out of range is clamped when used.
         let wild = Prefs { appearance: Appearance { zoom: f64::NAN, ..Default::default() }, ..Default::default() };
         assert_eq!(wild.sanitized().appearance.zoom, 1.0);
-        // Recovery.
+        // Recovery copies round-trip; a corrupt one counts as none.
         assert!(read_recovery(&dir).is_none());
         let s = scriptcraft_engine::sample::script();
-        write_recovery(&dir, Some(Path::new("/s/x.fdx")), &s).unwrap();
-        let r = read_recovery(&dir).unwrap();
+        let f = dir.join("copy.json");
+        write_recovery_file(&f, Some(Path::new("/s/x.fdx")), &s).unwrap();
+        let r = read_recovery_file(&f).unwrap();
         assert_eq!(r.script, s);
         assert_eq!(r.path.as_deref(), Some("/s/x.fdx"));
-        std::fs::write(dir.join(RECOVERY), b"{garbage").unwrap();
-        assert!(read_recovery(&dir).is_none());
-        clear_recovery(&dir);
+        assert!(!dir.join("copy.json.tmp").exists());
+        std::fs::write(&f, b"{garbage").unwrap();
+        assert!(read_recovery_file(&f).is_none());
         // Backups keep the newest few.
         let f = dir.join("draft.fountain");
         assert_eq!(backup(&dir, &f, 3).unwrap(), None);
@@ -391,6 +530,46 @@ mod tests {
         assert_eq!(kept.len(), 3);
         let newest = kept.iter().map(|e| std::fs::read_to_string(e.path()).unwrap()).collect::<Vec<_>>();
         assert!(newest.contains(&"v4".to_string()) && !newest.contains(&"v0".to_string()));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn each_run_has_its_own_recovery_copy_and_leftovers_are_offered() {
+        let dir = tmp("slots");
+        let s = scriptcraft_engine::sample::script();
+        // Two windows at once: separate copies, and neither offers the other's live copy.
+        let a = RecoverySlot::claim(&dir).unwrap();
+        let b = RecoverySlot::claim(&dir).unwrap();
+        assert_ne!(a.file, b.file);
+        write_recovery_file(&a.file, None, &Script::new()).unwrap();
+        write_recovery_file(&b.file, Some(Path::new("/s/b.fdx")), &s).unwrap();
+        assert!(orphans(&dir, None).is_empty());
+        b.clear();
+        assert!(read_recovery_file(&a.file).is_some(), "clearing one window's copy keeps the other's");
+        // A run that ends without clearing (a crash drops its lock) leaves its copy to offer.
+        write_recovery_file(&b.file, Some(Path::new("/s/b.fdx")), &s).unwrap();
+        drop(b);
+        // The copy older versions kept, here and in the legacy folder, is offered too.
+        let old = dir.join("old");
+        let mut older = s.clone();
+        older.paras.truncate(1);
+        write_durably(&old.join(RECOVERY), &serde_json::to_vec(&Recovery { path: None, saved_at: 1, script: older }).unwrap()).unwrap();
+        std::fs::write(dir.join(RECOVERY_DIR).join("broken.json"), b"{").unwrap();
+        let found = orphans(&dir, Some(&old));
+        assert_eq!(found.len(), 2, "{found:?}");
+        assert_eq!(found[0].recovery.path.as_deref(), Some("/s/b.fdx"), "newest first");
+        assert_eq!(found[1].recovery.saved_at, 1);
+        // While offered here, another start doesn't offer it again.
+        assert_eq!(orphans(&dir, Some(&old)).len(), 1);
+        for o in found {
+            o.remove();
+        }
+        assert!(orphans(&dir, Some(&old)).is_empty());
+        // A broken copy is never offered, nor deleted.
+        assert!(dir.join(RECOVERY_DIR).join("broken.json").exists());
+        drop(a);
+        let left: Vec<_> = std::fs::read_dir(dir.join(RECOVERY_DIR)).unwrap().flatten().map(|e| e.file_name()).collect();
+        assert_eq!(left.len(), 2, "a's copy and the broken one; no lock files: {left:?}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

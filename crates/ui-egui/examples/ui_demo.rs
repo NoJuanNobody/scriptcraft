@@ -535,8 +535,9 @@ fn main() {
         } else if l.get("recovery").is_some() {
             let mut s = scriptcraft_engine::sample::script();
             s.paras.insert(1, scriptcraft_doc::Para::new(scriptcraft_doc::Element::Action, "These words were typed just before the crash."));
-            let _ = scriptcraft_ui_egui::persist::write_recovery(&state_dir, Some(Path::new("Night Signal.fountain")), &s);
-            h.state_mut().recovery_offer = scriptcraft_ui_egui::persist::read_recovery(&state_dir);
+            let left = state_dir.join(scriptcraft_ui_egui::persist::RECOVERY_DIR).join("run-1-1-0.json");
+            let _ = scriptcraft_ui_egui::persist::write_recovery_file(&left, Some(Path::new("Night Signal.fountain")), &s);
+            h.state_mut().find_recovery();
             rec.shot(&mut h);
         }
     }

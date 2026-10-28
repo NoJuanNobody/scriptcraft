@@ -138,12 +138,21 @@ fn autosave_backups_and_recent_files() {
     h.state_mut().execute("text.insert", json!({"text": "Edited. "})).unwrap();
     assert!(h.state().session.dirty);
     step(&mut h, 12);
-    let r = persist::read_recovery(&dir).expect("autosaved");
+    let copy = h.state().recovery_file().expect("this run's copy").to_path_buf();
+    assert!(copy.starts_with(dir.join(persist::RECOVERY_DIR)));
+    // Written in the background: wait for it.
+    h.state_mut().save_recovery_now();
+    let r = persist::read_recovery_file(&copy).expect("autosaved");
     assert!(r.script.paras[0].text.starts_with("Edited."));
+    // A second window started now doesn't offer this run's live copy.
+    let other = ScriptApp::new(Session::new(Default::default())).with_state_dir(dir.clone());
+    assert!(other.recovery_offer.is_none());
+    drop(other);
     // Saving keeps the previous version and removes the recovery copy.
     h.state_mut().execute("ui.save", json!({})).unwrap();
     assert!(!h.state().session.dirty);
-    assert!(persist::read_recovery(&dir).is_none());
+    h.state_mut().save_recovery_now();
+    assert!(persist::read_recovery_file(&copy).is_none());
     let backups: Vec<_> = std::fs::read_dir(dir.join(persist::BACKUPS)).unwrap().flatten().collect();
     assert_eq!(backups.len(), 1);
     assert_eq!(std::fs::read_to_string(backups[0].path()).unwrap(), scriptcraft_engine::sample::FOUNTAIN);
@@ -151,11 +160,38 @@ fn autosave_backups_and_recent_files() {
     h.state_mut().on_exit();
     let toml = std::fs::read_to_string(dir.join("config.toml")).unwrap();
     assert!(toml.contains("[files]") && toml.contains("draft.fountain"), "{toml}");
-    // A recovery file left by a crash is offered on the next start.
-    persist::write_recovery(&dir, Some(&file), &scriptcraft_engine::sample::script()).unwrap();
-    let next = ScriptApp::new(Session::new(Default::default())).with_state_dir(dir.clone());
-    assert!(next.recovery_offer.is_some());
+    drop(h);
+    // Recovery copies left by crashed runs are offered on the next start, newest first, one
+    // after the other; the one from ScriptCraft 0.5 (`recovery.json`) too.
+    // (A crashed run's lock went with its process: its copy is there, its lock is free.)
+    let crashed_file = dir.join(persist::RECOVERY_DIR).join("run-1-1-0.json");
+    persist::write_recovery_file(&crashed_file, Some(&file), &scriptcraft_engine::sample::script()).unwrap();
+    std::fs::write(crashed_file.with_extension("lock"), b"").unwrap();
+    let mut old = scriptcraft_engine::sample::script();
+    old.paras.truncate(2);
+    persist::write_durably(
+        &dir.join(persist::RECOVERY),
+        &serde_json::to_vec(&persist::Recovery { path: None, saved_at: 1, script: old.clone() }).unwrap(),
+    )
+    .unwrap();
+    let mut next = ScriptApp::new(Session::new(Default::default())).with_state_dir(dir.clone());
     assert_eq!(next.prefs.files.recent.len(), 1);
+    assert_eq!(next.recovery_offer.as_ref().and_then(|r| r.path.clone()), Some(file.display().to_string()));
+    next.answer_recovery(true);
+    assert_eq!(next.session.script, scriptcraft_engine::sample::script());
+    assert!(next.session.dirty);
+    assert!(!crashed_file.exists(), "a recovered copy moves into this run's own");
+    assert!(persist::read_recovery_file(next.recovery_file().unwrap()).is_some());
+    assert_eq!(next.recovery_offer.as_ref().map(|r| r.script.paras.len()), Some(2));
+    // File › Recover Autosaved Copy… finds a copy left while running, and offers the rest again.
+    let left = dir.join(persist::RECOVERY_DIR).join("run-2-2-0.json");
+    persist::write_recovery_file(&left, None, &old).unwrap();
+    assert_eq!(next.execute("ui.recover", json!({})).unwrap()["offered"], 2);
+    next.answer_recovery(false);
+    next.answer_recovery(false);
+    assert!(next.recovery_offer.is_none());
+    assert!(!dir.join(persist::RECOVERY).exists() && !left.exists());
+    assert_eq!(next.execute("ui.recover", json!({})).unwrap()["offered"], 0);
     let _ = std::fs::remove_dir_all(&dir);
 }
 
