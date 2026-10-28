@@ -168,6 +168,13 @@ platform folder (`~/Library/Application Support/scriptcraft`, `%APPDATA%\scriptc
 they live in the data folder, so a settings reset never loses work. The first run imports an older
 `prefs.json` and leaves it in place. Help › About shows the folders in use.
 
+Autosave never touches your script file: every `[files] autosave_seconds` (60 by default) a
+script with unsaved changes is copied into `recovery/` in the data folder, on a background thread
+and flushed to disk before it replaces the previous copy, so a crash or power cut leaves a whole
+copy. Each running ScriptCraft keeps its own copy (locked while it runs), so two windows never
+overwrite each other's. At start-up every copy left by a run that did not end cleanly is offered,
+newest first, including the `recovery.json` older versions wrote.
+
 In the browser: `cargo xtask web` (needs `rustup target add wasm32-unknown-unknown` and
 `cargo install wasm-bindgen-cli` at the version in Cargo.lock), then serve
 `apps/scriptcraft-web/dist/` with any static server, e.g. `python3 -m http.server -d apps/scriptcraft-web/dist`.

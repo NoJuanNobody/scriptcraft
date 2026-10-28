@@ -135,6 +135,7 @@ pub fn menu_bar(app: &mut ScriptApp, ui: &mut Ui) {
                     item(app, ui, "Clear Menu", "ui.clearRecent", "");
                 });
                 item(app, ui, "Open Sample Script", "file.sample", "");
+                item(app, ui, "Recover Autosaved Copy…", "ui.recover", "");
                 ui.separator();
                 item(app, ui, "Save", "ui.save", "Mod+S");
                 item(app, ui, "Save As…", "ui.saveAs", "Mod+Shift+S");
@@ -925,16 +926,10 @@ pub fn dialogs(app: &mut ScriptApp, ctx: &egui::Context) {
             });
         match choice {
             Some(true) => {
-                app.session.replace_script(r.script);
-                app.session.path = r.path.map(std::path::PathBuf::from);
-                app.session.dirty = true;
-                app.recovery_offer = None;
+                app.answer_recovery(true);
                 app.set_status(lang.text("Recovered unsaved changes; save to keep them"));
             }
-            Some(false) => {
-                app.recovery_offer = None;
-                app.clear_recovery();
-            }
+            Some(false) => app.answer_recovery(false),
             None => {}
         }
     }
