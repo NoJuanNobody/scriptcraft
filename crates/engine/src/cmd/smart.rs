@@ -15,7 +15,7 @@ pub fn specs() -> Vec<CommandSpec> {
 }
 
 fn list(s: &mut Session, _: &Value) -> CmdResult {
-    Ok(match suggest(&s.script, s.sel.focus) {
+    Ok(match suggest(&s.script, &s.sluglines, s.sel.focus) {
         Some(sg) => json!({"para": sg.para, "from": sg.from, "items": sg.items}),
         None => json!({"items": []}),
     })
@@ -23,7 +23,7 @@ fn list(s: &mut Session, _: &Value) -> CmdResult {
 
 fn accept(s: &mut Session, v: &Value) -> CmdResult {
     let i = p::usize(v, "index").unwrap_or(0);
-    let sg = suggest(&s.script, s.sel.focus).ok_or_else(|| CmdError::Disabled("no suggestions here".into()))?;
+    let sg = suggest(&s.script, &s.sluglines, s.sel.focus).ok_or_else(|| CmdError::Disabled("no suggestions here".into()))?;
     let item = sg.items.get(i).ok_or_else(|| CmdError::Params(format!("no suggestion {i}")))?.clone();
     let end = s.script.para(sg.para).map_or(0, |q| q.len());
     let at = s.script.delete_range(Pos::new(sg.para, sg.from), Pos::new(sg.para, end));

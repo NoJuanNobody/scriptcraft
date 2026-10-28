@@ -29,7 +29,7 @@
 mod board;
 mod emphasis;
 
-use scriptcraft_doc::{Element, MAX_PARAS, Note, Para, Script, StructureKind, StructurePoint, TitlePage};
+use scriptcraft_doc::{Element, MAX_PARAS, Note, Para, Script, Sluglines, StructureKind, StructurePoint, TitlePage};
 
 /// Marks where an inline note stood (private-use characters; removed from input first).
 const NOTE_OPEN: char = '\u{E000}';
@@ -56,8 +56,15 @@ fn element_note(line: &str) -> Option<(&str, char)> {
 /// Largest input we parse, in bytes (longer input is cut at a char boundary).
 pub const MAX_INPUT: usize = 64 << 20;
 
-/// Parse Fountain text. Never fails: anything unrecognised is Action.
+/// Parse Fountain text with the default scene-heading words (English and Russian). Never
+/// fails: anything unrecognised is Action.
 pub fn parse(src: &str) -> Script {
+    parse_with(src, &Sluglines::default())
+}
+
+/// Parse Fountain text, recognising natural scene headings by `words` (the user's
+/// abbreviations, such as `INNEN.`/`AUSSEN.`). Never fails: anything unrecognised is Action.
+pub fn parse_with(src: &str, words: &Sluglines) -> Script {
     let mut cut = src.len().min(MAX_INPUT);
     while cut > 0 && !src.is_char_boundary(cut) {
         cut -= 1;
@@ -232,7 +239,7 @@ pub fn parse(src: &str) -> Script {
             continue;
         }
         // Natural elements.
-        if was_blank && is_heading(line) {
+        if was_blank && words.is_heading(line) {
             push_heading(&mut paras, line);
             continue;
         }
@@ -471,13 +478,13 @@ fn push_character(paras: &mut Vec<Para>, text: &str) {
     paras.push(p);
 }
 
-/// A natural scene heading: `INT.`, `EXT.`, `EST.`, `INT./EXT.`, `INT/EXT`, `I/E` followed by a
-/// dot or space.
+/// A natural scene heading with the default words: `INT.`, `EXT.`, `EST.`, `INT./EXT.`,
+/// `INT/EXT`, `I/E` (and the Russian `ИНТ.`, `НАТ.`) followed by a dot or space. The writer uses
+/// these, so a heading in other words is written forced (`.INNEN. KÜCHE`) and every Fountain app
+/// reads it back as a heading.
 pub fn is_heading(line: &str) -> bool {
-    let up = line.trim_start().to_uppercase();
-    ["INT./EXT", "INT/EXT", "EXT./INT", "EXT/INT", "I/E", "INT", "EXT", "EST", "ИНТ./НАТ", "ИНТ/НАТ", "НАТ./ИНТ", "НАТ/ИНТ", "ИНТ", "НАТ"]
-        .iter()
-        .any(|p| up.strip_prefix(p).is_some_and(|rest| rest.starts_with('.') || rest.starts_with(' ')))
+    static DEFAULT: std::sync::OnceLock<Sluglines> = std::sync::OnceLock::new();
+    DEFAULT.get_or_init(Sluglines::default).is_heading(line)
 }
 
 fn has_lowercase(s: &str) -> bool {

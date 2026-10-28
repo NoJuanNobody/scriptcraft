@@ -67,8 +67,12 @@ Shift+Tab changes the element backwards: Character → Action, Transition → Ch
 - **Parentheses:** a paragraph that becomes an empty Parenthetical gets `()` with the caret inside.
   Typing `(` right after the automatic `(` or `)` right before the automatic `)` moves over it.
   Backspace in `()` clears both.
-- **Scene-heading detection:** typing `int. `, `ext. `, `int./ext. `, `i/e ` or `est. ` at the start
-  of an Action paragraph turns it into a Scene Heading.
+- **Scene-heading detection:** typing one of the user's scene-heading abbreviations and a space at
+  the start of an Action paragraph turns it into a Scene Heading. The standard set is `int. `,
+  `ext. `, `int./ext. `, `i/e `, `est. ` and the Russian `инт. `, `нат. `, `инт./нат. `; **Tools ›
+  Scene Heading Abbreviations…** (`sluglines.set`) switches to another language's set (German
+  `innen. `/`aussen. `, Polish `wn. `/`pl. `, …) or edits the lists. The word must be typed as
+  listed (with its dot), so action such as `Innen ist es dunkel.` stays action.
 - **(CONT'D):** when the same character speaks again after action in the same scene, the cue shows
   `(CONT'D)` (display only; Document › Automatic Character (CONT'D)).
 
@@ -79,7 +83,7 @@ Suggestions appear under the caret while the caret is at the end of a non-empty 
 | Element | Offers |
 |---|---|
 | Character | names already used in the script; after ` (`: `(V.O.)`, `(O.S.)`, `(O.C.)`, `(CONT'D)` |
-| Scene Heading | `INT. `, `EXT. `, `INT./EXT. `, `EST. `, `I/E. `; then locations already used; after ` - `: times of day (DAY, NIGHT, CONTINUOUS, …) and times already used |
+| Scene Heading | the user's scene-heading abbreviations (`INT. `, `EXT. `, `EST. `, `INT./EXT. `, `I/E. `, …); then locations already used; after ` - ` (or ` – `, ` — `): the user's times of day (DAY, NIGHT, CONTINUOUS, …) and times already used |
 | Transition | CUT TO:, DISSOLVE TO:, SMASH CUT TO:, MATCH CUT TO:, … |
 
 ↑/↓ choose, Enter accepts (for a Character it also moves on to Dialogue), Esc dismisses until the
@@ -89,4 +93,4 @@ next keystroke. Commands: `smarttype.suggest`, `smarttype.accept {index}`.
 
 Consecutive typing is one undo step; any other command ends it. Every other edit is its own step.
 
-Russian scene prefixes `инт. `, `нат. ` and `инт./нат. ` follow the same Action-to-Scene-Heading flow. The early-prefix limit counts characters, not UTF-8 bytes.
+Scene prefixes in any language (`инт. `, `innen. `, `wn. `) follow the same Action-to-Scene-Heading flow. The paragraph may be at most one character longer than the longest abbreviation; the limit counts characters, not UTF-8 bytes.

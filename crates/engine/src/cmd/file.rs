@@ -46,7 +46,7 @@ fn sample(s: &mut Session, _: &Value) -> CmdResult {
 
 fn open(s: &mut Session, v: &Value) -> CmdResult {
     let path = PathBuf::from(p::req_str(v, "path")?);
-    let (script, format, notes) = io::read_noted(&path).map_err(CmdError::Failed)?;
+    let (script, format, notes) = io::read_noted_with(&path, &s.sluglines).map_err(CmdError::Failed)?;
     let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("the file").to_string();
     if format.imported() {
         return Ok(imported(s, script, format, &name, notes));
@@ -71,7 +71,7 @@ fn import(s: &mut Session, v: &Value) -> CmdResult {
         let path = PathBuf::from(path);
         let format =
             Format::of(&path).filter(|f| f.imported()).ok_or_else(|| CmdError::Params("import takes a .docx, .celtx or .pdf file".into()))?;
-        let (script, _, notes) = io::read_noted(&path).map_err(CmdError::Failed)?;
+        let (script, _, notes) = io::read_noted_with(&path, &s.sluglines).map_err(CmdError::Failed)?;
         let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("the file").to_string();
         return Ok(imported(s, script, format, &name, notes));
     }
@@ -83,7 +83,7 @@ fn import(s: &mut Session, v: &Value) -> CmdResult {
     if bytes.len() as u64 > io::MAX_FILE {
         return Err(CmdError::Failed(format!("{name} is too large to open")));
     }
-    let (script, notes) = io::parse_noted(&bytes, format).map_err(CmdError::Failed)?;
+    let (script, notes) = io::parse_noted_with(&bytes, format, &s.sluglines).map_err(CmdError::Failed)?;
     Ok(imported(s, script, format, &name, notes))
 }
 
@@ -139,7 +139,7 @@ fn load(s: &mut Session, v: &Value) -> CmdResult {
     if bytes.len() as u64 > io::MAX_FILE {
         return Err(CmdError::Failed(format!("{name} is too large to open")));
     }
-    let (script, notes) = io::parse_noted(&bytes, format).map_err(CmdError::Failed)?;
+    let (script, notes) = io::parse_noted_with(&bytes, format, &s.sluglines).map_err(CmdError::Failed)?;
     if format.imported() {
         return Ok(imported(s, script, format, name, notes));
     }
@@ -153,7 +153,7 @@ fn export_data(s: &mut Session, v: &Value) -> CmdResult {
     let f = p::req_str(v, "format")?.to_ascii_lowercase();
     if f == "csv" {
         let l = s.layout();
-        let bytes = crate::breakdown::csv(&s.script, &l).into_bytes();
+        let bytes = crate::breakdown::csv(&s.script, &l, &s.sluglines).into_bytes();
         let stem = export_stem(s);
         return Ok(json!({"name": format!("{stem} Breakdown.csv"), "data": crate::b64::encode(&bytes), "bytes": bytes.len()}));
     }

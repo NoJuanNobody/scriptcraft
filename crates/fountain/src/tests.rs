@@ -155,3 +155,18 @@ fn russian_screenplay_round_trips() {
     assert_eq!(parse(&write(&script)), script);
     assert!(!is_heading("ИНТЕРЕСНЫЙ ДЕНЬ"));
 }
+
+#[test]
+fn headings_in_the_users_words() {
+    let src = "WN. KUCHNIA – DZIEŃ\n\nPada deszcz.\n\nPL. OGRÓD - NOC\n";
+    let pl = Sluglines::preset("pl").unwrap();
+    let s = parse_with(src, &pl);
+    assert_eq!(s.paras[0].element, Element::SceneHeading);
+    assert_eq!(s.paras[2].element, Element::SceneHeading);
+    // The default words don't know them: action.
+    assert_eq!(parse(src).paras[0].element, Element::Action);
+    // Written forced, so any Fountain app (and the default words) reads them back as headings.
+    let out = write(&s);
+    assert!(out.contains(".WN. KUCHNIA – DZIEŃ"), "{out}");
+    assert_eq!(parse(&out).paras[0].element, Element::SceneHeading);
+}

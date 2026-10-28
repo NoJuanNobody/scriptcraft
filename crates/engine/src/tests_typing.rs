@@ -253,7 +253,7 @@ fn russian_heading_typing_and_locations() {
     s.run("text.insert", &json!({"text":"кухня - ночь"})).unwrap();
     assert_eq!(s.script.paras[0].element, Element::SceneHeading);
     assert_eq!(s.script.paras[0].text, "ИНТ. КУХНЯ - НОЧЬ");
-    let locations = crate::reports::locations(&s.script);
+    let locations = crate::reports::locations(&s.script, &s.sluglines);
     assert_eq!(locations[0].location, "КУХНЯ");
     assert!(locations[0].interior);
     assert!(!locations[0].exterior);
@@ -261,6 +261,48 @@ fn russian_heading_typing_and_locations() {
     s.run("text.insert", &json!({"text":"инт./нат. "})).unwrap();
     s.run("text.insert", &json!({"text":"двор - день"})).unwrap();
     assert_eq!(s.script.paras[1].element, Element::SceneHeading);
-    let locations = crate::reports::locations(&s.script);
+    let locations = crate::reports::locations(&s.script, &s.sluglines);
     assert!(locations[1].interior && locations[1].exterior);
+}
+
+#[test]
+fn users_own_heading_words_drive_typing_smarttype_reports_and_fountain() {
+    // A German writer picks the German set: INNEN./AUSSEN. start scene headings.
+    let mut s = Session::new(Default::default());
+    let r = s.run("sluglines.set", &json!({"preset": "de"})).unwrap();
+    assert_eq!(r["interior"], json!(["INNEN.", "INT."]));
+    s.run("element.set", &json!({"element": "action"})).unwrap();
+    s.run("text.insert", &json!({"text": "innen. "})).unwrap();
+    assert_eq!(s.element(), Element::SceneHeading);
+    s.run("text.insert", &json!({"text": "küche – t"})).unwrap();
+    let r = s.run("smarttype.suggest", &json!({})).unwrap();
+    assert_eq!(r["items"], json!(["TAG"]));
+    s.run("smarttype.accept", &json!({})).unwrap();
+    assert_eq!(s.script.paras[0].text, "INNEN. KÜCHE – TAG");
+    // Ordinary action that only starts with the word stays action.
+    s.run("text.enter", &json!({})).unwrap();
+    s.run("text.insert", &json!({"text": "Innen ist es dunkel."})).unwrap();
+    assert_eq!(s.element(), Element::Action);
+    let locations = crate::reports::locations(&s.script, &s.sluglines);
+    assert_eq!(locations[0].location, "KÜCHE");
+    assert!(locations[0].interior && !locations[0].exterior);
+    // Prefix suggestions come from the user's lists.
+    s.run("text.enter", &json!({})).unwrap();
+    s.run("element.set", &json!({"element": "sceneHeading"})).unwrap();
+    s.run("text.insert", &json!({"text": "a"})).unwrap();
+    let r = s.run("smarttype.suggest", &json!({})).unwrap();
+    assert_eq!(r["items"], json!(["AUSSEN. ", "AUSSEN/INNEN. "]));
+    // Fountain read with the user's words finds the headings (the navigator lists them).
+    s.run("document.setFountain", &json!({"text": "AUSSEN. GARTEN - NACHT\n\nRegen.\n\nINNEN. FLUR - NACHT\n\nANNA\nHallo?\n"})).unwrap();
+    let headings: Vec<_> = s.script.scenes().into_iter().map(|sc| sc.heading).collect();
+    assert_eq!(headings, ["AUSSEN. GARTEN - NACHT", "INNEN. FLUR - NACHT"]);
+    assert_eq!(s.script.characters(), ["ANNA"]);
+    // Edited lists are cleaned; a bad preset is refused.
+    let r = s.run("sluglines.set", &json!({"interior": " wn. , wn., ", "times": ["dzień"]})).unwrap();
+    assert_eq!(r["interior"], json!(["WN."]));
+    assert_eq!(r["times"], json!(["DZIEŃ"]));
+    assert!(s.run("sluglines.set", &json!({"preset": "xx"})).is_err());
+    assert!(s.run("sluglines.set", &json!({"interior": 5})).is_err());
+    s.run("sluglines.set", &json!({"preset": "default"})).unwrap();
+    assert_eq!(s.sluglines, scriptcraft_doc::Sluglines::default());
 }

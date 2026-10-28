@@ -19,7 +19,10 @@ fn with(s: &mut Session, v: &Value) -> CmdResult {
     let (other, name) = match p::str(v, "path") {
         Some(path) => {
             let path = PathBuf::from(path);
-            (io::read(&path).map_err(CmdError::Failed)?, path.file_name().and_then(|n| n.to_str()).unwrap_or("draft").to_string())
+            (
+                io::read_noted_with(&path, &s.sluglines).map(|(script, _, _)| script).map_err(CmdError::Failed)?,
+                path.file_name().and_then(|n| n.to_str()).unwrap_or("draft").to_string(),
+            )
         }
         None => {
             let name = p::req_str(v, "name")?;
@@ -32,7 +35,7 @@ fn with(s: &mut Session, v: &Value) -> CmdResult {
             if bytes.len() as u64 > io::MAX_FILE {
                 return Err(CmdError::Failed(format!("{name} is too large")));
             }
-            (io::parse(&bytes, format).map_err(CmdError::Failed)?, name.to_string())
+            (io::parse_noted_with(&bytes, format, &s.sluglines).map(|(script, _)| script).map_err(CmdError::Failed)?, name.to_string())
         }
     };
     let newer = match p::str(v, "otherIs") {

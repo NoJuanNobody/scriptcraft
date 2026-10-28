@@ -77,7 +77,12 @@ pub fn show(app: &mut ScriptApp, ui: &mut Ui) {
         if items.is_empty() {
             ui.horizontal(|ui| {
                 ui.add_space(24.0);
-                ui.label(RichText::new("No scenes yet: add a scene heading (INT. / EXT.) in the page view.").color(t.text_soft));
+                let (int, ext) = crate::sluglines::example(app);
+                let lang = app.prefs.appearance.language;
+                ui.label(
+                    RichText::new(lang.format("No scenes yet: add a scene heading ({int} / {ext}) in the page view.", &[("int", int), ("ext", ext)]))
+                        .color(t.text_soft),
+                );
             });
         }
         let width = (ui.available_width() - 40.0).clamp(320.0, 980.0);

@@ -11,8 +11,8 @@ pub fn show(app: &mut ScriptApp, ui: &mut Ui) {
     let t = app.tokens();
     let l = app.session.layout();
     let chars = reports::characters(&app.session.script, &l);
-    let scenes = reports::scenes(&app.session.script, &l);
-    let locs = reports::locations(&app.session.script);
+    let scenes = reports::scenes(&app.session.script, &l, &app.session.sluglines);
+    let locs = reports::locations(&app.session.script, &app.session.sluglines);
     let mut goto = None;
     egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
         egui::Frame::NONE.fill(t.panel).inner_margin(24.0).corner_radius(8.0).outer_margin(18.0).show(ui, |ui| {

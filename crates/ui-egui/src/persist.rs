@@ -46,6 +46,8 @@ pub struct Prefs {
     pub editing: Editing,
     pub files: Files,
     pub speech: Speech,
+    /// The words that start a scene heading and the times of day (`INT.`, `ИНТ.`, `INNEN.` …).
+    pub sluglines: scriptcraft_doc::Sluglines,
 }
 
 /// `[appearance]`
@@ -154,6 +156,7 @@ impl Prefs {
         self.files.backups_kept = self.files.backups_kept.min(100);
         self.speech.rate = self.speech.rate.clamp(80, 400);
         self.speech.narrator_voice = scriptcraft_doc::voices::clean_voice_name(&self.speech.narrator_voice).unwrap_or_default();
+        self.sluglines = self.sluglines.sanitized();
         self
     }
 }
@@ -193,6 +196,7 @@ pub fn parse_legacy_prefs(bytes: &[u8]) -> Result<Prefs, String> {
             backups_kept: old.backups.unwrap_or(d.files.backups_kept),
         },
         speech: d.speech,
+        sluglines: d.sluglines,
     }
     .sanitized())
 }
