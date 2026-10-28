@@ -13,6 +13,7 @@ mod format;
 pub mod page_setup;
 mod production;
 pub mod revision;
+pub mod sluglines;
 mod structure;
 mod style;
 pub mod template;
@@ -34,6 +35,7 @@ pub use format::{Align, ElementFormat, ElementFormats};
 pub use page_setup::{HeaderFooter, PageSetup, Paper};
 pub use production::{expand_page_label, next_label};
 pub use revision::{RevMark, RevisionSet, Revisions};
+pub use sluglines::{Setting as HeadingSetting, Sluglines};
 pub use structure::{MAX_STRUCTURE, OutlineItem, PointSlot, StructureKind, StructurePoint};
 pub use style::{Flag, Span, Style};
 pub use template::Template;
@@ -874,28 +876,12 @@ pub fn character_name(cue: &str) -> String {
     base.trim().trim_end_matches('^').trim().to_string()
 }
 
-/// Scene-heading prefixes, longest first.
-pub const HEADING_PREFIXES: [&str; 13] =
-    ["ИНТ./НАТ.", "НАТ./ИНТ.", "ИНТ/НАТ.", "ИНТ.", "НАТ.", "INT./EXT.", "EXT./INT.", "INT/EXT.", "I/E.", "INT.", "EXT.", "EST.", "INT "];
-
-/// A heading split into (prefix, location, time): `"INT. DINER - NIGHT"` →
-/// `("INT.", "DINER", "NIGHT")`. Missing parts are empty.
+/// A heading split into (prefix, location, time) with the default words (English and Russian):
+/// `"INT. DINER - NIGHT"` → `("INT.", "DINER", "NIGHT")`. Missing parts are empty. Code that
+/// knows the user's words uses [`Sluglines::parts`].
 pub fn heading_parts(h: &str) -> (String, String, String) {
-    let t = h.trim();
-    let up = t.to_uppercase();
-    let mut prefix = "";
-    for p in HEADING_PREFIXES {
-        if up.starts_with(p) {
-            prefix = p.trim();
-            break;
-        }
-    }
-    let rest = t.get(prefix.len()..).unwrap_or("").trim();
-    let (loc, time) = match rest.rfind(" - ") {
-        Some(i) => (rest.get(..i).unwrap_or(""), rest.get(i + 3..).unwrap_or("")),
-        None => (rest, ""),
-    };
-    (prefix.to_string(), loc.trim().to_string(), time.trim().to_string())
+    static DEFAULT: std::sync::OnceLock<Sluglines> = std::sync::OnceLock::new();
+    DEFAULT.get_or_init(Sluglines::default).parts(h)
 }
 
 #[cfg(test)]

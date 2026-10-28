@@ -21,11 +21,12 @@ pub fn show(app: &mut ScriptApp, ui: &mut Ui) {
     let t = app.tokens();
     let scenes = app.session.script.scenes();
     let l = app.session.layout();
-    let reports = scriptcraft_engine::reports::scenes(&app.session.script, &l);
+    let reports = scriptcraft_engine::reports::scenes(&app.session.script, &l, &app.session.sluglines);
     let mut actions: Vec<(&str, serde_json::Value)> = Vec::new();
     let mut rects: Vec<Rect> = Vec::new();
     let mut drop_from: Option<usize> = None;
     let pointer = ui.input(|i| i.pointer.interact_pos().or(i.pointer.hover_pos()));
+    let (int, ext) = crate::sluglines::example(app);
     egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
         ui.add_space(18.0);
         let avail = ui.available_width() - 36.0;
@@ -33,7 +34,10 @@ pub fn show(app: &mut ScriptApp, ui: &mut Ui) {
         if scenes.is_empty() {
             ui.horizontal(|ui| {
                 ui.add_space(24.0);
-                ui.label(RichText::new(lang.text("No scenes yet: add a scene heading (INT. / EXT.) in the page view.")).color(t.text_soft));
+                ui.label(
+                    RichText::new(lang.format("No scenes yet: add a scene heading ({int} / {ext}) in the page view.", &[("int", int), ("ext", ext)]))
+                        .color(t.text_soft),
+                );
             });
         }
         ui.horizontal(|ui| {

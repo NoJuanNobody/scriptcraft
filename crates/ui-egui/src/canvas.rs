@@ -99,7 +99,7 @@ fn current_suggest(app: &ScriptApp) -> Option<Suggest> {
     if p.text.trim().is_empty() {
         return None;
     }
-    suggest(&s.script, s.sel.focus)
+    suggest(&s.script, &s.sluglines, s.sel.focus)
 }
 
 /// Misspellings of the current script, recomputed only when the script or dictionaries change.

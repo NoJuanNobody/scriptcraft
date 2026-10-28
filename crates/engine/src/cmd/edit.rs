@@ -139,7 +139,7 @@ fn paste(s: &mut Session, v: &Value) -> CmdResult {
     }
     let fountain = p::bool(v, "fountain").unwrap_or_else(|| text.replace("\r\n", "\n").contains("\n\n"));
     if fountain {
-        let parsed = scriptcraft_fountain::parse(text);
+        let parsed = scriptcraft_fountain::parse_with(text, &s.sluglines);
         return paste_paras(s, &parsed.paras);
     }
     super::text::insert(s, &json!({"text": text}))

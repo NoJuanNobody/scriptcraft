@@ -4,7 +4,7 @@
 
 use std::path::Path;
 
-use scriptcraft_doc::Script;
+use scriptcraft_doc::{Script, Sluglines};
 
 /// Largest file we open.
 pub const MAX_FILE: u64 = 128 << 20;
@@ -86,8 +86,13 @@ pub fn parse(bytes: &[u8], format: Format) -> Result<Script, String> {
 
 /// Parse file contents, with notes on how an imported file was read.
 pub fn parse_noted(bytes: &[u8], format: Format) -> Result<(Script, Vec<String>), String> {
+    parse_noted_with(bytes, format, &Sluglines::default())
+}
+
+/// [`parse_noted`] recognising Fountain scene headings by the user's `words`.
+pub fn parse_noted_with(bytes: &[u8], format: Format, words: &Sluglines) -> Result<(Script, Vec<String>), String> {
     match format {
-        Format::Fountain => Ok((scriptcraft_fountain::parse(&decode(bytes)), Vec::new())),
+        Format::Fountain => Ok((scriptcraft_fountain::parse_with(&decode(bytes), words), Vec::new())),
         Format::Fdx => scriptcraft_fdx::parse(&decode(bytes)).map(|s| (s, Vec::new())).map_err(|e| e.to_string()),
         Format::Pdf | Format::Docx | Format::Celtx => {
             let kind = format.import_kind().ok_or("not an imported format")?;
@@ -113,13 +118,18 @@ pub fn read(path: &Path) -> Result<Script, String> {
 
 /// Open a script file: the script, its format and notes on how an imported file was read.
 pub fn read_noted(path: &Path) -> Result<(Script, Format, Vec<String>), String> {
+    read_noted_with(path, &Sluglines::default())
+}
+
+/// [`read_noted`] recognising Fountain scene headings by the user's `words`.
+pub fn read_noted_with(path: &Path, words: &Sluglines) -> Result<(Script, Format, Vec<String>), String> {
     let format = Format::of(path).ok_or_else(|| format!("unknown file type: {}", path.display()))?;
     let meta = std::fs::metadata(path).map_err(|e| format!("cannot open {}: {e}", path.display()))?;
     if meta.len() > MAX_FILE {
         return Err(format!("{} is too large to open", path.display()));
     }
     let bytes = std::fs::read(path).map_err(|e| format!("cannot read {}: {e}", path.display()))?;
-    let (script, notes) = parse_noted(&bytes, format)?;
+    let (script, notes) = parse_noted_with(&bytes, format, words)?;
     Ok((script, format, notes))
 }
 

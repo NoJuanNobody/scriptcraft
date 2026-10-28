@@ -119,7 +119,7 @@ fn fdx(s: &mut Session, _: &Value) -> CmdResult {
 
 fn set_fountain(s: &mut Session, v: &Value) -> CmdResult {
     let text = p::req_str(v, "text")?;
-    s.script = scriptcraft_fountain::parse(text);
+    s.script = scriptcraft_fountain::parse_with(text, &s.sluglines);
     s.sel = crate::Selection::default();
     Ok(json!({"paragraphs": s.script.paras.len()}))
 }
@@ -138,9 +138,9 @@ fn characters(s: &mut Session, _: &Value) -> CmdResult {
 
 fn scenes(s: &mut Session, _: &Value) -> CmdResult {
     let l = s.layout();
-    to_json(&reports::scenes(&s.script, &l))
+    to_json(&reports::scenes(&s.script, &l, &s.sluglines))
 }
 
 fn locations(s: &mut Session, _: &Value) -> CmdResult {
-    to_json(&reports::locations(&s.script))
+    to_json(&reports::locations(&s.script, &s.sluglines))
 }

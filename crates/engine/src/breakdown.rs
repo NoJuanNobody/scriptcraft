@@ -1,6 +1,6 @@
 //! Production breakdown: tagged items (props, wardrobe, vehicles…) per scene, and as CSV.
 
-use scriptcraft_doc::Script;
+use scriptcraft_doc::{Script, Sluglines};
 use scriptcraft_layout::Layout;
 use serde::Serialize;
 
@@ -77,7 +77,7 @@ fn sort_categories(cats: &mut [CategoryItems], order: &[String]) {
 
 /// Every scene with its tagged items by category (scenes without tags included, so the sheet
 /// lists the whole script). Text before the first heading appears as scene 0 when tagged.
-pub fn breakdown(s: &Script, l: &Layout) -> Vec<SceneBreakdown> {
+pub fn breakdown(s: &Script, l: &Layout, words: &Sluglines) -> Vec<SceneBreakdown> {
     let order = s.tag_categories_used();
     let mut out: Vec<SceneBreakdown> = Vec::new();
     let first = s.scenes().first().map_or(s.paras.len(), |sc| sc.para);
@@ -104,7 +104,7 @@ pub fn breakdown(s: &Script, l: &Layout) -> Vec<SceneBreakdown> {
         });
     }
     let scenes = s.scenes();
-    for r in reports::scenes(s, l) {
+    for r in reports::scenes(s, l, words) {
         let Some(sc) = scenes.get(r.scene.saturating_sub(1)) else { continue };
         let mut cats = Vec::new();
         for i in sc.para..sc.end {
@@ -164,14 +164,14 @@ fn cell(v: &str) -> String {
 
 /// The breakdown as CSV: one row per scene, a column per tag category in use (items joined
 /// with `; `).
-pub fn csv(s: &Script, l: &Layout) -> String {
+pub fn csv(s: &Script, l: &Layout, words: &Sluglines) -> String {
     let cats = s.tag_categories_used();
     let mut out = String::new();
     let mut head = vec!["Scene".to_string(), "Number".into(), "Heading".into(), "Page".into(), "Length".into(), "Speaking".into()];
     head.extend(cats.iter().cloned());
     out.push_str(&head.iter().map(|h| cell(h)).collect::<Vec<_>>().join(","));
     out.push_str("\r\n");
-    for b in breakdown(s, l) {
+    for b in breakdown(s, l, words) {
         let mut row = vec![
             b.scene.to_string(),
             b.number.clone().unwrap_or_default(),

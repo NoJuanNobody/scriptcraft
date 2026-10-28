@@ -79,6 +79,9 @@ pub struct Session {
     pub collab: crate::collab::Collab,
     /// Who is writing: the author of tracked changes (the app sets it from its preferences).
     pub author: String,
+    /// The user's scene-heading words (`INT.`, `ИНТ.`, `INNEN.` …): what typing, Fountain,
+    /// SmartType and reports take for a scene heading (the app sets it from its preferences).
+    pub sluglines: scriptcraft_doc::Sluglines,
 }
 
 impl Session {
@@ -105,6 +108,7 @@ impl Session {
             revision: 0,
             collab: Default::default(),
             author: String::new(),
+            sluglines: Default::default(),
         };
         let _ = s.script.normalize();
         s

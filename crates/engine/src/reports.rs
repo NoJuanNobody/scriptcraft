@@ -1,6 +1,6 @@
 //! Reports: characters, scenes, locations.
 
-use scriptcraft_doc::{Element, Script, character_name, heading_parts};
+use scriptcraft_doc::{Element, HeadingSetting, Script, Sluglines, character_name};
 use scriptcraft_layout::{Layout, LineKind};
 use serde::Serialize;
 
@@ -98,7 +98,7 @@ pub fn characters(s: &Script, l: &Layout) -> Vec<CharacterReport> {
 }
 
 /// Every scene with its page, length and cast.
-pub fn scenes(s: &Script, l: &Layout) -> Vec<SceneReport> {
+pub fn scenes(s: &Script, l: &Layout, words: &Sluglines) -> Vec<SceneReport> {
     let mut lines = vec![0usize; s.paras.len()];
     for p in &l.pages {
         for ln in &p.lines {
@@ -124,7 +124,7 @@ pub fn scenes(s: &Script, l: &Layout) -> Vec<SceneReport> {
                     }
                 }
             }
-            let (_, location, time) = heading_parts(&sc.heading);
+            let (_, location, time) = words.parts(&sc.heading);
             SceneReport {
                 scene: sc.index + 1,
                 number: sc.number.clone(),
@@ -141,22 +141,17 @@ pub fn scenes(s: &Script, l: &Layout) -> Vec<SceneReport> {
         .collect()
 }
 
-/// Every location, by number of scenes.
-pub fn locations(s: &Script) -> Vec<LocationReport> {
+/// Every location, by number of scenes; interior and exterior come from the user's `words`.
+pub fn locations(s: &Script, words: &Sluglines) -> Vec<LocationReport> {
     let mut out: Vec<LocationReport> = Vec::new();
     for sc in s.scenes() {
-        let (prefix, loc, _) = heading_parts(&sc.heading);
+        let (_, loc, _) = words.parts(&sc.heading);
         if loc.is_empty() {
             continue;
         }
-        let int =
-            prefix.starts_with("INT") || prefix.starts_with("I/E") || prefix.contains("/INT") || prefix.starts_with("ИНТ") || prefix.contains("/ИНТ");
-        let ext = prefix.starts_with("EXT")
-            || prefix.starts_with("I/E")
-            || prefix.contains("/EXT")
-            || prefix == "EST."
-            || prefix.starts_with("НАТ")
-            || prefix.contains("/НАТ");
+        let setting = words.setting(&sc.heading);
+        let int = matches!(setting, Some(HeadingSetting::Interior | HeadingSetting::Both));
+        let ext = matches!(setting, Some(HeadingSetting::Exterior | HeadingSetting::Both));
         match out.iter_mut().find(|r| r.location == loc) {
             Some(r) => {
                 r.scenes += 1;

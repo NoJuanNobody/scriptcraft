@@ -16,6 +16,7 @@ pub mod production;
 pub mod report;
 pub mod revision;
 pub mod scene;
+pub mod sluglines;
 pub mod smart;
 pub mod speech;
 pub mod spell;
@@ -40,6 +41,7 @@ pub fn registry() -> Registry {
     v.extend(element::specs());
     v.extend(format::specs());
     v.extend(smart::specs());
+    v.extend(sluglines::specs());
     v.extend(spell::specs());
     v.extend(scene::specs());
     v.extend(production::specs());

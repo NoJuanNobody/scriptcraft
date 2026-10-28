@@ -21,6 +21,7 @@ pub mod persist;
 pub mod printing;
 pub mod production;
 mod reports;
+pub mod sluglines;
 pub mod speech;
 pub mod split;
 pub mod storymap;
@@ -104,6 +105,7 @@ pub const UI_COMMANDS: &[(&str, &str, &str, &str)] = &[
     ("ui.bookmarks", "Show Bookmarks", "Edit", ""),
     ("ui.find", "Find…", "Edit", "Mod+F"),
     ("ui.toggleSpelling", "Check Spelling as You Type", "Tools", ""),
+    ("ui.sluglines", "Scene Heading Abbreviations…", "Tools", ""),
     ("ui.toggleEnterPicker", "Element List on Enter in an Empty Paragraph", "Format", ""),
     ("ui.titlePage", "Title Page…", "Document", ""),
     ("ui.pageSetup", "Page Setup…", "Document", ""),
@@ -164,6 +166,8 @@ pub struct ScriptApp {
     pub find: Option<FindBar>,
     pub title_dialog: bool,
     pub element_dialog: bool,
+    /// The Scene Heading Abbreviations window.
+    pub sluglines: sluglines::Dialog,
     /// Page Setup, Print and Revisions dialogs.
     pub production: production::Dialogs,
     /// The Collaborate window (real-time collaboration).
@@ -263,6 +267,7 @@ impl ScriptApp {
             find: None,
             title_dialog: false,
             element_dialog: false,
+            sluglines: sluglines::Dialog::default(),
             production: production::Dialogs::default(),
             collab: collab_ui::CollabDialog::default(),
             drafts: drafts::DraftsUi::default(),
@@ -358,6 +363,7 @@ impl ScriptApp {
         self.canvas.zoom = p.appearance.zoom as f32;
         self.spelling = p.editing.spelling;
         self.enter_picker = p.editing.element_list_on_enter;
+        self.session.sluglines = p.sluglines.clone();
         self.prefs = p;
     }
 
@@ -367,6 +373,7 @@ impl ScriptApp {
         self.prefs.appearance.zoom = (f64::from(self.canvas.zoom) * 100.0).round() / 100.0;
         self.prefs.editing.spelling = self.spelling;
         self.prefs.editing.element_list_on_enter = self.enter_picker;
+        self.prefs.sluglines = self.session.sluglines.clone();
         #[cfg(not(target_arch = "wasm32"))]
         if let Some(store) = self.settings.as_mut()
             && store.get() != &self.prefs
@@ -684,6 +691,7 @@ impl ScriptApp {
             }
             "ui.titlePage" => self.title_dialog = !self.title_dialog,
             "ui.elementSettings" => self.element_dialog = !self.element_dialog,
+            "ui.sluglines" => self.sluglines.open = !self.sluglines.open,
             "ui.pageSetup" => self.production.page_setup = !self.production.page_setup,
             "ui.revisions" => self.production.revisions = !self.production.revisions,
             "ui.trackChanges" | "ui.compare" | "ui.compareWindow" => return drafts::command(self, id, p),

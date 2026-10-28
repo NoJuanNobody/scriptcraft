@@ -275,6 +275,7 @@ pub fn menu_bar(app: &mut ScriptApp, ui: &mut Ui) {
                 item(app, ui, "Next Misspelling", "spell.next", "Mod+;");
                 check(app, ui, "Check Spelling as You Type", app.spelling, "ui.toggleSpelling", json!({}));
                 ui.label(egui::RichText::new(lang.text("Spelling checks English words only; Russian words are skipped.")).small().weak());
+                item(app, ui, "Scene Heading Abbreviations…", "ui.sluglines", "");
                 crate::annotations::tools_menu(app, ui);
                 ui.separator();
                 ui.menu_button("Read Aloud", |ui| {
@@ -588,7 +589,11 @@ pub fn navigator(app: &mut ScriptApp, ui: &mut Ui) {
                     let cur = app.session.script.scene_of(app.session.sel.focus.para);
                     let scenes = app.session.script.scenes();
                     if scenes.is_empty() {
-                        ui.label(RichText::new(lang.text("No scenes yet. Start a paragraph with INT. or EXT.")).color(t.text_soft));
+                        let (int, ext) = crate::sluglines::example(app);
+                        ui.label(
+                            RichText::new(lang.format("No scenes yet. Start a paragraph with {int} or {ext}", &[("int", int), ("ext", ext)]))
+                                .color(t.text_soft),
+                        );
                     }
                     // Structure points before each scene: (heading paragraph → reading-order index of its first point).
                     let mut first_point = std::collections::HashMap::new();
@@ -694,6 +699,7 @@ pub fn elide(s: &str, n: usize) -> String {
 pub fn dialogs(app: &mut ScriptApp, ctx: &egui::Context) {
     let lang = app.prefs.appearance.language;
     crate::production::dialogs(app, ctx);
+    crate::sluglines::dialog(app, ctx);
     if app.title_dialog {
         let mut open = true;
         let mut tp: TitlePage = app.session.script.title.clone();

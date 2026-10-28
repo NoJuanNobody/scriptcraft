@@ -144,6 +144,17 @@ The browser supports switching for the current session (its settings are not per
 этот шрифт или выбрать другой шрифт с кириллицей.
 Технические сообщения движка/API и названия пользовательских наборов правок не переводятся.
 
+**Инструменты → Сокращения в заголовках сцен…** задаёт слова, с которых начинается заголовок
+сцены, и время суток для SmartType. Есть готовые наборы (English, Русский, Українська, Deutsch,
+Français, Español, Italiano, Português, Polski), а любой список можно отредактировать вручную.
+По этим словам работают набор текста, чтение Fountain, навигатор, карточки и отчёты. Настройка
+хранится в `config.toml` (`[sluglines]`). Заголовки на других языках сохраняются в Fountain
+принудительными (`.INNEN. KÜCHE - TAG`), поэтому их читают и другие программы.
+
+Scene-heading abbreviations are not English-only: **Tools → Scene Heading Abbreviations…** picks
+a language set or edits the words for interior, exterior, both and the times of day (`[sluglines]`
+in `config.toml`; `sluglines.get` / `sluglines.set` for agents).
+
 ![Russian interface and Cyrillic screenplay in Courier Badi](docs/images/russian.png)
 
 ### Adding another interface language

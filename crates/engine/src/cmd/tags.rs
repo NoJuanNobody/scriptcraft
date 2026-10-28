@@ -75,13 +75,13 @@ fn categories(s: &mut Session, _: &Value) -> CmdResult {
 
 fn report(s: &mut Session, _: &Value) -> CmdResult {
     let l = s.layout();
-    let scenes = breakdown::breakdown(&s.script, &l);
+    let scenes = breakdown::breakdown(&s.script, &l, &s.sluglines);
     Ok(json!({"scenes": scenes, "items": breakdown::items(&s.script), "categories": s.script.tag_categories_used()}))
 }
 
 fn report_csv(s: &mut Session, _: &Value) -> CmdResult {
     let l = s.layout();
-    Ok(json!({"csv": breakdown::csv(&s.script, &l)}))
+    Ok(json!({"csv": breakdown::csv(&s.script, &l, &s.sluglines)}))
 }
 
 fn export(s: &mut Session, v: &Value) -> CmdResult {
@@ -90,7 +90,7 @@ fn export(s: &mut Session, v: &Value) -> CmdResult {
         return Err(CmdError::Params("the path must end in .csv".into()));
     }
     let l = s.layout();
-    let csv = breakdown::csv(&s.script, &l);
+    let csv = breakdown::csv(&s.script, &l, &s.sluglines);
     crate::io::write_bytes(&path, csv.as_bytes()).map_err(CmdError::Failed)?;
     s.status = format!("Exported the breakdown to {}", path.display());
     Ok(json!({"path": path.display().to_string(), "bytes": csv.len()}))

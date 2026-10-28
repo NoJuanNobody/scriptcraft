@@ -491,7 +491,7 @@ pub fn breakdown_section(app: &mut ScriptApp, ui: &mut Ui, goto: &mut Option<usi
     let lang = app.prefs.appearance.language;
     let t = app.tokens();
     let l = app.session.layout();
-    let sheets = scriptcraft_engine::breakdown::breakdown(&app.session.script, &l);
+    let sheets = scriptcraft_engine::breakdown::breakdown(&app.session.script, &l, &app.session.sluglines);
     let cats = app.session.script.tag_categories_used();
     ui.add_space(18.0);
     ui.horizontal(|ui| {

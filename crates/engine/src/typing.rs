@@ -2,7 +2,7 @@
 //! targets are per-script element settings (`ElementFormat::default_for` has the defaults).
 //! The behaviour is documented in `docs/typing-parity.md` and pinned by `tests_typing.rs`.
 
-use scriptcraft_doc::{Element, Script};
+use scriptcraft_doc::{Element, Script, Sluglines};
 
 /// The element a new paragraph gets after Enter at the end of `e` (this script's settings).
 pub fn enter_next(s: &Script, e: Element) -> Element {
@@ -47,10 +47,9 @@ pub const fn shift_tab(e: Element) -> Element {
     }
 }
 
-/// Action typed as a scene-heading prefix becomes a Scene Heading (`int. ` → `INT. `).
-pub fn looks_like_heading(text: &str) -> bool {
-    let up = text.to_uppercase();
-    ["INT. ", "EXT. ", "INT./EXT. ", "EXT./INT. ", "I/E. ", "I/E ", "EST. ", "ИНТ. ", "НАТ. ", "ИНТ./НАТ. ", "НАТ./ИНТ. "]
-        .iter()
-        .any(|p| up.starts_with(p))
+/// Action typed as one of the user's scene-heading prefixes becomes a Scene Heading (`int. ` →
+/// `INT. `), but only while the paragraph is no longer than the prefix and its space.
+pub fn looks_like_heading(words: &Sluglines, text: &str) -> bool {
+    let longest = words.prefixes().first().map_or(0, |(w, _)| w.trim().chars().count());
+    text.chars().take(longest + 2).count() <= longest + 1 && words.starts_heading(text)
 }
